@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1578669057948.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "1466142355",
+    "id" : "12739215",
+    "lastKnownWriteTime" : 1579095750,
+    "last_content_update" : 1579095750478,
+    "path" : "~/Desktop/Li_lab/SeuratVignette_clustering.R",
+    "project_path" : "SeuratVignette_clustering.R",
+    "properties" : {
+        "cursorPosition" : "98,0",
+        "scrollLine" : "79",
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

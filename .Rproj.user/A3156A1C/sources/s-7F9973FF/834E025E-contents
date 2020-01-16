@@ -1,0 +1,219 @@
+## R code  (This is a comment.)
+
+### Check if your have enabled the graphics for the ssh connection
+plot(1:5,1:5)
+
+
+######################################################
+### Section 1
+x <- 1
+x  # returns the value of x.
+clock  # will get an error, because clock has not been defined.
+5+8  # You can use R as a calculator
+(6-2)^2.5
+
+
+(1+2+3+4+5)/5
+mean(x=1:5)
+sqrt(x=9)
+sqrt(x=mean(7:11))
+mean(A)
+ls()  # Some functions do not require any parameters.
+getwd()  # Get the path to your working directory.
+library()  # See all of the currently installed packages.
+?mean  # Get help for using a specific function
+
+######################################################
+###  Section 2
+a <- 2
+b <- 3
+a+b
+a^b
+
+a.vec <- c(2,4,6)
+length(a.vec)
+a.vec[1:2]
+b.vec <- c(3,5,7)
+a.vec + b.vec
+a.vec*b.vec  
+
+cbind(a.vec,b.vec)
+
+a.mat <- matrix(c(1,2,3,3,4,5),nrow=3,ncol=2)
+a.mat
+a.mat^2
+log2(a.mat)
+a.mat[1:2,1]  # returns the first two rows of the first column of a.mat
+a.mat[1:2,]   # returns the entire first two rows of a.mat (all columns)
+
+today <- 'Tuesday'
+today
+
+
+ls()
+rm(today,a)
+
+save(a.vec,a.mat, file="myRobjects.RData")
+save.image("Lab1_workspace.RData") # Saves all objects in your current workspace
+
+load("myRobjects.RData")  # Reloads your saved R objects or workspace (Slide 25)
+# library(package_name) to load an R package
+library()
+
+x <- 6
+log(x)
+log2(x)
+log10(x)
+exp(x)
+sqrt(x)
+abs(x)  # returns absolute value of x
+
+
+######################################################
+### Section 3
+length(b.vec)
+dim(a.mat)
+typeof(b)
+attributes(a.mat)
+
+###  Using the unique() function
+gene.ids <- c(1221,134,29,17,17,134)
+unique(gene.ids)  # removes any duplicated values from gene.ids
+length(unique(gene.ids))  # how many unique values are in gene.ids?
+
+###  Data frames (Tables)  (Slide 28)
+numbers <- 1:4
+letters <- c('a','b','c','d')
+group <- as.factor(c(1,0,0,1))
+
+mydata <- data.frame(cbind(numbers,letters,group))
+mydata
+
+colnames(mydata) # Get the column names of mydata.
+# three ways to access a column in a data frame
+mydata$letters
+mydata[,"letters"]
+mydata[,2]
+
+mydata[1:3,]  # view the top few rows of a table
+mydata[mydata[,2]=='b',] # view the row(s) where the 2nd column (letters)='b'
+
+###  The table() functio
+mydata <- c(rep('a',2), rep('b',4), rep('c',3), 'd')
+mydata
+
+my.counts <- table(mydata)  # calculates how many times each value occurs in mydata
+my.counts
+names(my.counts)
+
+
+##########################################################################
+### Section 4
+
+###  Random number generation 
+data1<- rnorm(n=100 mean=1, sd=1)  # generate 20 random variables from the Normal(1,1) distribution
+data2<- rnorm(n=100, mean=1.2)  # generate 20 random variables from the Normal(1.2,1) distribution
+?rnorm  # Hit q to return to the R command line if in linux
+
+runif(10)  # generate 10 random variables from the Uniform(0,1) distribution
+sample(x=1:20, size=5, replace=FALSE) # randomly sample 5 values from 1:20 without replacement
+
+### Some simple math/stat functions
+data1<-rnorm(20,1)
+data2<-rnorm(20,1.2)
+datamat <- cbind(data1, data2)  # "column bind" the vectors data1 and data2 into a matrix
+dim(datamat) # gives the dimensions of datamat as # rows, # columns
+mean(data1)
+median(data1)
+sd(data1)  # standard deviation
+var(data1) # variance
+identical(sd(data1),sqrt(var(data1))) # The st dev should equal the square root of the variance
+sum(data1)
+
+min(data1); max(data1)
+?min
+cor(data1,data2) # calculates correlation coefficient; default is Pearson's correlation
+cor.test(data1,data2) # similar to cor, but provides more information, including p-values
+cor(datamat)  # calculates correlation between all pairs of columns in the matrix
+summary(data1) # provides mean, median, min, max, and some quantiles of the data
+
+###  Sorting data	(Slide 34)
+y <- runif(5)  # Generate 5 random numbers from a uniform distribution
+y
+sort(y)  # Sorts the vector in increasing order (cannot be used with matrices)
+order(y) # Provides the indices in order required to sort the vector
+y[order(y)]  # Same as sort(y), but you can use this method with matrices
+
+size <- c('big','tiny','huge','small','medium')  # (Slide 36)
+size[order(y)]
+#[1] "tiny"   "small"  "medium" "big"    "huge" 
+mydata[order(mydata$letters,decreasing=T),] # sort an entire table by the values in one column
+
+##########################################################################
+### Section 5
+
+###  T-tests 
+t.test(x=data1,y=data2)
+?t.test   # get help for using the t.test() function
+t.test(data1)
+t.test(data1)$p.value  # return the p-value of the t-test
+
+### regression and ANOVA -  the lm() function 
+y <-c(rnorm(8,1), rnorm(8,3))
+trt <- c(rep("C",8), rep("T",8))
+gender <- c(rep("M",4),rep("F",4), rep("M",4),rep("F",4))
+age <- sample(x=30:70, size=16)
+cbind(data.frame(y,trt,gender,age))
+res <- lm(y ~ 1+ as.factor(trt)+ as.factor(gender))
+summary(res)
+anova(res)
+res2 <- lm(y ~ 1+ as.factor(trt)+ as.factor(gender) +age)
+summary(res2)
+
+attributes(anova(res))
+anova(res)$"Pr(>F)"
+
+
+##########################################################################
+### Section 6
+
+### "for" loop example 
+grp1<-matrix(rnorm(400,mean=0),  nrow=100,ncol=4)  # Generate 4 control samples for 100 genes
+grp2<-matrix(rnorm(400,mean=0.5),nrow=100,ncol=4)  # Generate 4 treated samples for 100 genes
+results<-NA
+for (i in 1:100) {
+  results[i]<- t.test(grp1[i,], grp2[i,])$p.value  # test for difference between each gene
+ }
+results[1:10]
+
+###  apply() function
+genes<-matrix(c(6,8,7,6,7,5,5,8),2,4) # Create a 2x4 matrix
+genes[1,]  
+
+gene.sd<-apply(genes, MARGIN=1, FUN=sd) # calculate the st dev of each row of the genes matrix
+summary(gene.sd)
+
+
+##########################################################################
+### Section 7
+###  Making a histogram 
+pvalues <- runif(10000)
+hist(pvalues, main="my p-values")
+hist(results)
+
+### Output a figure to a file 
+jpeg('my_test_plot.jpg',width=640,height=640) 
+   hist(pvalues, main="my p-values")
+dev.off()
+
+###  The plot() function  (Slide 52)
+x <- rnorm(n=200, mean=1)
+y <- rnorm(n=200, mean=x)
+plot(x,y)
+
+plot(x,y, main="200 data points")  # Add a title
+plot(x,y, main="200 data points",xlab="x values",ylab="y values") # Label the axes
+plot(x,y, main="200 data points",xlab="x values",ylab="y values",col="red",
+   xlim=c(-4,6),ylim=c(-4,5))  # Color the points and set value limits on the axes
+  # See ?plot for additional options for the plot() function.
+  # Also see ?par for many additional options available for plot() and other graphing functions.
