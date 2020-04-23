@@ -1,5 +1,3 @@
-# Using SingleR full data (including Unassigned)
-
 library(Seurat)
 library(SingleR)
 library(ggplot2)
