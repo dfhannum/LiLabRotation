@@ -59,3 +59,4 @@ ggplot(data = clst_vs_cell_id, aes(x = `Cell ID`, y = `Cluster ID`, fill = clust
 
 ggsave('./figures/clusterIDS_vs_cellIDS_heatmap.png', device = 'png', units = 'in',
        height = 5, width = 8, dpi = 400)
+        
