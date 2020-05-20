@@ -1,5 +1,5 @@
 # combining the two experiments
-
+library(data.table)
 library(ggplot2)
 library(Seurat)
 library(cowplot)
@@ -58,3 +58,33 @@ p2 <- DimPlot(wbm.int, reduction = 'umap', group.by = 'cluster_name', label = T,
         NoLegend()
 p1 + p2
 ggsave('./figures/INT_umap.png', device = 'png', units = 'in', height = 4, width = 9.5, dpi = 400)
+
+
+#++++++
+# Getting the new clusters
+
+head(wbm.int@meta.data)
+
+DimPlot(wbm.int, reduction = 'umap', group.by = 'seurat_clusters')
+
+wbm.int <- FindNeighbors(wbm.int, dims = 1:30)
+
+lst_ <- seq(0,1, by = 0.05)
+
+resul = c()
+cnt = 1
+
+for (i in lst_){
+        x <- FindClusters(wbm.int, resolution = i)
+        resul[cnt] <- length(levels(x$seurat_clusters))
+        cnt = cnt + 1
+}
+
+plot(resul)
+lst_[9]
+wbm.int <- FindClusters(wbm.int, resolution = .4)
+
+DimPlot(wbm.int, reduction = 'umap', label = T)
+
+saveRDS(wbm.int,'./data/wbm.integrated.RDS')
+

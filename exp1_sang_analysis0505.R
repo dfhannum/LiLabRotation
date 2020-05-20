@@ -46,3 +46,6 @@ VlnPlot(wbm, features = feat2, ncol =3, pt.size = 0 )
 FeaturePlot(wbm, features = feat2)
 
 ?VlnPlot
+
+
+# Figure generating 

@@ -491,3 +491,9 @@ sc <- FindMarkers(wbm, ident.1 = 'Stem Cell')
 write.csv(sc,'./data/stemcell.cluster.markers.csv', quote = F)
 
 write.csv(wbm@meta.data,'./data/metadata0330.csv', quote = F)
+
+
+
+
+
+

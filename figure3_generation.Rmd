@@ -1,0 +1,178 @@
+---
+title: "Sang WBM Figure Generation"
+author: "D. Ford Hannum"
+date: "5/18/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(MAST)
+```
+
+```{r reading in the data, echo = F}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+```
+
+> **FIGURES WILL BE SAVED IN FIGURES/VERSION2/**
+
+# Things to ask
+
+A section of questions that arise when putting together the analysis:
+
+* What are we calling the wildtype and mutant groups
+
+
+# Figure 3
+
+Putting together images for Figure 3, which we want to sumarize the single cell RNA-seq (scRNA) between the Mipl (mut) and control samples.
+
+
+## Figure 3a
+UMAP projection of the single cell data. Clusters were labeled using SingleR and marker gene expression, and consolidated into single clusters. The first image is of all the clusters and their labels. The second image is when the clusters are consolidated.
+
+```{r 3a, echo = F}
+DimPlot(wbm, reduction = 'umap')
+new_levels <- c('Granulocyte','Granulocyte','Granulocyte','B-cell','MK',
+                'Granulocyte','Granulocyte', 
+                'Monocyte','Monocyte','Erythroid','B-cell','T-cell/NK','MEP')
+names(new_levels) <- levels(wbm)
+wbm <- RenameIdents(wbm, new_levels)
+DimPlot(wbm, reduction = 'umap', pt.size = .001, label.size = 2) + xlab ('UMAP1') + ylab ('UMAP2') +
+        theme_classic() +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text = element_blank(),
+              axis.ticks = element_blank())
+        
+ggsave('./figures/version2/fig3a_umap_consolidated.pdf', units = 'in', 
+       height = 2.75, width = 5, device = 'pdf')
+```
+\n
+> *UMAP projection of the scRNA-seq analysis. Clusters were labeled by cell type and then consolidated into larger clusters based on the cell type*
+
+
+## Figure 3b
+
+Looking at the UMAP projection, but splitting it up between the different experiments.
+
+```{r fig3b, echo = F}
+wbm@meta.data$condition <- ifelse(wbm@meta.data$condition == 'control', 'Control','Mipl')
+DimPlot(wbm, reduction = 'umap', pt.size = .001, label = F, split.by = 'condition') + xlab ('UMAP1') + 
+        ylab ('UMAP2') +
+        theme_classic() +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text = element_blank(),
+              axis.ticks = element_blank()) +
+        NoLegend()
+ggsave('./figures/version2/fig3b_umap_consolidated_split.pdf', units = 'in', height = 2.75, width = 5, device = 'pdf')
+```
+\n
+> *UMAP projection of the scRNA-seq analysis, split between the two experimental states (Control, Mipl)*
+
+## Figure 3c
+
+Heatmap of the distribution of the experiments among the clusters
+
+```{r generating heatmap, echo = F}
+# Generating the df for the heatmap
+
+wbm@meta.data$clusterIDs <- wbm@meta.data$cluster_IDs
+levels(wbm@meta.data$clusterIDs) <- new_levels
+tbl <- as.matrix(table(wbm@meta.data$clusterIDs, wbm@meta.data$condition))
+mtx <- matrix(ncol = 3, nrow = 14)
+mtx[,1] <- rep(rownames(tbl),2)
+mtx[,2] <- rep(colnames(tbl), each = 7)
+mtx[1:7,3] <- tbl[,1]
+mtx[8:14,3] <- tbl[,2]
+mtx <- as.data.frame(mtx)
+colnames(mtx) <- c('Cell Type', 'Condition', 'Count')
+mtx$Count <- as.numeric(as.character(mtx$Count))
+cnt_count <- sum(mtx[1:7,3])
+mpl_count <- sum(mtx[8:14,3])
+
+mtx$Percentage <- NA
+mtx$Percentage[1:7] <- round(mtx$Count[1:7]/cnt_count,2)*100
+mtx$Percentage[8:14] <- round(mtx$Count[8:14]/mpl_count,2)*100
+
+cell_levels <- c('Granulocyte','B-cell','MK','Monocyte','Erythroid','T-cell/NK','MEP')
+mtx$`Cell Type` <- factor(mtx$`Cell Type`, levels = rev(cell_levels))
+
+ggplot(data = mtx, aes(x = Condition, y = `Cell Type`, fill = Percentage)) + geom_tile() +
+        scale_fill_gradient2(high = 'darkred', low = 'white', mid = 'red', midpoint = 50,
+                             limit = c(0,100), space ="Lab",
+                             #guide = guide_legend(direction = 'horizontal', title.position = 'top'),
+                             guide = guide_colorbar(direction = 'horizontal', title.position = 'top'),
+                             name = 'Percentage of Cells\nin Condition') +
+        theme_minimal() +
+        scale_x_discrete(position = 'top') + 
+        geom_text(aes(Condition, `Cell Type`, label = Count), color = 'black', size = 4) +
+        theme(text = element_text(size = 10, family = 'sans'),
+              legend.title.align = 0.5,
+              legend.position = 'bottom')
+ggsave('./figures/version2/figure3c_heatmap.pdf', device = 'pdf', units = 'in',
+       width = 2.5, height = 5.5)
+```
+\n
+> *Cell counts for each cell type among the conditions. Percentage of the cells in each condition accounted for by cell type is represented by red shading*
+
+## Figure 3d
+
+Want to show the differential expression of genes within the MK cluster. 
+
+```{r getting marker genes for MKs, echo = F, include=F}
+
+mk.markers.w <- FindMarkers(wbm, ident.1 = 'Control', ident.2 = 'Mipl',
+                          group.by = 'condition',
+                          verbose = T, subset.ident = 'MK',
+                          logfc.threshold = log(2), test.use = 'wilcox')
+
+mk.markers.b <- FindMarkers(wbm, ident.1 = 'Control', ident.2 = 'Mipl',
+                          group.by = 'condition',
+                          verbose = T, subset.ident = 'MK',
+                          logfc.threshold = log(2), test.use = 'bimod')
+
+mk.markers.r <- FindMarkers(wbm, ident.1 = 'Control', ident.2 = 'Mipl',
+                          group.by = 'condition',
+                          verbose = T, subset.ident = 'MK',
+                          logfc.threshold = log(2), test.use = 'roc')
+ 
+mk.markers.m <- FindMarkers(wbm, ident.1 = 'Control', ident.2 = 'Mipl',
+                          group.by = 'condition',
+                          verbose = T, subset.ident = 'MK',
+                          logfc.threshold = log(2), test.use = 'MAST')
+
+print(dim(mk.markers.w[mk.markers.w$p_val_adj < 0.05,]))
+print(dim(mk.markers.b[mk.markers.b$p_val_adj < 0.05,]))
+print(dim(mk.markers.r[mk.markers.r$power > .8,]))
+print(dim(mk.markers.m[mk.markers.m$p_val_adj < 0.05,]))
+sig.mk.markers.m <- mk.markers.m[mk.markers.m$p_val_adj < 0.05,]
+sig.mk.markers.m <- sig.mk.markers.m[order(sig.mk.markers.m$avg_logFC, decreasing = T),]
+sig.mk.genes.m <- rownames(sig.mk.markers.m)
+
+summary(rownames(mk.markers.w[mk.markers.w$p_val_adj < 0.05,]) %in% rownames(sig.mk.markers.m))
+```
+
+For the follow-up analysis I'm going to use MAST to determine differentially expressed genes. MAST identifies differentially expressed genes between two groups of cells using a hurdle model tailored to scRNA-seq data. While also stipulating the fold-change in expression greater than 2, we get 123 differentially expressed genes. Previously the wilcoxon test was used, and 93 of the 96 genes from that list were also present in the DE genes from MAST.
+
+```{r heatmap with DE genes, echo = F}
+mk.cells <- WhichCells(wbm, ident = 'MK')
+DoHeatmap(wbm, features = sig.mk.genes.m, group.by = 'condition', 
+          cells = mk.cells, label = F) +
+        theme_minimal() + 
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text = element_blank(),
+              axis.ticks = element_blank())
+
+ggsave('./figures/version2/figure3d_mk_markers.pdf', device = 'pdf', units = 'in',
+       width = 7.5, height = 3)
+```
+
+```{r including final figure combined, out.width="0.3\\linewidth", include = T, fig.align='center', fig.cap='Figure 3', echo = F}
+knitr::include_graphics("./figures/version2/figure3.pdf")
+```
+
+

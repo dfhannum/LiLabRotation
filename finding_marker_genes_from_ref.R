@@ -149,4 +149,5 @@ head(results[order(results$p.value, decreasing = F),],100)
 results <- results[order(results$p.value, decreasing = F),]
 results[results$fc > 1,][1:20,]
 
-
+DimPlot(wbm, reduction = 'umap', cells.highlight = colnames(subset(wbm, subset = Pf4 > 2)),
+        cols.highlight = 'red', split.by = 'condition')
