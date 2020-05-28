@@ -1,0 +1,99 @@
+---
+title: "DE w/in Cluster scWBM"
+author: "D. Ford Hannum"
+date: "5/27/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+\newpage
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+library(Seurat)
+library(MAST)
+library(ggplot2)
+```
+
+# Summary
+
+Going to focus on differential expression within all the clusters from Experiment 1 of scWBM with the Sang Lab.
+
+This analysis has already been performed on megakaryocytes which are the primary cell type of interest with regards to primary myelofibrosis. 
+
+
+```{r lists to include}
+# profibrotic factors of interest
+pf <- read.table('./data/profibrotic_factors.txt')$V1
+pf <- pf[2:length(pf)]
+
+
+```
+
+```{r loading the data and getting new idents}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+
+new_levels <- c('Granulocyte','Granulocyte','Granulocyte', 'B-cell','MK', 
+        'Granulocyte', 'HSPC','Monocyte','Macrophage','Erythroid','B-cell',
+        'T-cell/NK', 'MEP')
+names(new_levels)  <- levels(wbm)
+new_levels
+wbm <- RenameIdents(wbm, new_levels)
+wbm@meta.data$condition <- ifelse(wbm@meta.data$condition == 'control', 'Control','Mpl')
+```
+
+## Granulocytes
+
+```{r DEG}
+gr.markers <- FindMarkers(wbm, ident.1 = 'Control', ident.2 = 'Mpl',
+                          group.by = 'condition',
+                          verbose = T, subset.ident = "Granulocyte",
+                          logfc.threshold = log(2), test.use = "MAST")
+
+gr.markers
+
+gr.cells <- WhichCells(wbm, ident = 'Granulocyte')
+DoHeatmap(wbm, features = rownames(gr.markers), group.by = 'condition',
+          cells = gr.cells, label = F)
+
+gr.markers <- FindMarkers(wbm, ident.1 = 'Control', ident.2 = 'Mpl',
+                          group.by = 'condition',
+                          verbose = T, subset.ident = "Granulocyte",
+                          test.use = "MAST")
+
+gr.markers
+
+DoHeatmap(wbm, features = rownames(gr.markers), group.by = 'condition',
+          cells = gr.cells, label = F) +
+        theme_minimal() + 
+        xlab('MK Cells') + ylab('DE genes') + 
+        scale_x_discrete(position = 'top') + 
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text = element_blank(),
+              axis.ticks = element_blank())
+```
+
+```{r hspcs DEG}
+hspc.markers <- FindMarkers(wbm, ident.1 = 'Control', ident.2 = 'Mpl',
+                          group.by = 'condition',
+                          verbose = T, subset.ident = "HSPC",
+                          logfc.threshold = log(2),test.use = "MAST")
+
+hspc.markers
+
+hspc.cells = WhichCells(wbm, ident = 'HSPC')
+DoHeatmap(wbm, features = rownames(hspc.markers), group.by = 'condition',
+          cells = hspc.cells, label = F) +
+        theme_minimal() + 
+        xlab('MK Cells') + ylab('DE genes') + 
+        scale_x_discrete(position = 'top') + 
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text = element_blank(),
+              axis.ticks = element_blank())
+```
+

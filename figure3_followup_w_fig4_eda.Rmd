@@ -1,0 +1,339 @@
+---
+title: "Figure 3 Follow-up 1"
+author: "D. Ford Hannum"
+date: "5/22/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+\newpage
+
+```{r setup, include = F}
+knitr::opts_chunk$set(echo = F)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(MAST)
+library(SingleR)
+library(scRNAseq)
+```
+
+This will be follow-up from the Sang lab meeting on 05/21/2020. 
+
+# Summary
+
+## Changes to Figure 3
+
+1. Figure 3a
+
+        i) pull the granulocyte progenitor population out of granulocytes
+        ii) split up macrophages and monocytes
+        iii) prepare image (or supplemental image) with the singleR naming of the cells
+        
+2. Figure 3c
+
+        i) changing the heatmap to a bar plot
+        
+3. Figure 3d
+
+        i) look at different color schemes to make the contrast more stark
+        
+## Additional Work
+
+1. DEG Work
+
+        i) provide MK DEG list
+        ii) provide violin plots for all MK DEGs
+        iii) change the color of the violin plots (blue = Migr, red = Mpl)
+        iv) run DE analysis on other clusters
+        
+# Changes to Figure 3
+
+## Adding in additional clusters to Figure 1 and 2
+
+Including the granulocyte progenitor population, and splitting up the monocyte and macrophage populations.
+
+```{r loading data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+```
+
+```{r changing the levels}
+DimPlot(wbm, reduction = 'umap') + ggtitle('Projection with All Clusters')
+
+#levels(wbm)
+
+new_levels <- c('Granulocyte','Granulocyte','Granulocyte', 'B-cell','MK', 
+        'Granulocyte', 'HSPC','Monocyte','Macrophage','Erythroid','B-cell',
+        'T-cell/NK', 'MEP')
+names(new_levels)  <- levels(wbm)
+new_levels
+wbm <- RenameIdents(wbm, new_levels)
+```
+
+```{r umap projection}
+
+levels(wbm)
+color_pal <- c("#0072B2", "#CC79A7", "#009E73", "#56B4E9","#D55E00",
+               "#E69F00","#999999", "#F0E442","#000000")
+
+DimPlot(wbm, reduction = 'umap', pt.size = 0.001, label.size = 2) + 
+        xlab('UMAP1') + ylab('UMAP2') +
+        theme_classic() +
+        scale_color_manual(values = color_pal) +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text = element_blank(),
+              axis.ticks = element_blank())
+# 
+# ggsave('./figures/version3/fig3a_umap.pdf', units = 'in',
+#        height = 2.75, width = 5, device = 'pdf')
+```
+
+## New 3b
+
+
+```{r split figure}
+wbm@meta.data$condition <- ifelse(wbm@meta.data$condition == 'control', 'Control', 'Mpl')
+DimPlot(wbm, reduction = 'umap', pt.size = .001, label = F, split.by = 'condition') + xlab ('UMAP1') + 
+        ylab ('UMAP2') +
+        theme_classic() +
+        scale_color_manual(values = color_pal) +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text = element_blank(),
+              axis.ticks = element_blank()) +
+        NoLegend()
+#ggsave('./figures/version3/fig3b_umap_split.pdf', units = 'in', height = 2.75, width = 5, device = 'pdf')
+```
+
+## Adjusting Figure 3c for the new clusters
+
+```{r, count grid}
+wbm@meta.data$new_cluster_IDs <- wbm@meta.data$cluster_IDs
+levels(wbm@meta.data$new_cluster_IDs) <- new_levels
+tbl <- as.matrix(table(wbm@meta.data$new_cluster_IDs, wbm@meta.data$condition))
+mtx <- matrix(ncol = 3, nrow = 18)
+mtx[,1] <- rep(rownames(tbl),2)
+mtx[,2] <- rep(colnames(tbl), each = 9)
+mtx[1:9,3] <- tbl[,1]
+mtx[10:18,3] <- tbl[,2]
+mtx <- as.data.frame(mtx)
+colnames(mtx) <- c('Cell Type','Condition','Count')
+mtx$Count <- as.numeric(as.character(mtx$Count))
+cnt_count <- sum(mtx[1:9,3])
+mpl_count <- sum(mtx[10:18,3])
+
+mtx$Percentage <- NA
+mtx$Percentage[1:9] <- round(mtx$Count[1:9]/cnt_count,2)*100
+mtx$Percentage[10:18] <- round(mtx$Count[10:18]/mpl_count,2)*100
+cell_levels <- c('Granulocyte','B-cell','MK','HSPC','Monocyte','Macrophage','Erythroid','T-cell/NK','MEP')
+mtx$`Cell Type` <- factor(mtx$`Cell Type`, levels = rev(cell_levels))
+
+ggplot(data = mtx, aes(x = Condition, y = `Cell Type`, fill = Percentage)) + geom_tile() +
+        scale_fill_gradient2(high = 'darkred', low = 'white', mid = 'red', midpoint = 50,
+                             limit = c(0,100), space ="Lab",
+                             #guide = guide_legend(direction = 'horizontal', title.position = 'top'),
+                             guide = guide_colorbar(direction = 'horizontal', title.position = 'top'),
+                             name = 'Percentage of Cells\nin Condition') +
+        theme_minimal() +
+        scale_x_discrete(position = 'top') + 
+        geom_text(aes(Condition, `Cell Type`, label = Count), color = 'black', size = 4) +
+        theme(text = element_text(size = 10, family = 'sans'),
+              legend.title.align = 0.5,
+              legend.position = 'bottom')
+ggsave('./figures/version3/figure3c_heatmap.pdf', device = 'pdf', units = 'in',
+       width = 2.5, height = 5.5)
+```
+
+## 3c Alternatives
+
+Looking at creating bar plots for the figures instead of heatmap
+
+```{r 3c bar plots}
+mtx$Condition2 <- factor(mtx$Condition, levels = c('Control','Mpl'))
+ggplot(mtx, aes(x = `Cell Type`, y = Percentage, fill = Condition2)) + 
+        geom_bar(stat = 'identity', position = position_dodge()) + 
+        coord_flip() +
+        theme_bw() +
+        scale_fill_manual('Condition', values = c('Mpl' = 'red',
+                                                  'Control' = 'blue')) +
+        geom_text(stat = 'identity', aes(label = Count),
+                  position = position_dodge(width = 1),
+                  hjust = -.1, size = 2.5) +
+        ylim (0,75) +
+        theme(text = element_text(size = 10, family = 'sans'),
+              legend.title.align = 0.5,
+              legend.position = 'bottom',
+              legend.direction = 'vertical')
+ggsave('./figures/version3/figure3c_bar_plot.pdf', device = 'pdf', units = 'in',
+       width = 2.5, height = 5.5)    
+```
+
+Another version of a potential bar chart
+
+```{r bar chart tres}
+head(mtx)
+levels(mtx$`Cell Type`)
+mtx$`Cell Type` <- factor(mtx$`Cell Type`, levels = rev(levels(mtx$`Cell Type`)))
+ggplot(mtx, aes(x= Condition, y = Percentage, fill = `Cell Type`)) + 
+        scale_fill_manual(values = color_pal) +
+        geom_bar(stat = 'identity') + 
+        theme_bw()
+
+
+ggplot(mtx, aes(x = `Cell Type`, y = Percentage, fill = Condition2)) + 
+        geom_bar(stat = 'identity', position = position_dodge()) + 
+        coord_flip() +
+        theme_bw() +
+        scale_fill_manual('Condition', values = c('Mpl' = 'red',
+                                                  'Control' = 'blue')) +
+        geom_text(stat = 'identity', aes(label = Count),
+                  position = position_dodge(width = 1),
+                  hjust = -.1, size = 2.5) +
+        ylim (0,75) +
+        theme(text = element_text(size = 10, family = 'sans'),
+              legend.title.align = 0.5,
+              legend.position = 'bottom',
+              legend.direction = 'vertical')
+```
+
+
+## Figure 3d 
+
+Adding labels to the heatmap
+
+```{r 3d heat map, warnings = F}
+# Getting Marker cells
+mk.DEG <- read.table('./data/mk.markers.MAST.csv', sep = ',', header = T)
+mk.DEG <- mk.DEG$X
+
+mk.cells <- WhichCells(wbm, ident = 'MK')
+
+DoHeatmap(wbm, features = mk.DEG, group.by = 'condition', 
+          cells = mk.cells, label = F) +
+        theme_minimal() + 
+        xlab('MK Cells') + ylab('DE genes') + 
+        scale_x_discrete(position = 'top') + 
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text = element_blank(),
+              axis.ticks = element_blank()) +
+        scale_fill_gradient2(high = 'yellow', low = 'purple', mid = 'grey', midpoint = 0,
+                             limit = c(-2.5,2.5))
+
+ggsave('./figures/version3/figure3d_HEATMAP_mk_markers.pdf', device = 'pdf', units = 'in',
+       width = 7.5, height = 3)
+```
+
+## SingleR supplementary figure
+
+Creating a heatmap to see how SingleR labeled the individual cells in each cluster
+
+```{r singleR loading datasets, include = F, warnings = F}
+m.ref <- ImmGenData()
+m.ref2 <- MouseRNAseqData()
+```
+
+```{r singleR}
+SCwbm <- as.SingleCellExperiment(wbm)
+
+pred_cell <- SingleR(test = SCwbm, ref = list(m.ref, m.ref2),
+                     labels = list(m.ref$label.main, m.ref2$label.main),
+                     method = 'single')
+```
+
+```{r formatting the singleR dataframe}
+md <- wbm@meta.data
+md <- cbind(md, pred_cell[,4])
+
+df <- as.data.frame(table(md$seurat_clusters, md$`pred_cell[, 4]`))
+colnames(df) <- c('Cluster','Cell Label', 'Count')
+cluster_counts <- c(summary(as.factor(md$seurat_clusters)))
+df$cluster_counts <- rep(cluster_counts,18)
+df$cluster_perc <- round(df$Count / df$cluster_counts,2)*100
+
+df$cluster_with_final_label <- as.factor(paste0(df$Cluster,' (', rep(new_levels,18),')'))
+df$cluster_with_final_label <- factor(df$cluster_with_final_label, 
+                                      levels = levels(df$cluster_with_final_label)[c(1,2,6:13,3:5)])
+
+ggplot(data = df, aes(x = `Cell Label`, y = cluster_with_final_label, fill = cluster_perc)) +
+        geom_tile() +
+        scale_fill_gradient2(high = 'darkred', low = 'white', mid = 'red', midpoint = 50,
+                             limit = c(0,100), space ="Lab",
+                             name = 'Percentage of \nCells\n') +
+        ylab('Cluster (final label)') + xlab('Cell Labels') +
+        ggtitle ("Heatmap of Individual Cell Labels within Cluster Number") + 
+        theme (plot.title = element_text(hjust = 0.5), 
+               axis.text.x = element_text(angle = 45, hjust = 1)) +
+        coord_fixed() + 
+        theme(text = element_text(size = 10, family = 'sans'))
+
+ggsave('./figures/version3/supp_singleR_figure.pdf', device = 'pdf', units = 'in',
+       width = 7.5, height = 3)
+```
+
+## Figure 3c Plots
+
+Visualizing the data with a bar plots instead of heat plots
+
+# MK DE Genes
+
+Here are all the violin plots for all the differentially expressed genes in the MK cluster.
+
+```{r mk gene_list}
+mk.markers <- read.table('./data/mk.markers.MAST.csv', sep = ',', header = T)
+
+colnames(mk.markers)[1] <- 'Gene'
+
+head(mk.markers)
+
+genes.mk <- mk.markers$Gene
+length(genes.mk)
+
+for (i in 1:20){
+        beg <- (i-1)*6 +1
+        end <- (i-1)*6 +6
+#        print(paste0(beg,'-',end))
+#        print(genes.mk[beg:end])
+        print(VlnPlot(wbm, genes.mk[beg:end], split.by = 'condition',
+                cols = c('blue','red'), pt.size = 0))
+}
+
+```
+
+# Profibrotic Factors
+
+Taking a look at the list of profibrotic factors provided by Priya. 
+
+```{r profibrotic factors}
+pf <- c('Il1', 'Il2', 'Il6', 'Il8', 'Il12', 'Tnfa', 'Gmcsf', 'Gcsf', 'Hgf', 'Pdgf', 
+        'Egf', 'Pdgfa', 'Pdgfb', 'Pdgfc', 'Pdgfd', 'Pdgfra', 'Pdgfrb', 'Tgfb1', 
+        'Tgfbr1', 'Ctgf', 'Tgfbr2', 'Lox', 'Tsp1', 'Tsp', 'Col1a1', 'Col3a1', 
+        'Coliv', 'Col4a6', 'Col4a5', 'Col4', 'Fn', 'Fn1', 'Col11a2', 'Col11a1', 
+        'Mmp3', 'Timp1', 'Timp2', 'Timp3', 'Timp4', 'Cxcl4', 'Cscl7', 'Bmp1', 
+        'Bmp2', 'Bmp4', 'Bmp6', 'Lcn2', 'Fgf', 'Vegf', 'Spp1', 'Tsp1', 'Il15', 
+        'Il1b', 'Actr5', 'Rab37', 'C20orf194', 'Tollip', 'Gosr2', 'Apip', 
+        'Rab7b', 'Pf4', 'Vgf')
+
+summary(pf %in% rownames(wbm))
+print('Profibrotic factors that were not found in our analysis')
+print(pf[!(pf %in% rownames(wbm))])
+
+pf <- pf[pf %in% rownames(wbm)]
+for (i in 1:7){
+        beg <- (i-1)*6 +1
+        end <- (i-1)*6 +6
+#        print(paste0(beg,'-',end))
+#        print(genes.mk[beg:end])
+        print(VlnPlot(wbm, pf[beg:end], split.by = 'condition',
+                cols = c('blue','red'), pt.size = 0))
+}
+VlnPlot(wbm, pf[length(pf)], split.by = 'condition',
+        cols = c('blue','red'), pt.size = 0)
+
+write.table(pf, './data/profibrotic_factors.txt', sep = '\t', quote = F, row.names = F)
+```
+
