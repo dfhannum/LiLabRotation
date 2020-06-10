@@ -1,0 +1,356 @@
+---
+title: "Dive into Potential Gran. Clusters"
+author: "D. Ford Hannum"
+date: "6/5/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(Seurat)
+library(ggplot2)
+library(MAST)
+```
+
+
+```{r loading data and giving labels}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+
+#DimPlot(wbm, reduction = 'umap')
+
+new_cluster_ids <- c(0,1,2,'B-cell','MK',5,6,'Monocyte','Macrophage',
+                     'Erythrocyte','B-cell Prog.','T-cell/NK', 'MEP')
+names(new_cluster_ids) <- levels(wbm)
+#new_cluster_ids
+
+wbm <- RenameIdents(wbm, new_cluster_ids)
+```
+
+# Introduction
+
+After doing a thorough labeling through SingleR and marker gene expression we are relatively confident of most of our cluster labels. There is still some uncertainty around clusters 0, 1, 2, 5 and 6; which were all labeled as granulocyte clusters but we had not good marker genes that showed widespread expression through the clusters. We came up with a few potential reasons for this:
+
+1. *We did not have good marker genes for granulocytes.*
+2. *These clusters are majority mutant cells, so there transcriptome could be different from canonical granulocytes, and maybe we should focus on control expression in these clusters.*
+3. *Granulocytes are an umbrella term for multiple cell types: eosinophils, basophils, neutrophils and mast cells. Perhaps we would do better using marker genes for these subtypes to label the clusters.*
+
+Another possible way to distinguish these clusters for naming:
+
+* *Looking at the marker genes that distinguish an individual cluster vs all other clusters, and looking at marker genes that distinguish this cluster from the other potential "granulocyte"" clusters (ie 0 vs [1,2,5,6])*
+
+My first step is to distinguish the genes that define these different clusters, to see if any are associated with a particular cell type. 
+
+Below is the UMAP projection with the cluster labels we have high confidence in.
+
+```{r umap with starting labels}
+DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+
+# Cell Cluster Markers
+
+Getting genes that distinguish given cluster from all other clusters, and other genes that distinguish this cluster from other potential "granulocyte" (PG) clusters. 
+
+Doing this same analysis with only using control cell (excluding Mpl cells). So for each cluster we will have four readouts:
+
+1. Cluster **X** vs **all other** clusters, **all** cells
+2. Cluster **X** vs **PG** clusters, **all** cells
+3. Cluster **X** vs **all other** clusters, **control** cells
+4. Cluster **X** vs **PG** clusters, **control** cells
+
+Results:
+
+* *avg_logFC* : log fold-change of the average expression between the two groups. Positive values indicate that the gene is more highly expressed in the first group
+
+* *pct.1* : the percentage of cells where the gene is detected in the first group
+
+* *pct.2* : the percentage of cells where the gene is detected in the second group
+
+* *p_val_adj* : adjusted p-value, based on bonferroni correctioni using all genes in the dataset
+
+```{r getting all the DE without focusing on controls, message = F}
+PGC <- c(0,1,2,5,6)
+
+list_vs_all <- list()
+list_vs_PGC <- list()
+cnt <- 1
+for (i in PGC){
+        #print(i)
+        not_i <- PGC[!(PGC == i)]
+        
+        MvA <- FindMarkers(wbm, ident.1 = i,
+                                      min.pct = 0.5, logfc.threshold = log(2))
+        MvA <- MvA[MvA$p_val_adj < 0.05,]
+        
+        MvA <- MvA[order(MvA$avg_logFC, decreasing = T),]
+        
+        list_vs_all[[cnt]] <- MvA
+        
+        MvPGC <- FindMarkers(wbm, ident.1 = i, ident.2 = not_i,
+                             min.pct = 0.5, logfc.threshold = log(2))
+        
+        MvPGC <- MvPGC[MvPGC$p_val_adj < 0.05,]
+        
+        MvPGC <- MvPGC[order(MvPGC$avg_logFC, decreasing = T),]
+        
+        list_vs_PGC[[cnt]] <- MvPGC
+        
+        cnt <- cnt + 1
+}
+
+# write.table(list_vs_PGC[[5]], './data/test.table.txt', quote = F, row.names = F,
+#             sep = '\t')
+```
+
+```{r setting it up to find the differential expression}
+PGC <- c(0,1,2,5,6)
+
+
+cntrl_cells <- rownames(wbm@meta.data[wbm@meta.data$condition == 'control',])
+
+cnt_list_vs_all <- list()
+cnt_list_vs_PGC <- list()
+cnt <- 1
+
+cwbm <- subset(wbm, cells = cntrl_cells)
+
+for (i in PGC){
+        #print(i)
+        not_i <- PGC[!(PGC == i)]
+        
+        cells1 <- 
+        
+        MvA <- FindMarkers(cwbm, ident.1 = i,
+                                      min.pct = 0.5, logfc.threshold = log(2))
+        MvA <- MvA[MvA$p_val_adj < 0.05,]
+        
+        MvA <- MvA[order(MvA$avg_logFC, decreasing = T),]
+        
+        cnt_list_vs_all[[cnt]] <- MvA
+        
+        MvPGC <- FindMarkers(cwbm, ident.1 = i, ident.2 = not_i,
+                             min.pct = 0.5, logfc.threshold = log(2))
+        
+        MvPGC <- MvPGC[MvPGC$p_val_adj < 0.05,]
+        
+        MvPGC <- MvPGC[order(MvPGC$avg_logFC, decreasing = T),]
+        
+        cnt_list_vs_PGC[[cnt]] <- MvPGC
+        
+        cnt <- cnt + 1
+}
+
+
+```
+
+## Cluster 0
+
+Focusing on the top 10 genes that are described in cluster 0 vs all other clusters:
+
+```{r cluster 0}
+head(list_vs_all[[1]],10)
+#tail(list_vs_all[[1]],10)
+```
+
+Focusing on the top 10 genes from this cluster vs PG clusters
+
+```{r clst 0 vs pgc}
+head(list_vs_PGC[[1]],10)
+```
+
+Focusing on the top 10 genes from this cluster vs all clusters, control cells only
+
+```{r cntrl clst 0 vs all}
+head(cnt_list_vs_all[[1]],10)
+```
+
+```{r cntrl clst 0 vs pgc}
+head(cnt_list_vs_PGC[[1]],10)
+```
+
+Genes of Interest:
+
+* *Ltf* : it's protein product is found in the secondary granules of neutrophils
+* *Ngp* : neutrophilic granule protein
+* *Lcn2 *: neutrophil gelatinase-associated liopcalin
+
+### **Conclusion**
+
+This makes me believe that this is a **NEUROPHIL CLUSTER**
+
+## Cluster 1
+
+Cluster 1 vs all other clusters
+
+```{r 1 vs all}
+head(list_vs_all[[2]],10)
+```
+
+Cluster 1 vs other PB clusters
+
+```{r 1 vs pbcs}
+head(list_vs_PGC[[2]],10)
+```
+
+Cluster 1 vs all others, control only
+
+```{r cntrl clst 1 vs all}
+head(cnt_list_vs_all[[2]],10)
+```
+
+Cluster 1 vs other PG clusters, control only
+
+```{r cntrl clst 1 vs pgc}
+head(cnt_list_vs_PGC[[2]],10)
+```
+
+Genes of Interest:
+
+* *Csf3r* : one of our granulocyte markers. It controls the production, differentiation, and function of granulocytes.
+* *Il1b* : this cytokine is produced by activated macrophages as a proprotein.
+* *Sell* : the gene product is required for binding and subsequent rolling of leucocytes on endothelial cells
+* *CCL6* : expressed in cells from neutrophil and macrophage lineages, and can be greatly induced under conditions suitable for myeloid cell differentiation. Highly expressed in bone marrow cultures that have been stimulated with cytokin GM-CSF
+* *Srgn* : encodes a protein best known as a hematopoietic cell granule proteoglycan. Plays a role in formation of mast cell secretory granules. Plays a role in neutrophil elastase in azurophil granues of neutrophils. 
+* *Wfdc1* : this gene is downregulated in many cancer types and may be involved in the inhibition of cell proliferation.
+
+### **Conclusion**
+
+Some very interesting genes (Ccl6, Srgn) that are related to neutrophil and mast cell lineages and it also has increased expression of Csf3r which we used as a granulocyte marker. I feel confident this is a granulocyte, but not sure on a sub-classification.
+
+## Cluster 2
+
+Cluster 2 vs all others
+
+```{r cluster 2 vs all others}
+head(list_vs_all[[3]],10)
+```
+
+Cluster 2 vs other PG clusters
+
+```{r cluster 2 vs other Pg clusters}
+head(list_vs_PGC[[3]],10)
+```
+
+Cluster 2 vs all others, control only
+
+```{r cntrl clst 2 vs all}
+head(cnt_list_vs_all[[3]],10)
+```
+
+Cluster 3 vs other PG clusters, control only
+
+```{r cntrl clst 3 vs pgc}
+head(cnt_list_vs_PGC[[3]],10)
+```
+
+Genes of Interest:
+
+* *Mmps* : not sure how they relate but since there are two I added them. They are involved in the breakdown of extracellular matrix in normal physiological processes, such as embryonic development, reproduction, and tissue remodling, as well as in disease processes, such as arthritis and metastasis.
+* *Cd177* : a GPI-linked cell surface glycoprotein that plays a role in neutrophil activation and funtions in neutrophil transmigration. Mutations  in this gene are associated with myeloproliferative diseases. Over-expression is found in patients with PV. 
+
+### **Conclusions**
+A very interesting gene in Cd177, but it could potentially be another neutrophil cluster, but nothing is certain.
+
+## Cluster 5
+
+Cluster 5 vs all
+
+```{r cluster 5 vs all}
+head(list_vs_all[[4]],20)
+```
+
+Cluster 5 vs other PG clusters
+
+```{r 5 vs other pgcs}
+head(list_vs_PGC[[4]],10)
+```
+
+Cluster 5 vs all others, control only
+
+```{r cntrl clst 5 vs all}
+head(cnt_list_vs_all[[4]],10)
+```
+
+Cluster 5 vs other PG clusters, control only
+
+```{r cntrl clst 5 vs pgc}
+head(cnt_list_vs_PGC[[4]],10)
+```
+
+Genes of Interest:
+
+* *Chil3* : has chemotactic activity for T-lymphocytes, bone marrow cells and eosinophils.
+* *Mki67* : one of our proliferation markers. 
+* *Hmgn2* : the protein is associated with transcriptionally active chromatin.
+* *Birc5* : encodes a negative regulatory protein that prevents apoptotic cell death.
+* *Hmgb2* : the proteins of this family are chromatin-associated and demonstrates the ability to efficiently bend DNA and form DNA circles
+* *Fcnb* : immatures mouse granulocytic myeloid cells are characterized by production of Fcnb
+* *Many Histone Genes* : there are many up-regulated genes associated with basic histone markers
+* *Lcn2* : the protein encoded by this gene is a neutrophil gelatinase-associated lipocalin and plays a role in innate immunity by limiting...
+
+
+### **Conclusion**
+
+Some very interesting genes popped up in both that were related to histone modifications, chromatin accessibility, proliferation, etc. Not sure what to make of these results
+
+## Cluster 6
+
+Cluster 6 vs all
+
+```{r cluster 6 vs all}
+head(list_vs_all[[5]],10)
+```
+
+Cluster 6 vs other PG clusters
+
+```{r cluster 6 vs pg clusters}
+head(list_vs_PGC[[5]],10)
+```
+
+Cluster 6 vs all others, control only
+
+```{r cntrl clst 6 vs all}
+head(cnt_list_vs_all[[5]],10)
+```
+
+Cluster 6 vs other PG clusters, control only
+
+```{r cntrl clst 6 vs pgc}
+head(cnt_list_vs_PGC[[5]],10)
+```
+
+Genes of Interest:
+
+* *Elane*: one of our granulocyte markers
+* *Prtn3*: a paralog of Elane
+* *Mpo*: a heme prtoein synthesized during myeloid differentiation that constitutes the major component of neutrophil azurophilic granules.
+* *Ms4a3*: is specifically and transiently expressed by GMPs in the bone marrow. Ms4a3-based models specifically and efficiently fate map monocytes and granulocytes
+* *Ctsg*: one of three serine proteases of the chymotrypsin family that are stored in the azurophil granules.
+* *Fcnb*: immatures mouse granulocytic myeloid cells are characterized by production of Fcnb, previously found in cluster 5
+* *Nkg7*: natural killer cell granule protein
+* *Serpinb1a*: this protein inhibits the neutrophil-derived proteinases neutrophil elastase, etc.
+* *Ribosomal RNAs*: many ribosomal RNAs were present in these lists.
+
+### **Conclusion**
+
+Many very intersting genes. Once again seems like a neutrophil cluster.
+
+# Subsetting to just control cells distribution and cell counts
+
+```{r testing just on control cells}
+
+DimPlot(wbm, reduction = 'umap', cells = cntrl_cells)
+x <- as.data.frame(summary(as.factor(cwbm@meta.data$seurat_clusters))[c(1,2,3,6,7)])
+x$Cluster <- rownames(x)
+colnames(x)[1] <- 'Cell Count'
+x[c(2,1)]
+```
+
+
+

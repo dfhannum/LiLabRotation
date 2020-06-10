@@ -1,0 +1,154 @@
+---
+title: "Marker Set Scores"
+author: "D. Ford Hannum"
+date: "6/3/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+library(Seurat)
+library(ggplot2)
+```
+
+# Introduction
+
+Since we have so many markers, looking at ways to look at average expression of these markers within the clusters (ie gene cluster centroid expression levels). 
+
+Also we could aggregate the scores among the markers within each cell type to get cell marker set scores.
+
+
+```{r loading data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+
+head(wbm@meta.data)
+
+new_cluster_ids <- 0:12
+names(new_cluster_ids) <- levels(wbm)
+#new_cluster_ids
+wbm <- RenameIdents(wbm, new_cluster_ids)
+```
+
+# Average Expression within Clusters
+
+```{r getting marker gene list}
+df <- read.csv('./marker_list.csv', sep = ',', header = T)
+df
+dim(df)
+mtx <- matrix(ncol = 2, nrow = 11*18)
+mtx[,1] <- rep(colnames(df), each = 18)
+temp <- matrix(ncol = 1, as.matrix(df))
+mtx[,2] <- temp
+df <- as.data.frame(mtx)
+df <- df[df$V2 != '',]
+colnames(df) <- c('Cell Type', 'Marker Gene')
+#sum(summary(as.factor(df$`Marker Gene`)) >1)
+```
+
+```{r getting avereage expression }
+# Marker genes not in the analysis
+print('Marker genes not included in the analysis')
+excluded_genes <-df$`Marker Gene`[!df$`Marker Gene` %in% rownames(wbm)]
+excluded_genes
+
+df <- df[!(df$`Marker Gene` %in% excluded_genes),]
+
+expression <- AverageExpression(wbm, features = df$`Marker Gene`, use.scale = T)
+#class(expression)
+#rownames(expression$RNA) == df$`Marker Gene`
+
+df <- cbind(df,expression$RNA)
+```
+
+
+```{r creating figure} 
+library(tidyr)
+library(data.table)
+df2 <- df
+colnames(df2)[3:15] <- paste0('Cluster_',colnames(df2)[3:15])
+
+head(df2)
+dl <- gather(df2, key = cluster, scaled.expression,Cluster_0:Cluster_12, factor_key = T)
+
+dl$`Marker Gene` <- factor(dl$`Marker Gene`, levels = dl$`Marker Gene`[1:75])
+
+dl$cluster <- tstrsplit(dl$cluster, '_', keep = 2)[[1]]
+
+dl$cluster <- factor(dl$cluster, levels = c(4,9,12,7,8,0,1,2,5,6,11,3,10))
+head(dl)
+
+dl$cluster <- factor(dl$cluster, levels = c(12,9,4,7,8,0,1,2,5,6,11,3,10))
+ggplot(dl, aes(x = cluster, y = `Marker Gene`, fill = scaled.expression)) +
+        geom_tile()+
+        scale_fill_gradient2(high = 'darkred', low = 'darkblue', mid = 'white', midpoint = 0,
+                             limit = c(-1.5,6.1), space = "Lab",
+                             name = "Scaled Expression") +
+        ylab('Marker Genes') + xlab('Clusters') +
+        coord_flip() + 
+        ggtitle ("Heatmap of Marker Gene Expression") +
+        theme (plot.title = element_text(hjust = 0.5), 
+               axis.text.x = element_text(angle = 45, hjust = 1, size = 5))
+
+```
+
+```{r marker set expression generation}
+head(df)
+df$`Cell Type` <- factor(df$`Cell Type`, levels = unique(df$`Cell Type`))
+head(df)
+ms_df <- as.data.frame(matrix(ncol = 14, nrow = length(unique(df$`Cell Type`))))
+colnames(ms_df) <- c('Cell Marker Gene Set', 0:12)
+cnt = 1
+for (i in levels(df$`Cell Type`)){
+        print(i)
+        x <- df[df$`Cell Type` == i,]
+        ms_df[cnt,2:14] <- colMeans(x[,3:15])
+        
+        cnt = cnt + 1
+}
+ms_df$`Cell Marker Gene Set` <- levels(df$`Cell Type`)
+
+ms <- gather(ms_df, key = cluster, average.scaled.expression, '0':'12', factor_key = T)
+
+ms$`Cell Marker Gene Set` <- factor(ms$`Cell Marker Gene Set`, 
+                                    levels = unique(ms$`Cell Marker Gene Set`)[c(1,2,4,3,7,6,9,10,11,8,5)])
+
+ms$cluster <- factor(ms$cluster, levels = c(12,9,4,7,8,0,1,2,5,6,11,3,10))
+
+ggplot(ms, aes(x = cluster, y = `Cell Marker Gene Set`, fill = average.scaled.expression)) +
+        geom_tile()+
+        scale_fill_gradient2(high = 'darkred', low = 'darkblue',
+                             mid = 'white', midpoint = 0,
+                             limit = c(-.6,4), space = "Lab",
+                             name = "Scaled Expression") +
+        ylab('Marker Gene Sets') + xlab('Clusters') +
+        coord_flip() + 
+        ggtitle ("Heatmap of Marker Gene Set Expression") +
+        theme_bw() +
+        theme (plot.title = element_text(hjust = 0.5), 
+               axis.text.x = element_text(angle = 45, hjust = 1, size = 5))
+
+```
+
+```{r making it binary}
+
+ms$average.scaled.expression.binary <- as.factor(ifelse(ms$average.scaled.expression > .5, 
+                                                        'Expressed (> .5)',
+                                                        'Not Expressed (< .5)'))
+
+ggplot(ms, aes(x = cluster, y = `Cell Marker Gene Set`, fill = average.scaled.expression.binary)) +
+        geom_tile()+
+        ylab('Marker Gene Sets') + xlab('Clusters') +
+        scale_fill_manual(values = c('black','grey'), name = 'Marker Set\nAverage Expression') +
+        coord_flip() + 
+        ggtitle ("Heatmap of Marker Gene Set Expression") +
+        theme (plot.title = element_text(hjust = 0.5), 
+               axis.text.x = element_text(angle = 45, hjust = 1, size = 5))
+
+```
+

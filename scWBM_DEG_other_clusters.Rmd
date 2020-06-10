@@ -61,21 +61,7 @@ gr.cells <- WhichCells(wbm, ident = 'Granulocyte')
 DoHeatmap(wbm, features = rownames(gr.markers), group.by = 'condition',
           cells = gr.cells, label = F)
 
-gr.markers <- FindMarkers(wbm, ident.1 = 'Control', ident.2 = 'Mpl',
-                          group.by = 'condition',
-                          verbose = T, subset.ident = "Granulocyte",
-                          test.use = "MAST")
 
-gr.markers
-
-DoHeatmap(wbm, features = rownames(gr.markers), group.by = 'condition',
-          cells = gr.cells, label = F) +
-        theme_minimal() + 
-        xlab('MK Cells') + ylab('DE genes') + 
-        scale_x_discrete(position = 'top') + 
-        theme(text = element_text(size = 10, family = 'sans'),
-              axis.text = element_blank(),
-              axis.ticks = element_blank())
 ```
 
 ```{r hspcs DEG}

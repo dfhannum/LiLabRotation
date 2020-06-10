@@ -145,8 +145,8 @@ ggplot(data = mtx, aes(x = Condition, y = `Cell Type`, fill = Percentage)) + geo
         theme(text = element_text(size = 10, family = 'sans'),
               legend.title.align = 0.5,
               legend.position = 'bottom')
-ggsave('./figures/version3/figure3c_heatmap.pdf', device = 'pdf', units = 'in',
-       width = 2.5, height = 5.5)
+# ggsave('./figures/version3/figure3c_heatmap.pdf', device = 'pdf', units = 'in',
+#        width = 2.5, height = 5.5)
 ```
 
 ## 3c Alternatives
@@ -176,31 +176,49 @@ ggsave('./figures/version3/figure3c_bar_plot.pdf', device = 'pdf', units = 'in',
 Another version of a potential bar chart
 
 ```{r bar chart tres}
-head(mtx)
-levels(mtx$`Cell Type`)
+#head(mtx)
+#levels(mtx$`Cell Type`)
 mtx$`Cell Type` <- factor(mtx$`Cell Type`, levels = rev(levels(mtx$`Cell Type`)))
 ggplot(mtx, aes(x= Condition, y = Percentage, fill = `Cell Type`)) + 
         scale_fill_manual(values = color_pal) +
         geom_bar(stat = 'identity') + 
         theme_bw()
 
-
-ggplot(mtx, aes(x = `Cell Type`, y = Percentage, fill = Condition2)) + 
-        geom_bar(stat = 'identity', position = position_dodge()) + 
-        coord_flip() +
-        theme_bw() +
-        scale_fill_manual('Condition', values = c('Mpl' = 'red',
-                                                  'Control' = 'blue')) +
-        geom_text(stat = 'identity', aes(label = Count),
-                  position = position_dodge(width = 1),
-                  hjust = -.1, size = 2.5) +
-        ylim (0,75) +
-        theme(text = element_text(size = 10, family = 'sans'),
-              legend.title.align = 0.5,
-              legend.position = 'bottom',
-              legend.direction = 'vertical')
 ```
 
+```{r another bar chart for the cells and their origin}
+#mtx
+# normalizing mpl so they're equal
+mtx$norm_count <- NA
+mtx[1:9,]$norm_count <- mtx[1:9,]$Count
+mtx[10:18,]$norm_count <- round(mtx[10:18,]$Count * (cnt_count/mpl_count),0)
+
+celltype_counts <- c()
+cnt <- 1
+for (i in levels(mtx$`Cell Type`)){
+        #print(i)
+        celltype_counts[cnt] <- sum(mtx[mtx$`Cell Type` == i,]$norm_count)
+        cnt <- cnt + 1
+}
+names(celltype_counts) <- levels(mtx$`Cell Type`)
+#celltype_counts
+
+mtx$celltype_counts <- rep(celltype_counts,2)
+mtx$celltype_per <- round(mtx$norm_count / mtx$celltype_counts,2)*100
+
+#levels(as.factor(mtx$Condition))
+```
+
+```{r new bar plot for genes}
+ggplot(data = mtx, aes(x= `Cell Type`, y = celltype_per, fill = Condition)) + 
+        scale_fill_manual(values = c('blue','red')) +
+        geom_bar(stat = 'identity') +
+        theme_bw() + 
+        ylab('Percentage of Cells') + xlab('Cell Type') +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Bar graph similar to the Oxford Paper, but instead of sampling to make sure each condition had the same depth I normalized.
 
 ## Figure 3d 
 
