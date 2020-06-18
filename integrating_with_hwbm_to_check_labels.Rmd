@@ -1,0 +1,245 @@
+---
+title: "Integrating with Labeled Human WBM"
+author: "D. Ford Hannum"
+date: "6/11/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+```
+
+```{r need to get the gene names to match up}
+# this cannot be done after the object is created so need to change it before
+features <- read.table('./data/hum_ref_wbm/GSE120221_RAW/GSM3396161/features.tsv.gz')
+head(features)
+
+features$V3 <- paste0(substr(features$V2,1,1), tolower(substr(features$V2,2,nchar(features$V2))))
+
+features <- features[,-2]
+
+head(features) 
+        
+write.table(features, './data/hum_ref_wbm/GSE120221_RAW/GSM3396161/features.tsv', sep = '\t', quote = F, row.names = F, col.names = F)
+# then gzip'd in terminal
+```
+
+
+```{r reading in the data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+
+hwbm_cell_labels <- read.csv('./data/hum_ref_wbm/celltype.csv')
+
+hwbm_ex <- Read10X(data.dir = './data/hum_ref_wbm/GSE120221_RAW/GSM3396161/')
+hwbm <- CreateSeuratObject(counts = hwbm_ex, project = 'hwbm', min.cells = 3, min.features = 200)
+
+hwbm_cell_labels$cell <- tstrsplit(hwbm_cell_labels$X, '_', keep = 2)[[1]]
+hwbm_cell_labels$exp <- tstrsplit(hwbm_cell_labels$X, "_", keep = 1)[[1]]
+hwbm_cell_labels <- hwbm_cell_labels[hwbm_cell_labels$exp == 'A',]
+head(hwbm_cell_labels)
+hwbm_cell_labels$cell <- paste0(hwbm_cell_labels$cell, '-1')
+
+summary(colnames(hwbm) %in% hwbm_cell_labels$cell)
+summary(hwbm_cell_labels$cell %in% colnames(hwbm))
+```
+
+```{r standard preprocessing of data}
+hwbm[['percent.mt']] <- PercentageFeatureSet(hwbm, pattern = "^MT-")
+#hwbm <- subset(hwbm, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 7.5)
+# only keeping the cells that they have labeled.
+cells_to_keep <- colnames(hwbm)[colnames(hwbm) %in% hwbm_cell_labels$cell]
+
+hwbm <- subset(hwbm, cells = cells_to_keep)
+
+hwbm <- NormalizeData(hwbm, normalization.method = 'LogNormalize', scale.factor = 10000)
+
+hwbm <- FindVariableFeatures(hwbm, selection.method = 'vst', nfeatures = 2000)
+
+all.genes <- rownames(hwbm)
+hwbm <- ScaleData(hwbm, features = all.genes)
+
+hwbm <- RunPCA(hwbm, features = VariableFeatures(object = hwbm))
+ElbowPlot(hwbm)
+
+hwbm <- FindNeighbors(hwbm, dims = 1:10)
+hwbm <- FindClusters(hwbm, resolution = .45)
+
+hwbm <- RunUMAP(hwbm, dims = 1:10)
+DimPlot(hwbm, reduction = 'umap')
+```
+
+```{r adding labels to cells for hwbm}
+#summary(hwbm_cell_labels$cell == colnames(hwbm))
+summary(hwbm_cell_labels$cell == rownames(hwbm@meta.data))
+
+hwbm@meta.data$cell_id <- hwbm_cell_labels$type
+summary(as.factor(hwbm@meta.data$cell_id))
+
+table(hwbm@meta.data$seurat_clusters, hwbm@meta.data$cell_id)
+
+DimPlot(hwbm, reduction = 'umap', group.by = 'cell_id')
+```
+
+For the most part the clusters and cell_ids match up. I think it is good enough to move on to the next step
+
+```{r integration steps}
+comb <- merge(wbm, hwbm, add.cell.ids = c('mouse','human'), project = "WBM_combo",
+              merge.data = T)
+# getting one column for all the labels
+comb@meta.data$ID <- ifelse(comb@meta.data$orig.ident == 'hwbm', comb@meta.data$cell_id, comb@meta.data$cluster_IDs)
+
+comb.list <- SplitObject(comb, split.by = 'orig.ident')
+comb.list
+
+
+for (i in 1:length(comb.list)){
+        comb.list[[i]] <- NormalizeData(comb.list[[i]], verbose = F)
+        comb.list[[i]] <- FindVariableFeatures(comb.list[[i]], selection.method = 'vst',
+                                              nfeatures = 2000, verbose = F)
+}
+
+ref.list <- comb.list
+
+comb.anchors <- FindIntegrationAnchors(object.list = ref.list, dims = 1:30)
+
+comb.int <- IntegrateData(anchorset = comb.anchors, dims = 1:30)
+
+DefaultAssay(comb.int) <- 'integrated'
+
+comb.int <- ScaleData(comb.int, verbose = F)
+comb.int <- RunPCA(comb.int, npcs = 30, verbose = F)
+comb.int <- RunUMAP(comb.int, reduction = 'pca', dims = 1:30)
+```
+
+```{r looking at things}
+
+head(comb.int@meta.data)
+
+DimPlot(comb.int, reduction = 'umap', group.by = "orig.ident")
+DimPlot(comb.int, reduction = 'umap')
+```
+
+Not very helpful visualization, too much going on. Going to get clusters, and then look at the distribution of labels.
+
+```{r clustering}
+comb.int <- FindNeighbors(comb.int, dims = 1:10)
+comb.int <- FindClusters(comb.int, resolution = .5)
+
+DimPlot(comb.int, reduction = 'umap')
+DimPlot(comb.int, reduction = 'umap', group.by ='orig.ident')
+```
+```{r looking for a table}
+summary(comb.int$seurat_clusters)
+table(comb.int$seurat_clusters, comb.int$ID)
+
+# that table is ridiculous, way too many labels and clusters
+
+comb.int$ID2 <- ifelse(comb.int$orig.ident == 'hwbm', paste0('h_', comb.int$ID), paste0('m_', comb.int$ID))
+
+table(comb.int$seurat_clusters, comb.int$orig.ident)
+df <- as.data.frame(table(comb.int$seurat_clusters, comb.int$ID2))
+head(df)
+colnames(df) <- c('Cluster', 'Cell Label', 'Count')
+
+counts <- as.data.frame(summary(as.factor(comb.int$ID2)))
+
+df$Cell_count <- rep(counts$`summary(as.factor(comb.int$ID2))`, each = 19)
+df$Percentage <- df$Count / df$Cell_count
+
+ggplot(df, aes(x = Cluster, y = `Cell Label`, fill = Percentage)) + 
+        geom_tile() +
+        coord_flip() +
+        theme(axis.text.x = element_text(angle = 90)) + 
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',
+                             midpoint = 0.5) 
+
+ggplot(df, aes(x = Cluster, y = `Cell Label`, fill = Percentage)) +
+        geom_tile() +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',
+                             midpoint = 0.5) 
+```
+
+What if I split up the figure and had the clusters in the vertical axis between human on the right and mouse on the left, organizing things so they "should" lie on the diagonal if things matched up perfectly (won't work completely because there are different labels being given (could perhaps merge types: ie all the T-cell populations.))
+
+```{r ordering mouse heat map}
+dfc <- df
+dfc$group <- tstrsplit(dfc$`Cell Label`, '_', keep = 1)[[1]]
+
+df_m <- dfc[dfc$group == 'm',]
+
+df_m$`Cell Label` <- tstrsplit(df_m$`Cell Label`, '_', keep = 2)[[1]]
+df_m$`Cell Label` <- factor(df_m$`Cell Label`, 
+                            levels = levels(as.factor(df_m$`Cell Label`))[c(5,6,4,1,7,12,13,10,11,9,3,2,8)])
+m1 <- ggplot(df_m, aes(x = Cluster, y = `Cell Label`, fill = Percentage)) +
+        geom_tile() + coord_flip() +
+        xlab('') + 
+        theme(axis.text.x = element_text(angle = 90)) + 
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',
+                             midpoint = 0.5) 
+m1
+```
+
+```{r human ordering}
+df_h <- dfc[dfc$group == 'h',]
+df_h$`Cell Label` <- tstrsplit(df_h$`Cell Label`, '_', keep = 2)[[1]]
+
+df_h$`Cell Label` <- factor(df_h$`Cell Label`,
+                            levels = levels(as.factor(df_h$`Cell Label`))[c(19,3,10,14,11,13,12,15,9,17,7,8,6,5,16,1,18,4,2)])
+h1 <- ggplot(df_h, aes(x = Cluster, y = `Cell Label`, fill = Percentage)) +
+        geom_tile() + coord_flip() +
+        theme(axis.text.x = element_text(angle = 90), axis.text.y = element_blank()) + 
+        xlab('') + scale_x_discrete(position = 'top') +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',
+                             midpoint = 0.5) + NoLegend()
+        
+h1
+```
+
+```{r combining}
+
+library(grid)
+
+grid.newpage()
+grid.draw(cbind(ggplotGrob(h1), ggplotGrob(m1), size = "first"))
+
+```
+
+
+```{r another way of viewing}
+head(df)
+df$group <- NA
+
+df[,c('group','Cell Label')] <- tstrsplit(df$`Cell Label`,'_')
+
+ggplot(df, aes(x = Cluster, y = `Cell Label`, fill = group, alpha = Percentage)) +
+        geom_tile() +
+        theme_bw() +
+        scale_fill_manual(values = c('red','blue'))
+
+```
+```{r}
+df2 <- df
+lvl <- levels(as.factor(df$`Cell Label`))[c(4,16,17,15,1,6,29,18,7,8,10,25,9,28,32,11,26,19,20,23,24,27,31,13,2,3,22,21,12,5,30,14)]
+
+df2$`Cell Label` <- factor(df2$`Cell Label`, 
+                          levels = lvl)
+df2$Group <- ifelse(df$group == 'h', 'Human','Mouse')
+ggplot(df2, aes(x = Cluster, y = `Cell Label`, fill = Group, alpha = Percentage)) +
+        geom_tile() +
+        theme_bw() +
+        scale_fill_manual(values = c('red','blue'))
+```
+
+```{r}
+DimPlot(comb.int, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+

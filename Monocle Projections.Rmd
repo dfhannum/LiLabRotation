@@ -1,0 +1,201 @@
+---
+title: "Monocle Trajectories"
+author: "D. Ford Hannum"
+date: "6/17/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(monocle)
+```
+
+Looking at monocle trajectories for the scWBM project, experiment 1. Going to look at three different trajectories:
+
+* all data
+* MKs, erythrocytes and MEPs
+* myeloid
+* myeloblast (granulocytes, monocytes, and macrophages)
+
+
+```{r loading data}
+# NOT SURE WHY THE IMPORT DOESN'T WORK, JUST GOING TO IMPORT THE RAW DATA INTO MONOCLE
+# ?importCDS()
+# seuratWBM <- readRDS('./data/wbm_clustered_filtered_named.rds')
+# x <- importCDS(seuratWBM)
+
+mtx <- readMM('./data/filtered_feature_bc_matrix/matrix.mtx')
+features <- read.table('./data/filtered_feature_bc_matrix/features.tsv')
+colnames(features)[2] <- 'gene_short_name'
+
+barcodes <- read.table('./data/filtered_feature_bc_matrix/barcodes.tsv')
+
+pd <- new("AnnotatedDataFrame", data = barcodes)
+fd <- new("AnnotatedDataFrame", data = features)
+
+library(Matrix)
+
+cds <- newCellDataSet(as(as.matrix(mtx),"sparseMatrix"),
+                      phenoData = pd,
+                      featureData = fd,
+                      lowerDetectionLimit = 0.5,
+                      expressionFamily = negbinomial.size())
+
+# HAVING ISSUES RUNNING estimateDispresions SO GOING TO FILTER TO THE CELLS AND GENES FROM THE SEURAT ANALYSIS
+
+swbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+valid_cells <- colnames(swbm)
+
+# there is a -1 in front of the monocle cells
+
+#summary(as.factor(tstrsplit(pData(cds)$V1, '-', keep = 2)[[1]]))
+
+valid_cells <- paste0(valid_cells,'-1')
+
+valid_cells <- rownames(subset(pData(cds), 
+                               V1 %in% valid_cells))
+#head(valid_cells)
+
+cds <- cds[,valid_cells]
+
+cds <- estimateSizeFactors(cds)
+cds <- estimateDispersions(cds)
+
+cds <- detectGenes(cds, min_expr = 0.1)
+
+#summary(fData(cds)$num_cells_expressed)
+
+expressed_genes <- rownames(subset(fData(cds), num_cells_expressed >= 10))
+```
+
+
+```{r adding info to the pData from Seurat}
+# DIDN'T WANT TO MESS UP THE MONOCLE OBJECT AND START OVER, SO cds1 IS A BACKUP
+#cds1 <- cds
+#summary(pData(cds)$V1 == paste0(rownames(swbm@meta.data),'-1'))
+pData(cds)[,c('nCountRNA', 'nFeature_RNA', 'celltype','condition', 'percent.mt',
+              'seurat_clusters', 'cluster_IDs')] <- swbm@meta.data[,c(2,3,5,6,8,11,15)]
+colnames(pData(cds))[1] <- 'cell'
+#head(pData(cds))
+```
+
+# All Data
+
+```{r ordering genes}
+cds <- detectGenes(cds, min_expr = 0.1)
+
+fData(cds)$use_for_ordering <- fData(cds)$num_cells_expressed > 0.05 * ncol(cds)
+
+# THE BELOW CODE TOOK FOREVER TO RUN SO I STOPPED IT
+#plot_pc_variance_explained(cds, return_all = F, max_components = 10)
+
+cds <- reduceDimension(cds,
+                       max_components = 2,
+                       norm_method = 'log',
+                       num_dim = 3,
+                       reduction_method = 'tSNE',
+                       verbose = T)
+
+cds <- clusterCells(cds, verbose = F)
+
+# checking clustering results
+
+# not sure what to read into these figures
+plot_cell_clusters(cds, color_by = 'Cluster')
+plot_cell_clusters(cds, color_by = 'cluster_IDs')
+plot_cell_clusters(cds, color_by = 'condition')
+
+plot_rho_delta(cds, rho_threshold = 2, delta_threshold = 4)
+cds <- clusterCells(cds,
+                    rho_threshold = 2,
+                    delta_threshold = 4,
+                    sskip_rho_sigma = T,
+                    verbose = F)
+
+plot_cell_clusters(cds, color_by = 'Cluster')
+plot_cell_clusters(cds, color_by = 'condition')
+plot_cell_clusters(cds, color_by = 'cluster_IDs')
+
+clust_DEG_genes <- differentialGeneTest(cds[expressed_genes,],
+                                        fullModelFormulaStr = "~Cluster",
+                                        cores = 1)
+
+cds_ordering_genes <- row.names(clust_DEG_genes)[order(clust_DEG_genes$qval)][1:1000]
+cds <- setOrderingFilter(cds,
+                         ordering_genes = cds_ordering_genes)
+cds <- reduceDimension(cds, method = 'DDRTree')
+cds <- orderCells(cds)
+
+plot_cell_trajectory(cds, color_by = "cluster_IDs")
+
+#summary(as.factor(pData(cds)$cluster_IDs))
+
+pData(cds)$cell_type_broad <- ifelse(pData(cds)$cluster_IDs %in% c(paste0("Granulocyte",1:4), 'Stem Cell'), 'Granulocyte',
+                                     ifelse(pData(cds)$cluster_IDs %in% c('Monocyte','Macrophage'), 'Mono/Macro',
+                                            ifelse(pData(cds)$cluster_IDs %in% c('MK','Erythroid','MEP'), 'MK/Ery/MEP',
+                                                   'Lymphocyte')))
+table(pData(cds)$cluster_IDs, pData(cds)$cell_type_broad)
+
+# pData(cds)$pot_progenitors <- ifelse(cds$cluster_IDs %in% c('MEP', 'B-cell pro','Stem Cell'), 'Potential Progenitors',
+#                                      'Further Cell States')
+
+cds$prog <- ifelse(cds$cluster_IDs %in% c('MEP', 'B-cell pro','Stem Cell'), as.character(cds$cluster_IDs), 'Further States')
+
+plot_cell_trajectory(cds, color_by = "cell_type_broad")
+#plot_cell_trajectory(cds, color_by = 'pot_progenitors')
+plot_cell_trajectory(cds, color_by = 'prog')
+```
+
+This is the cell trajectory using unsupervised methods. Looks pretty good overall, with the exception of monocytes and macrophages being at the end of the MK/Ery/MEP trajectory. Had low expectations for using all these cells. The clusters we had labeled in Seurat as progenitor populations had differing results. The stem cells, which we've decided is a poor name as in more likely a granulocyte progenitor/neutrophil, showed close to the base, whereas MEPs were disperesed and B-cell prog were actually at the end of the trajectory. Would be more useful to look at the separated populations, which is what will come next. 
+
+
+# MK, Erythroid and MEP Trajectory
+
+```{r}
+Mcds <- cds[,cds$cluster_IDs %in% c('MEP',"MK", "Erythroid")]
+#dim(Mcds)
+
+Mcds <- detectGenes(Mcds, min_expr = 0.1)
+
+fData(Mcds)$use_for_ordering <- fData(Mcds)$num_cells_expressed > 0.05 * ncol(Mcds)
+
+Mcds <- reduceDimension(Mcds,
+                        max_compongents = 2,
+                        norm_method = 'log',
+                        num_dim = 3,
+                        reduction_method = 'tSNE',
+                        verbose = F)
+
+Mcds <- clusterCells(Mcds, verbose = F)
+
+plot_cell_clusters(Mcds, color_by = 'Cluster')
+plot_cell_clusters(Mcds, color_by = 'cluster_IDs')
+
+Mcds_expresssed_genes <- row.names(subset(fData(Mcds),
+                                          num_cells_expressed >=10))
+
+# cluster_DEG <- differentialGeneTest(Mcds[Mcds_expresssed_genes,],
+#                                     fullModelFormulaStr = '~seurat_clusters',
+#                                     cores = 2)
+# 
+# Mcds_ordering_genes <- row.names(cluster_DEG)[order(cluster_DEG$qval)][1:1000]
+# 
+# Mcds <- setOrderingFilter(Mcds, ordering_genes = Mcds_ordering_genes)
+
+Mcds <- reduceDimension(Mcds, method = "DDRTree")
+
+Mcds <- orderCells(Mcds)
+
+plot_cell_trajectory(Mcds, color_by = "cluster_IDs")
+
+```
+
