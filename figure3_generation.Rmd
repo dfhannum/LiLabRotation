@@ -188,7 +188,7 @@ DoHeatmap(wbm, features = sig.mk.genes.m, group.by = 'condition',
 VlnPlot(wbm, c('Mpo','Slpi'), split.by = 'condition', pt.size = 0)
 ```
 
-These were three DE genes in MKs and had the largest fold changes. Mpo is . SLPI, aka secretory leukocyte protease inhibitor, inhibits human leukocyte elastase, human cathepsin G, human trypsin, neutrophil elastase, and mast cell chymase. Increased levels of SLPI in salivva and plasma may also be an indicator of HIV infection. SLPI has been shown to interact with PLSCR1 and PLSCR4 on the plasma membrane of T-cells, specifically in the proximity of CD4. This interaction is hypothesized to be on of the ways SLPI inhibits HIV infection.
+These were three DE genes in MKs and had the largest fold changes. Mpo is . SLPI, aka secretory leukocyte protease inhibitor, inhibits human leukocyte elastase, human cathepsin G, human trypsin, neutrophil elastase, and mast cell chymase. Increased levels of SLPI in saliva and plasma may also be an indicator of HIV infection. SLPI has been shown to interact with PLSCR1 and PLSCR4 on the plasma membrane of T-cells, specifically in the proximity of CD4. This interaction is hypothesized to be on of the ways SLPI inhibits HIV infection.
 
 # Profibrotic Factors
 

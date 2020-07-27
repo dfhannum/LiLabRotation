@@ -1,0 +1,399 @@
+---
+title: "Figure Generation v2"
+author: "D. Ford Hannum"
+date: "6/22/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+```
+
+# Introduction
+
+The plan in this analysis is to generate images for figures 3 and 4 of the manuscript, with some preliminary images for a potential figure 5.
+
+**Figure 3** will contain the general introduction to the scRNA-seq data, and we imagine it containing three images:
+
+* UMAP projection: split into four panes for the four different conditions.
+* Bar graph showing the distribution of cells within the whole bone marrow conditions
+* Violin plots of cell labeling marker genes
+
+**Figure 4**: will focus on the megakaryocytes (MKs)
+
+* UMAP projection of combined sub-clustering of the MKs (maybe will also look at adding MEPs and Ery)
+* Differential between control and Mpl MKs; could use violin plots or heatmap (which could be combined with pathway analysis)
+* Potentially a trajectory analysis (so far no luck getting that to look right)
+
+**Figure 5**: disease focus dive into the sc data. Looking at profibrotic factors, proliferation genes, Jak pathway, receptor lycan interaction, etc
+
+```{r loading data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+#DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+```{r changing the levels of the data}
+new_levels <- c('Granulocyte','Granulocyte','Granulocyte', 'B-cell','MK', 
+        'Granulocyte', 'Granulocyte','Monocyte','Macrophage','Erythroid','B-cell',
+        'T-cell/NK', 'MEP')
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+```
+
+
+\newpage
+
+# Figure 3
+
+## a) UMAP projection of entire data
+
+UMAP projection split into four panes for the four different conditions.
+
+```{r figure 3a}
+#head(wbm@meta.data)
+wbm@meta.data$state <- factor(wbm@meta.data$state, levels = levels(as.factor(wbm@meta.data$state))[c(3,4,1,2)])
+DimPlot(wbm, reduction = 'umap', split.by = 'state', ncol = 2) +
+        theme_bw() + 
+        theme(axis.text = element_blank(), strip.text = element_blank())
+```
+
+It seems that adding an outer label will be easiest to do in Adobe Illustrator where I will combine all the figures. The left side is controls and right side Mpl; with whole bone marrow (wbm) on top and enriched wbm on the bottom
+
+## b) Bar graph of distribution of cells 
+
+Focusing just on the wbm and comparing the origins of the distribution of cells.
+
+```{r figure 3b, formatting data}
+#head(wbm@meta.data)
+wbm$new_cluster_IDs <- wbm@meta.data$cluster_IDs
+levels(wbm@meta.data$new_cluster_IDs) <- new_levels
+wbm_wbm <- wbm@meta.data[wbm@meta.data$celltype == 'WBM',]
+tbl <- as.data.frame(table(wbm_wbm$new_cluster_IDs, wbm_wbm$condition))
+colnames(tbl) <- c('Cell Type','Condition','Freq')
+#tbl
+
+tbl$cond_count <- ifelse(tbl$Condition == 'control', sum(tbl[tbl$Condition == 'control',]$Freq),
+                         sum(tbl[tbl$Condition == 'mut',]$Freq))
+normalization_factor <- 2014/2328
+tbl$Norm_count <- ifelse(tbl$Condition == 'control', tbl$Freq, round(tbl$Freq * normalization_factor,0))
+
+cell_type_counts <- c()
+cnt <- 1
+for (i in levels(tbl$`Cell Type`)){
+        #print(i)
+        cell_type_counts[cnt] <- sum(tbl[tbl$`Cell Type` == i,]$Norm_count)
+        cnt <- cnt + 1
+}
+tbl$cell_type_counts <- rep(cell_type_counts,2)
+tbl$percentage <- round(tbl$Norm_count / tbl$cell_type_counts,2)*100
+tbl$Condition <- ifelse(tbl$Condition == 'control', 'Control', 'Mpl')
+```
+
+```{r figure 3b}
+ggplot(data = tbl, aes(x = `Cell Type`, y = percentage, fill = Condition)) +
+        scale_fill_manual(values = c('blue','red')) +
+        geom_bar(stat = 'identity') +
+        theme_bw() + 
+        ylab('Percentage of Cells') + xlab('Cell Type') +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+## c) Violin Plots for Marker Genes
+
+```{r testing for marker genes, include = F}
+# VlnPlot(wbm, c('Itga2b','Ank1','Ighd','Gata3','Ccr5','Pf4'), pt.size = 0)
+# VlnPlot(wbm, c('Gp9','Elane','Mpo','Ctsg','Selp'), pt.size = 0)
+# VlnPlot(wbm, c('Lbh','Nr4a1','Gpr141','Gata1'), pt.size = 0)
+# VlnPlot(wbm, c('Cd14','Ptprc','Adgre1','Lyz2'), pt.size = 0)
+```
+
+
+Potential Key Marker Genes:
+
+* MK,MEP: Itga2b
+* Ery: Ank1
+* B-cell: Ighd
+* T-cell: Gata3
+* Macrophage: Ccr5 (also T-cell)
+
+```{r Figure 3c}
+VlnPlot(wbm, c('Itga2b','Gp9','Ank1','Ighd','Gata3','Ccr5'), ncol = 3, pt.size = 0)
+```
+
+Need to clean up this image for the figure. Still thinking of ways to condense all the labels down to fewer.
+
+# Figure 4
+
+## 4a UMAP subclustering of MKs
+
+Including both MKs and MEPs.
+
+```{r re-analyzing just MKs and MEPs}
+wbm@meta.data$condition <- ifelse(wbm@meta.data$condition == 'control', 'Control', "Mpl")
+mks <- subset(wbm, new_cluster_IDs %in% c('MK','MEP'))
+#summary(as.factor(mks$state))
+
+# Running all the same steps before to normalize, cluster, and dimension reduction
+
+mks <- NormalizeData(mks, normalization.method = "LogNormalize", scale.factor = 10000)
+
+all.genes <- rownames(mks)
+
+mks <- ScaleData(mks, features = all.genes)
+
+mks <- RunPCA(mks, features = VariableFeatures(mks), verbose = F)
+
+# ElbowPlot(mks) # decided to go with the first 8 PCs
+
+mks <- FindNeighbors(mks, dims = 1:8)
+
+mks <- FindClusters(mks , resolution = .45, verbose = F)
+
+mks <- RunUMAP(mks, dims = 1:8, verbose = F)
+
+DimPlot(mks, reduction = 'umap', split.by = 'condition') +
+        theme(axis.text = element_blank())
+
+DimPlot(mks, reduction = 'umap', split.by = 'new_cluster_IDs') +
+        theme(axis.text = element_blank())
+```
+
+## 4a supplement bar chart
+
+Similar to figure 3b. Not necessarily needed but useful for me doing the analysis.
+
+```{r 4a sup. table}
+
+mk.tbl <- as.data.frame(table(mks$seurat_clusters, mks$condition))
+colnames(mk.tbl) <- c('Cluster','Condition', 'Freq')
+
+# normalization_factor <- sum(mk.tbl[mk.tbl$Condition == 'control',]$Freq)/
+#         sum(mk.tbl[mk.tbl$Condition == 'mut',]$Freq)
+
+# The normalization factor should be calculated by the total cell depth
+
+#summary(as.factor(wbm$condition))
+
+normalization_factor <- 2620/3501
+
+mk.tbl$Norm_freq <- ifelse(mk.tbl$Condition == 'Control', mk.tbl$Freq, 
+                           round(mk.tbl$Freq * normalization_factor,0))
+
+cluster_counts <- c()
+cnt <- 1
+for (i in levels(mk.tbl$Cluster)){
+        cluster_counts[cnt] <- sum(mk.tbl[mk.tbl$Cluster == i,]$Norm_freq)
+        cnt <- cnt + 1
+}
+
+mk.tbl$cluster_counts <- rep(cluster_counts,2)
+
+mk.tbl$Percentage <- round(mk.tbl$Norm_freq / mk.tbl$cluster_counts,2)*100
+
+#mk.tbl$Condition <- ifelse(mk.tbl$Condition == 'control', 'Control', 'Mpl')
+
+ggplot(data = mk.tbl, aes(x = Cluster, y = Percentage, fill = Condition)) +
+        scale_fill_manual(values = c('blue','red')) +
+        geom_bar(stat = 'identity') +
+        theme_bw() + 
+        ylab('Percentage of Cells') + xlab('Cell Type') +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+**I think this could change how we do differenital expression for 4b. For now I kept 4b the same as we've done before, but I think some of the genes that are upregulated in the control are false, because they are just genes that are unique to clusters 2-4. Due to this, most MK Mpl cells would not express these genes. The focus may be to describe genes that distinguish 0, 1 and 5 which are unique to Mpl. Also Cluster 2 is the majority of the MEP cells, and we see the most balance between conditions there (also there are no DE genes in the MEP cluster)**
+
+## 4b Differential Expression Heatmap
+
+```{r MK & MEP differential expression}
+
+mk.markers <- FindMarkers(wbm, ident.1 = 'Control', ident.2 = 'Mpl',
+                          group.by = 'condition',
+                          verbose = T, subset.ident = 'MK',
+                          logfc.threshold = log(2), test.use = 'MAST')
+
+# mep.markers <- FindMarkers(wbm, ident.1 = 'Control', ident.2 = 'Mpl',
+#                           group.by = 'condition',
+#                           verbose = T, subset.ident = 'MEP',
+#                           logfc.threshold = log(2), test.use = 'MAST')
+
+sig.mk.markers <- mk.markers[mk.markers$p_val_adj < 0.05,]
+#sig.mep.markers <- mep.markers[mep.markers$p_val_adj < 0.05,]
+
+# No DE MEP genes
+
+sig.mk.markers <- sig.mk.markers[order(sig.mk.markers$avg_logFC, decreasing = T),]
+sig.mk.genes <- rownames(sig.mk.markers)
+
+# write.table(rownames(sig.mk.markers[sig.mk.markers$avg_logFC>0,]), './data/DE.genes.MK.higherINcontrols.tsv',
+#             quote = F, row.names = F, sep = '\t')
+# write.table(rownames(sig.mk.markers[sig.mk.markers$avg_logFC<0,]), './data/DE.genes.MK.higherINmpl.tsv',
+#             quote = F, row.names = F, sep = '\t')
+#write.table(sig.mk.genes, './data/DEgenes.MK.all.tsv',quote = F, row.names = F, sep = '\t')
+# write.table(rownames(wbm), './data/all.genes.tsv', quote = F, row.names = F, sep = '\t')
+```
+
+```{r 4b de heatmap}
+mk.cells <- WhichCells(wbm, ident = 'MK')
+DoHeatmap(wbm, features = sig.mk.genes, group.by = 'condition', 
+          cells = mk.cells, label = F) +
+        theme_minimal() + 
+        xlab('MK Cells') + ylab('DE genes') + 
+        scale_x_discrete(position = 'top') + 
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text = element_blank(),
+              axis.ticks = element_blank())
+
+```
+
+```{r mk_vln plots}
+VlnPlot(mks, c('Mki67'), pt.size = 0, split.by = 'condition')
+
+VlnPlot(wbm, 'Mki67', pt.size = 0, split.by = 'condition')
+```
+
+Above is an example of a gene that was differentially expressed between control and Mpl within the MK cluster, but when doing the subclustering we see that this is due to differences in populations (see below figure). This is why the first differential expression heatmap may not be the most valid way to interpret the data.
+
+```{r another bar chart}
+mk.tbl2 <- mk.tbl[,1:4]
+mk.tbl2$condition_counts <- rep(c(sum(mk.tbl2[mk.tbl2$Condition == 'Control','Norm_freq']),
+                                  sum(mk.tbl2[mk.tbl2$Condition == 'Mpl', 'Norm_freq'])),
+                                  each = 6)
+mk.tbl2$Percentage <- round(mk.tbl2$Norm_freq / mk.tbl2$condition_counts,2)*100
+
+#mk.tbl2
+
+mk.tbl2
+
+ggplot(data = mk.tbl2, aes(x = Condition, y = Percentage, fill = Cluster)) +
+        geom_bar(stat = 'identity') +
+        theme_bw() + 
+        ylab('Percentage of Cells') + xlab('Cell Type') +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        coord_flip()
+```
+
+
+## 4b Alternative
+
+### DE Markers Genes for Clusters 0, 1, and 5
+
+Going to look at markers that distinguish the MK subclusters 0, 1, and 5 from all other MK subclusters using MAST, a log(2) fold-change threshold, and only return true values (i.e. have a higher expression in given subcluster vs all)
+
+```{r looking at mk subcluster specific markers}
+
+submk.markers.0 <- FindMarkers(mks, 
+                               ident.1 = 0, 
+                               logfc.threshold = log(2), 
+                               only.pos = T, 
+                               test.use = "MAST")
+submk.markers.1 <- FindMarkers(mks, 
+                               ident.1 = 1, 
+                               logfc.threshold = log(2), 
+                               only.pos = T, 
+                               test.use = "MAST")
+submk.markers.5 <- FindMarkers(mks, 
+                               ident.1 = 5, 
+                               logfc.threshold = log(2), 
+                               only.pos = T, 
+                               test.use = "MAST")
+
+print("Subcluster 0 vs All")
+submk.markers.0
+#write.csv(submk.markers.0, './data/submk.markers.0.vs.all.csv', quote = F)
+print("Subcluster 1 vs All")
+submk.markers.1
+#write.csv(submk.markers.1, './data/submk.markers.1.vs.all.csv', quote = F)
+print("Subcluster 5 vs All")
+submk.markers.5
+#write.csv(submk.markers.5, './data/submk.markers.5.vs.all.csv', quote = F)
+```
+
+Running the same analysis but only comparing the given subcluster to subclusters 3 and 4, which are the normals MKs which are present in both control and Mpl.
+
+```{r de marker genes version 2}
+
+submk.markers.0.v2 <- FindMarkers(mks, 
+                               ident.1 = 0, ident.2 = c(3,4),
+                               logfc.threshold = log(2), 
+                               only.pos = T, 
+                               test.use = "MAST")
+submk.markers.1.v2 <- FindMarkers(mks, 
+                               ident.1 = 1, ident.2 = c(3,4), 
+                               logfc.threshold = log(2), 
+                               only.pos = T, 
+                               test.use = "MAST")
+submk.markers.5.v2 <- FindMarkers(mks, 
+                               ident.1 = 5, ident.2 = c(3,4),
+                               logfc.threshold = log(2), 
+                               only.pos = T, 
+                               test.use = "MAST")
+
+print("Subcluster 0 vs 3 & 4")
+submk.markers.0.v2
+print("Subcluster 1 vs 3 & 4")
+submk.markers.1.v2
+print("Subcluster 5 vs 3 & 4")
+submk.markers.5.v2
+```
+
+### DE marker genes within mixed clusters (2, 3, and 4)
+
+Checking to see if there any DE genes between Control and Mpl within the clusters that have both conditions. My hypothesis is that we would see very few to no genes being differentially expressed.
+
+```{r DEG in mixed clusters}
+mk.markers.2 <- FindMarkers(mks, ident.1 = 'Control', ident.2 = 'Mpl',
+                          group.by = 'condition',
+                          verbose = T, subset.ident = 2,
+                          logfc.threshold = log(2), test.use = 'MAST')
+mk.markers.3 <- FindMarkers(mks, ident.1 = 'Control', ident.2 = 'Mpl',
+                          group.by = 'condition',
+                          verbose = T, subset.ident = 3,
+                          logfc.threshold = log(2), test.use = 'MAST')
+mk.markers.4 <- FindMarkers(mks, ident.1 = 'Control', ident.2 = 'Mpl',
+                          group.by = 'condition',
+                          verbose = T, subset.ident = 4,
+                          logfc.threshold = log(2), test.use = 'MAST')
+# summary(mk.markers.2$p_val_adj < 0.05)
+# summary(mk.markers.3$p_val_adj < 0.05)
+# summary(mk.markers.4$p_val_adj < 0.05)
+
+mk.markers.3.sig <- mk.markers.3[mk.markers.3$p_val_adj < 0.05,]
+mk.markers.4.sig <- mk.markers.4[mk.markers.4$p_val_adj < 0.05,]
+```
+
+**Values**
+
+* pct.1: percentage of cells in control that express the gene
+* pct.2: percentage of cells in Mpl that exress the gene
+* avg_logFC: negative values indicate higher expression in group 2 (Mpl)
+
+
+**Filters**
+
+* minimum of a log2 fold-change (+- 0.69 in natural log)
+* adjusted p-value less than 0.05
+
+
+There were 6 DEGs within cluster 3:
+
+```{r clst3 DEGs}
+mk.markers.3.sig
+```
+
+There were 9 DEGEs within cluster 4:
+
+```{r clst4 DEGs}
+mk.markers.4.sig
+```
+

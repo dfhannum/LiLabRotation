@@ -1,0 +1,476 @@
+---
+title: "Analysis 07/16"
+author: "D. Ford Hannum Jr."
+date: "7/16/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+```
+
+# Introduction
+
+This is follow-up analysis to the Min Lab Meeting on 07/08/2020.
+
+At the meeting we went over *Figure Generation v3* and discussed elements of the excel file *submk.markers.xlsx*.
+
+# To-Do
+
+* Reanalyze the MK subclusters and excluding the MEPs since they didn't contribute anything to the analysis
+
+* Do differential expression between the normal and abnormal (only show up in Mpl) subclusters
+
+* Plot MK markers acrossthese subclusters to see if we find anything of interest
+
+* Check Vwf complex markers (Gp1ba, Gp1bb, Gp6) which are markers of mature MKs
+
+* Update figures and write figure legends
+
+* Look for marker genes that identify abnormal MKs vs all other cells (for validation)
+
+* Look into receptor ligand verification
+
+# Reanalzying MK Subclusters
+
+This time only including MKs (since MEPs didn't contribute anything last time).
+
+
+```{r loading data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+#DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+```{r changing the levels of the data}
+new_levels <- c('Granulocyte','Granulocyte','Granulocyte', 'B-cell','MK', 
+        'Granulocyte', 'Granulocyte','Monocyte','Macrophage','Erythroid','B-cell',
+        'T-cell/NK', 'MEP')
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+wbm$new_cluster_IDs <- wbm@meta.data$cluster_IDs
+```
+
+```{r 4a umapping}
+wbm@meta.data$condition <- ifelse(wbm@meta.data$condition == 'control', 'Control', "Mpl")
+
+mks <- subset(wbm, new_cluster_IDs %in% 'MK')
+
+mks <- NormalizeData(mks, normalization.method = "LogNormalize", scale.factor = 10000)
+
+all.genes <- rownames(mks)
+
+mks <- ScaleData(mks, features = all.genes)
+
+mks <- RunPCA(mks, features = VariableFeatures(mks), verbose = F)
+
+#ElbowPlot(mks) # decided to go with the first 8 PCs
+
+mks <- FindNeighbors(mks, dims = 1:10)
+
+res <- seq(0,1, by = .05)
+
+# clst <- c()
+# cnt <- 1
+# for (i in res){
+#         x <- FindClusters(mks, resolution = i, verbose = F)
+#         clst[cnt] <- length(unique(x$seurat_clusters))
+#         cnt <- cnt + 1
+# }
+# names(clst) <- res
+# clst
+
+mks <- FindClusters(mks , resolution = .65, verbose = F)
+
+mks <- RunUMAP(mks, dims = 1:10, verbose = F)
+```
+
+## UMAP Projections
+
+The first three are interesting, but I plan on including the fourth one in the manuscript as figure 4a
+
+```{r 4a Umaping}
+DimPlot(mks, reduction = 'umap')
+DimPlot(mks, reduction = 'umap', split.by = 'celltype')
+DimPlot(mks, reduction = 'umap', split.by = 'state')
+
+DimPlot(mks, reduction = 'umap', split.by = 'condition')
+```
+Figure Legend
+
+UMAP Projection of the subclustering of cells identified as megakaryocytes. Subclustering identified seven clusters, with 5 of the 7 only being present in the Mpl condition.
+
+## Table of Cluster Counts By State
+
+```{r table of reads}
+table(mks@meta.data$state, mks@meta.data$seurat_clusters)
+```
+
+## Bar Chart of Condition Distributions
+
+Maybe not completely necessary, since the UMAP projection clearly shows this. Maybe just include as a supplementary figure.
+
+```{r 4b bar chart}
+mk.tbl <- as.data.frame(table(mks$seurat_clusters, mks$condition))
+
+colnames(mk.tbl) <- c('Cluster','Condition','Count')
+mk.tbl$cond.count <- ifelse(mk.tbl$Condition == 'Control',
+                            sum(mk.tbl[mk.tbl$Condition == 'Control',]$Count),
+                            sum(mk.tbl[mk.tbl$Condition == 'Mpl',]$Count))
+mk.tbl$Percentage <- round(mk.tbl$Count/mk.tbl$cond.count,2)*100
+#mk.tbl
+
+ggplot(mk.tbl, aes(x = Condition, y = Percentage, fill = Cluster)) +
+        geom_bar(stat = 'identity') + 
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Condition') +
+        coord_flip()
+```
+
+Figure Legend
+
+The distribution of cells from each condition, each color representing a different cluster in the UMAP projection. All control cells belong to two clusters, which are also present in the Mpl condition. There are five abnormal megakaryocyte clusters that are only found in the Mpl condition.
+
+### Bar Chart Supplemental
+
+I was also interested in seeing how this barchart broke down into states (WBM control, enrWBM control, WBM Mpl, enrWBM Mpl), though I'm not sure it is something that would be completely necessary in the paper. What I would like to see is similar distributions between the WBM and enrWBM, when looking at either control or Mpl. If a cluster only showed up in the enrWBM I would be weary of including that for further analysis because it could potentially be an artifact of the enrichment process and not actually present in WBM.
+
+```{r same as above but for state}
+mk.tbl2 <- as.data.frame(table(mks$seurat_clusters, mks$state))
+
+colnames(mk.tbl2) <- c('Cluster','State','Count')
+mk.tbl2$cond.count <- ifelse(mk.tbl2$State == 'WBM-control',
+                            sum(mk.tbl2[mk.tbl2$State == 'WBM-control',]$Count),
+                            ifelse(mk.tbl2$State == 'WBM-mut',
+                                sum(mk.tbl2[mk.tbl2$State == 'WBM-mut',]$Count),
+                                ifelse(mk.tbl2$State == 'enr_WBM-control',
+                                        sum(mk.tbl2[mk.tbl2$State == 'enr_WBM-control',]$Count),
+                                        sum(mk.tbl2[mk.tbl2$State == 'enr_WBM-mut',]$Count))))
+                            
+mk.tbl2$Percentage <- round(mk.tbl2$Count/mk.tbl2$cond.count,3)*100
+#mk.tbl2
+
+mk.tbl2$State2 <- factor(mk.tbl2$State,levels(mk.tbl2$State)[c(1,3,2,4)])
+ggplot(mk.tbl2, aes(x = State2, y = Percentage, fill = Cluster)) +
+        geom_bar(stat = 'identity') + 
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Cell Condition') +
+        coord_flip()
+```
+
+We see slightly different percentages of clusters in the distribution, but nothing I think to worry about (since the numbers in the WBM samples are so low). It's good that we see all the clusters present in the WBM mutant (Mpl), which we could also see from one of the UMAP projections.
+
+# Differential Expression of MK Subclusters
+
+I'm going to approach this a few different ways:
+
+* Comparing abnormal clusters (0, 1, 2, 3, 6) individually vs the normal clusters (4, 5)
+
+* Comparing abnormal clusters as a group vs the normal clusters
+
+* Comparing the Mpl vs Control cells within the normal clusters (4, 5)
+
+## Comparing Abnormal Individually vs Normal 
+
+```{r}
+
+```
+
+## Comparing Abnormal as a Group vs Normal 
+
+```{r group mk markers}
+abn.mk.markers <- FindMarkers(mks,
+                              ident.1 = c(0,1,2,3,6),
+                              ident.2 = c(4,5),
+                              logfc.threshold = log(2),
+                              test.use = 'MAST')
+
+abn.mk.markers <- abn.mk.markers[abn.mk.markers$p_val_adj < 0.05,]
+
+# dim(abn.mk.markers)
+# abn.mk.markers
+# summary(abn.mk.markers$avg_logFC > 0)
+
+# Printing DE genes that are upregualted in abnormal
+write.table(rownames(abn.mk.markers[abn.mk.markers$avg_logFC > 0,]), 
+            './data/go_results/v4/up_reg_genes_in_abn.txt', quote = F, row.names = F)
+
+# Printing DE genes that are downregualted in abnormal
+write.table(rownames(abn.mk.markers[abn.mk.markers$avg_logFC < 0,]), 
+            './data/go_results/v4/down_reg_genes_in_abn.txt', quote = F, row.names = F)
+
+abn.mk.markers <- abn.mk.markers[order(abn.mk.markers$avg_logFC, decreasing = T),]
+
+write.csv(abn.mk.markers, './data/abnormal.vs.normal.mk.markers.csv',
+            quote = F)
+```
+
+There are 97 DE genes (adjusted p-value < 0.05) from the abnormal clusters vs the normal clusters. Group 1 is the abnormal clusters and group 2 is the normal clusters. So 30 of the genes have higher expression in the abnormal cluster, and the other 67 have higher expression in the normal cluster.
+
+
+### GO Term Analysis
+
+I put each of these gene lists through seperately using the [Princeton GO Term Finder](https://go.princeton.edu/cgi-bin/GOTermFinder).
+
+For up-regulated (in abnormal) DE genes we had 10 significant processes. For down-regulated we had 76 processes. I wouldn't read too much into the difference in the numbers of processes, we saw more DE genes that were down-regulated so would expect more processes. Also many of the processes for the down-regulated genes were very generic, i.e. cell division, cell cycle. Below I just plot the top 10 down-regulated processes (according to lowest p-values)
+
+
+```{r go term data} 
+up <- read.table('./data/go_results/v4/GO_up_abn_results_analysis.txt', header = T, sep = '\t')
+down <- read.table('./data/go_results/v4/GO_down_abn_results_analysis.txt', header = T, sep = '\t')
+
+down <- down[1:10,]
+```
+
+```{r go plot}
+
+# Copying from the martin paper analysis
+
+down <- down[,1:5]
+
+#up$TERM
+up <- up[,1:5]
+
+down$reg <- 'down'
+up$reg <- 'up'
+
+# Combining the lists together
+go_terms <- rbind(down,up)
+
+# Changing for ggplot axis titles
+colnames(go_terms)[2:3] <- c('Biological Process', y = '-log10 FDR')
+go_terms$`-log10 FDR` <- -log10(go_terms$`-log10 FDR`)
+
+go_terms$`-log10 FDR` <- ifelse(go_terms$reg == 'down', go_terms$`-log10 FDR` * -1, go_terms$`-log10 FDR`)
+go_terms <- go_terms[order(go_terms$`-log10 FDR`, decreasing = F),]
+colnames(go_terms)[6] <- 'Regulation'
+go_terms$Regulation <- ifelse(go_terms$Regulation == 'up', 'Up','Down')
+go_terms2 <- go_terms[-7,]
+ggplot(data = go_terms2, aes(x = `Biological Process`, y = `-log10 FDR`, fill = Regulation)) +
+        geom_bar(stat = 'identity') + coord_flip() +
+        scale_x_discrete(limits = (go_terms2$`Biological Process`)) +
+        scale_fill_manual(values = c('red','blue')) +
+        ylab('-log10 Corrected P-Value') + xlab ('Biological Process') +
+        geom_hline(yintercept = c(-log10(0.05),log10(0.05)), linetype = 2,
+                   color = 'black', show.legend = T, size = .5) +
+        geom_hline(yintercept = 0, linetype = 1, color = 'black',
+                   show.legend = T, size = .5) +
+        theme_bw() +
+        theme(text=element_text(size = 10, family = 'sans'),
+               axis.text = element_text(size = 6.5),
+              legend.position = 'none') 
+```
+Figure Legend
+The x-axis shows the top 10 GO terms generated from both up-regulated DE genes (blue) and down-regulated DE genes (red) in abnormal MK clusters compared to normal MK clusters. The dashed line represents a corrected p-value of 0.05, which is our threshold for significance.
+
+This is how I graphed previous results, but it may not be the best way. The dashed line is the cutoff for significance, and as long as the bar is passed the dashed line (which all of these are) they're significant. ''
+
+# MK Marker Expression Within Subclusters
+
+I wanted to look at our MK marker genes and their expression through the subclusters.
+
+```{r mk markers subplots}
+mk.markers <- c('Itga2b', 'Clec1b','Cd36','Selp','Pf4','Cd9')
+
+VlnPlot(wbm,features = mk.markers, pt.size = 0)
+```
+
+We see these markers in both MKs and MEPs, which is to be expected. 
+
+```{r mk.markers in mks}
+VlnPlot(mks, features = mk.markers, pt.size = 0)
+```
+
+Remember clusters 3 & 4 are normal MKs, and we see those showing more markers (Pf4, and Clec1b) than the abnormal markers
+
+# Looking at VWF Complex
+
+Next I wanted to look into the VWF Complex and see how the genes related to that are expressed within the megakaryocytes, since they are markers of mature megakaryocytes (?). The genes I have listed are (Gp1ba, Gp1bb, Gp6).
+
+First I want to look at their expression in all of our cells, focus on the MK subclustering. All three genes are present in the wbm data, and in the MK subset
+
+```{r, vwf genes in wbm}
+vwf.genes <- c('Gp1ba','Gp1bb','Gp6')
+# vwf.genes %in% rownames(wbm)
+# vwf.genes %in% rownames(mks)
+
+VlnPlot(wbm, features = vwf.genes, pt.size = 0, split.by = 'condition')
+```
+
+This concerns me a bit. If these are markers of mature megakarocytes we would expect them to be in the MK cluster and not in the MEP cluster, which would show MK precursurs and perhaps immature MKs. The fact we only really see them in the MEP cluster is curious. 
+
+```{r vwf in mks}
+VlnPlot(mks, features = vwf.genes, pt.size = 0, split.by = 'condition')
+```
+
+The only gene we see real expression of is Gp1bb which is in a normal cluster (3).
+
+# Updating Figures and Legends
+
+Ongoing, and for the figures in this analysis that I plan to include in the manuscript I have wrote up a figure legend.
+
+# Abnormal MKs vs All Cells
+
+The goal of this analysis is to potential find marker genes that distinguish these abnormal megakaryocytes from all other cells, so they can be FAC sorted. This sorting would be done on whole bone marrow, and not whole bone marrow enriched for megakaryocytes. 
+
+## In only WBM
+
+```{r abn mks vs all others}
+abn_mks <- subset(mks, seurat_clusters %in% c(0,1,2,3,6))
+abn_mk_cells <- colnames(abn_mks)
+
+wbm$abn_mk_cell <- rownames(wbm@meta.data) %in% abn_mk_cells
+
+#summary(wbm$abn_mk_cell)
+table(wbm$abn_mk_cell, wbm$state)
+```
+
+The above table shows cell numbers. TRUE indicates an abnormal MK cell, which we only see in the mutant condition.
+
+```{r only wbm both conditions}
+only_wbm <- subset(wbm, celltype == 'WBM')
+
+# Check to see that numbers matchup
+#summary(only_wbm$abn_mk_cell)
+
+abn.mk.vs.all.WBM <- FindMarkers(only_wbm,
+            ident.1 = TRUE,
+            ident.2 = FALSE,
+            group.by = 'abn_mk_cell',
+            test.use = "MAST",
+            logfc.threshold = log(2), 
+            only.pos = T,
+            min.diff.pct = .5)
+
+abn.mk.vs.all.WBM$perc_diff <- abn.mk.vs.all.WBM$pct.1 - abn.mk.vs.all.WBM$pct.2
+
+head(abn.mk.vs.all.WBM[order(abn.mk.vs.all.WBM$perc_diff, decreasing = T),],10)
+```
+I will include the whole table (nrows = 152) in a supplemental excel file. Here we see the top 10 DE genes. Of interest for us is genes with high pct.1 (percentage of abnormal MKs that express this gene) and extremely low pct.2 (percentage of all other cells that express this gene)
+
+Keep in mind though that the number of cells in group 1 is only 29, whereas for group 2 it is 4313. 
+
+### Potential Target Genes
+
+*Cyp11a1* ([GeneCards](https://www.genecards.org/cgi-bin/carddisp.pl?gene=CYP11A1)) looks promising as a marker for our abnormal MKs. I'm not sure what the relavence is to our study, but it shows up in 100% of abnormal MKs and only in 2.8% of the other cells. 
+
+So if Cyp11a1 was used on the combined whole bone marrow sample from controls and mutant and sorted "perfectly" we would expect to get 29 abnormal MK cells and 121 other cells (0.028 * 4313). So it isn't that specific of a marker
+
+*Cd200r3* ([MGI](http://www.informatics.jax.org/marker/MGI:1921853)) is another promising one with the largest percentage difference.
+
+We would expect 29 abnormal MK cells, and 56 other cells. 
+
+*Gata2* ([GeneCards](https://www.genecards.org/cgi-bin/carddisp.pl?gene=GATA2)) is another gene, that also plays a "role in regulating transcription of genes involved in the development and proliferation of hematopoietic and endocrine cell lineages."
+
+We would expect 29 abnormal MK cells, and 95 other cells
+
+**Where are the other cells coming from for these marker genes?** Could we be able to then sort these out easily?
+
+```{r, feature plots}
+FeaturePlot(only_wbm, features = c('Cyp11a1'))
+
+subset1 <- subset(only_wbm, subset = Cyp11a1 > 0)
+table(subset1$new_cluster_IDs, subset1$abn_mk_cell)
+
+FeaturePlot(only_wbm, features = c('Cd200r3'))
+
+cd200r3_subset <- subset(only_wbm, subset = Cd200r3 > 0)
+table(cd200r3_subset$new_cluster_IDs, cd200r3_subset$abn_mk_cell)
+
+FeaturePlot(only_wbm, features = c('Gata2'))
+
+subset1 <- subset(only_wbm, subset = Gata2 > 0)
+table(subset1$new_cluster_IDs, subset1$abn_mk_cell)
+```
+
+Figure Legend
+
+The feature plots highlight cells that express this gene, we can see that for there feature plots it's really only in the MK cluster where we see high expression. In the following table TRUE indicates whether or not that cell is an abnormal MK, it's a binary quantification of the feature plot, for all the cells that have non-zero expression of the given gene.
+
+## In WBM-mut
+
+Keep in mind though that the number of cells in group 1 is only 29, whereas for group 2 it is 2299. 
+
+```{r only wbm mut}
+only_wbm_mut <- subset(wbm, state == 'WBM-mut')
+
+# Check to see that numbers matchup
+#summary(only_wbm$abn_mk_cell)
+
+abn.mk.vs.all.WBM.mut <- FindMarkers(only_wbm_mut,
+            ident.1 = TRUE,
+            ident.2 = FALSE,
+            group.by = 'abn_mk_cell',
+            test.use = "MAST",
+            logfc.threshold = log(2), 
+            only.pos = T,
+            min.diff.pct = .5)
+
+abn.mk.vs.all.WBM.mut$perc_diff <- abn.mk.vs.all.WBM.mut$pct.1 - abn.mk.vs.all.WBM.mut$pct.2
+
+head(abn.mk.vs.all.WBM.mut[order(abn.mk.vs.all.WBM.mut$perc_diff, decreasing = T),],10)
+
+write.csv(abn.mk.vs.all.WBM.mut[order(abn.mk.vs.all.WBM.mut$perc_diff, decreasing = T),],
+            './data/abnormal.mk.marker.genes.vs.all.in.WBM.mut.csv', quote = F)
+```
+
+We see many of the same genes popping up, with the notable exclusion of Cyp11a1 from this top 10 list.
+
+### Potential Target Genes
+
+*Cd200r3* 
+
+We would expect 29 abnormal MK cells, and 35 other cells. 
+
+*Gata2* 
+
+We would expect 29 abnormal MK cells, and 53 other cells.
+
+*F2r* ([GeneCards](https://www.genecards.org/cgi-bin/carddisp.pl?gene=F2R)) showed up in the first list and is the top of this list.
+
+We would expect 29 abnormal MK cells, and 30 other cells.
+
+```{r abn markers in wbm-mut}
+FeaturePlot(only_wbm_mut, features = c('Cd200r3'))
+
+cd200r3_subset <- subset(only_wbm_mut, subset = Cd200r3 > 0)
+table(cd200r3_subset$new_cluster_IDs, cd200r3_subset$abn_mk_cell)
+
+FeaturePlot(only_wbm_mut, features = c('Gata2'))
+
+subset1 <- subset(only_wbm_mut, subset = Gata2 > 0)
+table(subset1$new_cluster_IDs, subset1$abn_mk_cell)
+
+FeaturePlot(only_wbm_mut, features = c('F2r'))
+
+subset1 <- subset(only_wbm_mut, subset = F2r > 0)
+table(subset1$new_cluster_IDs, subset1$abn_mk_cell)
+```
+
+
+## In all Cells
+
+```{r abn markers all}
+abn.mk.vs.all <- FindMarkers(wbm,
+            ident.1 = TRUE,
+            ident.2 = FALSE,
+            group.by = 'abn_mk_cell',
+            test.use = "MAST",
+            logfc.threshold = log(2), 
+            only.pos = T,
+            min.diff.pct = .5)
+```
+
+# Ligand Receptor Work
+
+My lab has published a [paper](https://www.sciencedirect.com/science/article/abs/pii/S1534580720303993) on this that I am still working through.

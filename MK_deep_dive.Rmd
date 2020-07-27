@@ -1,0 +1,120 @@
+---
+title: "MK Deep Dive"
+author: "D. Ford Hannum"
+date: "6/18/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(ggplot2)
+library(MAST)
+```
+
+Going into a deep dive of the megakaryocytes (MKs) similar to the deep dive into the granulocytes.
+
+```{r loading data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+
+DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+
+
+1. Cluster **X** vs **all other** clusters, **all** cells
+2. Cluster **X** vs **PG** clusters, **all** cells
+3. Cluster **X** vs **all other** clusters, **control** cells
+4. Cluster **X** vs **PG** clusters, **control** cells
+
+Results:
+
+* *avg_logFC* : log fold-change of the average expression between the two groups. Positive values indicate that the gene is more highly expressed in the first group
+
+* *pct.1* : the percentage of cells where the gene is detected in the first group (ie MKs)
+
+* *pct.2* : the percentage of cells where the gene is detected in the second group (all other clusters)
+
+* *p_val_adj* : adjusted p-value, based on bonferroni correctioni using all genes in the dataset
+
+# MK cells
+
+```{r MK vs all}
+
+m <- FindMarkers(wbm, ident.1 = 'MK', min.pct = 0.5, logfc.threshold = log(2))
+
+m <- m[m$p_val_adj < 0.05,]
+
+m <- m[order(m$avg_logFC, decreasing = T),]
+
+cntrl_cells <- rownames(wbm@meta.data[wbm@meta.data$condition == 'control',])
+mut_cells <- rownames(wbm@meta.data[wbm@meta.data$condition == 'mut',])
+
+cwbm <- subset(wbm, cells = cntrl_cells)
+mwbm <- subset(wbm, cells = mut_cells)
+
+cM <- FindMarkers(cwbm, ident.1 = 'MK', min.pct = 0.5, logfc.threshold = log(2))
+cM <- cM[cM$p_val_adj < 0.05,]
+cM <- cM[order(cM$avg_logFC, decreasing = T),]
+
+mM <- FindMarkers(mwbm, ident.1 = 'MK', min.pct = 0.5, logfc.threshold = log(2))
+mM <- mM[mM$p_val_adj < 0.05,]
+mM <- mM[order(mM$avg_logFC, decreasing = T),]
+
+# write.csv(m,'./data/MK_DEG_all.csv', quote = F)
+# write.csv(cM, './data/MK_DEG_controlcells.csv', quote = F)
+# write.csv(mM, './data/MK_DEG_mutantcells.csv', quote = F)
+
+```
+
+DE genes for MK vs all: 145 control cells only, 416 mutant cells only, 319 all cells.
+
+# MEP
+
+```{r MEP markers}
+m <- FindMarkers(wbm, ident.1 = 'MEP', min.pct = 0.5, logfc.threshold = log(2))
+m <- m[m$p_val_adj < 0.05,]
+m <- m[order(m$avg_logFC, decreasing = T),]
+
+cM <- FindMarkers(cwbm, ident.1 = 'MEP', min.pct = 0.5, logfc.threshold = log(2))
+cM <- cM[cM$p_val_adj < 0.05,]
+cM <- cM[order(cM$avg_logFC, decreasing = T),]
+
+mM <- FindMarkers(mwbm, ident.1 = 'MEP', min.pct = 0.5, logfc.threshold = log(2))
+mM <- mM[mM$p_val_adj < 0.05,]
+mM <- mM[order(mM$avg_logFC, decreasing = T),]
+
+# write.csv(m,'./data/MEP_DEG_all.csv', quote = F)
+# write.csv(cM, './data/MEP_DEG_controlcells.csv', quote = F)
+# write.csv(mM, './data/MEP_DEG_mutantcells.csv', quote = F)
+```
+
+DE genes for MEP vs all: 35 control cells only, 88 mutant cells only, 81 all cells.
+
+# Erythrocytes
+
+```{r ery markers}
+m <- FindMarkers(wbm, ident.1 = 'Erythroid', min.pct = 0.5, logfc.threshold = log(2))
+m <- m[m$p_val_adj < 0.05,]
+m <- m[order(m$avg_logFC, decreasing = T),]
+
+cM <- FindMarkers(cwbm, ident.1 = 'Erythroid', min.pct = 0.5, logfc.threshold = log(2))
+cM <- cM[cM$p_val_adj < 0.05,]
+cM <- cM[order(cM$avg_logFC, decreasing = T),]
+
+mM <- FindMarkers(mwbm, ident.1 = 'Erythroid', min.pct = 0.5, logfc.threshold = log(2))
+mM <- mM[mM$p_val_adj < 0.05,]
+mM <- mM[order(mM$avg_logFC, decreasing = T),]
+
+# write.csv(m,'./data/Ery_DEG_all.csv', quote = F)
+# write.csv(cM, './data/Ery_DEG_controlcells.csv', quote = F)
+# write.csv(mM, './data/Ery_DEG_mutantcells.csv', quote = F)
+```
+
+DE genes for Ery vs all: 186 control cells only, 96 mutant cells only, 147 all cells.

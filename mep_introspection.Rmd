@@ -1,0 +1,207 @@
+---
+title: "MEP Cluster Introspection"
+author: "D. Ford Hannum Jr."
+date: "7/16/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+```
+
+# Introduction
+
+Last week we saw that the megakaryocyte/erythrocyte progenitors (MEPs) were high in the Vwf complex genes (Gp1ba, Gp1bb, Gp6). These are markers of mature MKs and we would have expected to see them in our MK population (where there was little to no expression), and not see them in our MEPs. So in this analysis I'm going to look into the MEP label to see if it was previously mislabeled.
+
+# Overview and Vwf Complex Expression
+
+```{r loading data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+#DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+```{r changing the levels of the data}
+new_levels <- c('Granulocyte','Granulocyte','Granulocyte', 'B-cell','MK', 
+        'Granulocyte', 'Granulocyte','Monocyte','Macrophage','Erythroid','B-cell',
+        'T-cell/NK', 'MEP')
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+wbm$new_cluster_IDs <- wbm@meta.data$cluster_IDs
+```
+
+```{r umap}
+DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+We see that the MK population is distinct cluster, far away from all other clusters. The MEP cluster is very close to the macrophage and erythroid populations.
+
+## Vwf Markers
+
+```{r vwf expression}
+vwf.genes <- c('Gp1ba', 'Gp1bb', 'Gp6', 'Gp9')
+
+VlnPlot(wbm, features = vwf.genes)
+
+
+VlnPlot(wbm, features = vwf.genes, split.by = 'condition')
+```
+
+We see some expression of these markers in the MK cluster, but the average is still zero expression. We see relatively high expression in the MEP cluster
+
+## MK Markers
+
+```{r mk genes}
+mk.genes <- c('Itga2b')
+
+VlnPlot(wbm, features = mk.genes)
+```
+
+Both the MK and MEP clusters express Itga2b, though MEP cells have a higher average expression. MEPs express Gp9 (a receptor of the Vwf), whereas MKs have low expression.
+
+## MEP Markers in "MEP" Cluster
+
+Looking for MEP markers. Used this [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4855892/) I picked genes that were expressed in in all there of their MEPs (Kit, Myb, Tgfb1, Cd44). They do a lot looking at MEP subtypes, and once we finalize the MEP cluster/population this would be interesting to look into.
+
+```{r mep markers}
+mep.prim.markers <- c('Cd44','Kit')
+
+mep.ery.markers <- c('Myb','Tmod1','Lef1','Klf1','Cnrip1','Ank1')
+
+mep.mk.markers <- c('Cd9','Lox','Mpl','Vwf', 'Nfib','Cd41')
+
+mep.markers <- 'Dhrs3'
+
+mep.mk.ery.markers <- c('Gata1','Cd36')
+
+print('Primative MEP Markers')
+VlnPlot(wbm, features = mep.prim.markers, pt.size = 0)
+
+print('Erythroid MEP Markers')
+VlnPlot(wbm, features = mep.ery.markers[0:3], pt.size = 0)
+VlnPlot(wbm, features = mep.ery.markers[4:6], pt.size = 0)
+
+print('MK MEP Markers')
+VlnPlot(wbm, features = mep.mk.markers[0:3], pt.size = 0)
+VlnPlot(wbm, features = mep.mk.markers[4:6], pt.size = 0)
+
+print('MEP Markers')
+VlnPlot(wbm, features = mep.markers, pt.size = 0)
+
+print('Ery/MK MEP Markers')
+VlnPlot(wbm, features = mep.mk.ery.markers, pt.size = 0)
+```
+
+**It seems that our MEP label should be changed to a MK label, since they show up as mature megakaryocytes.**
+
+Looking at some of my previous work there wasn't strong evidence to contradict the strong expression of mature MK markers.
+
+**My prediction is that our MK label is more likely the MEP populations. This would be why we see some distinct clusters, as referenced in that paper there are many types of MEPs and some give rise to myeloid cells. This would make sense with some of those clusters showing markers for leukocyte differentiation, etc**
+
+I'm going to look at the markers I've done above within MKs subclusters.
+
+# Looking at MK Subclusters
+
+This is looking at the cluster originally identified as MK, that I believe may actually consist of more MEP cells.
+
+```{r mk subclustering}
+
+wbm@meta.data$condition <- ifelse(wbm@meta.data$condition == 'control', 'Control', "Mpl")
+
+mks <- subset(wbm, new_cluster_IDs %in% 'MK')
+
+mks <- NormalizeData(mks, normalization.method = "LogNormalize", scale.factor = 10000)
+
+all.genes <- rownames(mks)
+
+mks <- ScaleData(mks, features = all.genes)
+
+mks <- RunPCA(mks, features = VariableFeatures(mks), verbose = F)
+
+# ElbowPlot(mks) # decided to go with the first 10 PCs
+
+mks <- FindNeighbors(mks, dims = 1:10)
+
+# Resolution decided upon in analysis0716.Rmd
+
+mks <- FindClusters(mks , resolution = .65, verbose = F)
+
+mks <- RunUMAP(mks, dims = 1:10, verbose = F)
+```
+
+```{r 4a Umaping}
+DimPlot(mks, reduction = 'umap')
+DimPlot(mks, reduction = 'umap', split.by = 'celltype')
+DimPlot(mks, reduction = 'umap', split.by = 'state')
+
+table(mks$seurat_clusters, mks$state)
+
+DimPlot(mks, reduction = 'umap', split.by = 'condition')
+```
+
+**Clusters 4 & 5 would be considered our normal clusters**
+
+## Vwf Genes
+
+```{r vwf in mks}
+VlnPlot(mks, features = vwf.genes)
+```
+
+## MK Markers
+```{r mks in mk}
+VlnPlot(mks, features = 'Itga2b')
+```
+
+## MEP markers
+
+```{r mep markers in mks}
+print('Other Gran. Markers of Interest')
+gran.genes <- c('Csf3r','Flt3','Socs3')
+VlnPlot(mks, features = gran.genes, pt.size = 0)
+
+print('Gran. Prog. Contamination?')
+gran.contam.genes <- c('Mpo')
+VlnPlot(mks, features = gran.contam.genes, pt.size = 0)
+
+print('Primative MEP Markers')
+VlnPlot(mks, features = mep.prim.markers, pt.size = 0)
+
+print('Erythroid MEP Markers')
+VlnPlot(mks, features = mep.ery.markers[0:3], pt.size = 0)
+VlnPlot(mks, features = mep.ery.markers[4:6], pt.size = 0)
+
+print('MK MEP Markers')
+VlnPlot(mks, features = mep.mk.markers[0:3], pt.size = 0)
+VlnPlot(mks, features = mep.mk.markers[4:5], pt.size = 0)
+
+print('MEP Markers')
+VlnPlot(mks, features = mep.markers, pt.size = 0)
+
+print('Ery/MK MEP Markers')
+VlnPlot(mks, features = mep.mk.ery.markers, pt.size = 0)
+```
+
+## Plot of all
+
+```{r dimplot for mks}
+genes.of.interest <- c(vwf.genes, 'Itga2b',mep.prim.markers,mep.ery.markers, mep.markers, mep.mk.markers, mep.mk.ery.markers)
+
+DotPlot(mks, features = genes.of.interest) + coord_flip()
+DoHeatmap(mks, features = genes.of.interest)
+```
+
+```{r saving RDS to use in monocle}
+saveRDS(mks,'./data/MK-MEP_subclustering.rds')
+```
+
+

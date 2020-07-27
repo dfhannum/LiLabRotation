@@ -66,7 +66,9 @@ valid_cells <- rownames(subset(pData(cds),
 #head(valid_cells)
 
 cds <- cds[,valid_cells]
+```
 
+```{r doing all cells}
 cds <- estimateSizeFactors(cds)
 cds <- estimateDispersions(cds)
 
@@ -150,9 +152,14 @@ table(pData(cds)$cluster_IDs, pData(cds)$cell_type_broad)
 
 cds$prog <- ifelse(cds$cluster_IDs %in% c('MEP', 'B-cell pro','Stem Cell'), as.character(cds$cluster_IDs), 'Further States')
 
+cds$type <- ifelse(cds$cluster_IDs %in% c('MEP', 'Erythroid','MEP'), 'MK/Ery/MEP',
+                   ifelse(cds$cluster_IDs %in% c('B cell', 'B-cell pro','T-cell/NK'), 'Lymphocyte','Myeloid'))
+
 plot_cell_trajectory(cds, color_by = "cell_type_broad")
 #plot_cell_trajectory(cds, color_by = 'pot_progenitors')
 plot_cell_trajectory(cds, color_by = 'prog')
+plot_cell_trajectory(cds, color_by = 'condition')
+plot_cell_trajectory(cds, color_by = 'type')
 ```
 
 This is the cell trajectory using unsupervised methods. Looks pretty good overall, with the exception of monocytes and macrophages being at the end of the MK/Ery/MEP trajectory. Had low expectations for using all these cells. The clusters we had labeled in Seurat as progenitor populations had differing results. The stem cells, which we've decided is a poor name as in more likely a granulocyte progenitor/neutrophil, showed close to the base, whereas MEPs were disperesed and B-cell prog were actually at the end of the trajectory. Would be more useful to look at the separated populations, which is what will come next. 
@@ -160,9 +167,12 @@ This is the cell trajectory using unsupervised methods. Looks pretty good overal
 
 # MK, Erythroid and MEP Trajectory
 
-```{r}
+```{r mep trajectory}
 Mcds <- cds[,cds$cluster_IDs %in% c('MEP',"MK", "Erythroid")]
 #dim(Mcds)
+
+Mcds <- estimateSizeFactors(Mcds)
+Mcds <- estimateDispersions(Mcds)
 
 Mcds <- detectGenes(Mcds, min_expr = 0.1)
 
@@ -197,5 +207,112 @@ Mcds <- orderCells(Mcds)
 
 plot_cell_trajectory(Mcds, color_by = "cluster_IDs")
 
+plot_cell_trajectory(Mcds, color_by = 'condition')
+plot_cell_trajectory(Mcds, color_by = 'celltype')
+```
+
+```{r gran trajectory}
+
+gcds <- cds[,cds$cluster_IDs %in% c('Stem Cell', paste0('Granulocyte',1:4))]
+#dim(Mcds)
+
+gcds <- detectGenes(gcds, min_expr = 0.1)
+
+fData(gcds)$use_for_ordering <- fData(gcds)$num_cells_expressed > 0.05 * ncol(gcds)
+
+gcds <- reduceDimension(gcds,
+                        max_compongents = 2,
+                        norm_method = 'log',
+                        num_dim = 3,
+                        reduction_method = 'tSNE',
+                        verbose = F)
+
+gcds <- clusterCells(gcds, verbose = F)
+
+plot_cell_clusters(gcds, color_by = 'Cluster')
+plot_cell_clusters(gcds, color_by = 'cluster_IDs')
+
+gcds_expresssed_genes <- row.names(subset(fData(gcds),
+                                          num_cells_expressed >=10))
+
+# cluster_DEG <- differentialGeneTest(gcds[gcds_expresssed_genes,],
+#                                     fullModelFormulaStr = '~seurat_clusters',
+#                                     cores = 2)
+# 
+# gcds_ordering_genes <- row.names(cluster_DEG)[order(cluster_DEG$qval)][1:1000]
+# 
+# gcds <- setOrderingFilter(gcds, ordering_genes = gcds_ordering_genes)
+
+gcds <- reduceDimension(gcds, method = "DDRTree")
+
+gcds <- orderCells(gcds)
+
+plot_cell_trajectory(gcds, color_by = "cluster_IDs")
+
+plot_cell_trajectory(gcds, color_by = 'condition')
+plot_cell_trajectory(gcds, color_by = 'celltype')
+
+DimPlot(swbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+
+DimPlot(swbm, reduction = 'umap', label = T, repel = T, split.by = 'condition') + NoLegend()
+```
+
+
+```{r running with just MEPs}
+
+MEPcds <- cds[,cds$cluster_IDs %in% c('MK')]
+
+MEPcds <- estimateSizeFactors(MEPcds)
+MEPcds <- estimateDispersions(MEPcds)
+
+MEPcds <- detectGenes(MEPcds, min_expr = 0.1)
+
+fData(MEPcds)$use_for_ordering <- fData(MEPcds)$num_cells_expressed > 0.05 * ncol(MEPcds)
+
+MEPcds <- reduceDimension(MEPcds,
+                        max_components = 2,
+                        norm_method = 'log',
+                        num_dim = 3,
+                        reduction_method = 'tSNE',
+                        verbose = F)
+
+MEPcds <- clusterCells(MEPcds, verbose = F)
+
+plot_cell_clusters(MEPcds, color_by = 'Cluster')
+plot_cell_clusters(MEPcds, color_by = 'cluster_IDs')
+
+MEPcds_expresssed_genes <- row.names(subset(fData(MEPcds),
+                                          num_cells_expressed >=10))
+
+# cluster_DEG <- differentialGeneTest(MEPcds[MEPcds_expresssed_genes,],
+#                                     fullModelFormulaStr = '~seurat_clusters',
+#                                     cores = 2)
+# 
+# MEPcds_ordering_genes <- row.names(cluster_DEG)[order(cluster_DEG$qval)][1:1000]
+# 
+# MEPcds <- setOrderingFilter(MEPcds, ordering_genes = MEPcds_ordering_genes)
+
+MEPcds <- reduceDimension(MEPcds, method = "DDRTree")
+
+MEPcds <- orderCells(MEPcds)
+
+plot_cell_trajectory(MEPcds, color_by = "cluster_IDs")
+
+plot_cell_trajectory(MEPcds, color_by = 'condition')
+plot_cell_trajectory(MEPcds, color_by = 'celltype')
+
+```
+
+```{r adding seurat subclusters}
+
+mks <- readRDS('data/MK-MEP_subclustering.rds')
+
+# Checking to see if the cells are ordered the same way
+summary(tstrsplit(pData(MEPcds)$cell, '-', keep = 1)[[1]] == rownames(mks@meta.data))
+
+# Adding a column for the seurat subclusters
+pData(MEPcds)[,'seurat_clusters'] <- mks$seurat_clusters
+
+plot_cell_trajectory(MEPcds, color_by = 'seurat_clusters')
 ```
 

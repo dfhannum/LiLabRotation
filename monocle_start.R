@@ -29,5 +29,5 @@ cds <- newCellDataSet(as(mtx, "sparseMatrix"),
                       expressionFamily = negbinomial.size())
 
 cds <- estimateSizeFactors(cds)
-cds <- estimateDispersions(cds)
+cds <- estimateDispersionspDa(cds)
 cds <- detectGenes()

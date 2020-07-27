@@ -1,0 +1,290 @@
+---
+title: "Figure Generation v3"
+author: "D. Ford Hannum"
+date: "7/07/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+```
+
+# Changes
+
+* Changing the bar graph for Figure 3b. Originally is was bar graphs showing the distribution of cells within clusters colored by condition. We are changing it to show the distribution of cells within condition colored by cluster.
+
+* Saving the images to put into Adobe Illustrator to create the figure.
+
+# Introduction
+
+The plan in this analysis is to generate images for figures 3 and 4 of the manuscript, with some preliminary images for a potential figure 5.
+
+**Figure 3** will contain the general introduction to the scRNA-seq data, and we imagine it containing three images:
+
+* UMAP projection: split into four panes for the four different conditions.
+* Bar graph showing the distribution of cells within the whole bone marrow conditions
+* Violin plots of cell labeling marker genes
+
+**Figure 4**: will focus on the megakaryocytes (MKs)
+
+* UMAP projection of combined sub-clustering of the MKs (maybe will also look at adding MEPs and Ery)
+* Differential between control and Mpl MKs; could use violin plots or heatmap (which could be combined with pathway analysis)
+* Potentially a trajectory analysis (so far no luck getting that to look right)
+
+**Figure 5**: disease focus dive into the sc data. Looking at profibrotic factors, proliferation genes, Jak pathway, receptor lycan interaction, etc
+
+
+```{r loading data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+#DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+```{r changing the levels of the data}
+new_levels <- c('Granulocyte','Granulocyte','Granulocyte', 'B-cell','MK', 
+        'Granulocyte', 'Granulocyte','Monocyte','Macrophage','Erythroid','B-cell',
+        'T-cell/NK', 'MEP')
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+```
+
+
+\newpage
+
+# Figure 3
+
+## a) UMAP projection of entire data
+
+UMAP projection split into four panes for the four different conditions.
+
+```{r figure 3a}
+#head(wbm@meta.data)
+wbm@meta.data$state <- factor(wbm@meta.data$state, levels = levels(as.factor(wbm@meta.data$state))[c(3,4,1,2)])
+DimPlot(wbm, reduction = 'umap', split.by = 'state', ncol = 2) +
+        theme_bw() + 
+        theme(axis.text = element_blank(), strip.text = element_blank(),
+              text = element_text(size = 10, family = 'sans'))
+
+ggsave('./figures/version4/3a_umap_2x2.pdf', height = 4, width = 6, units = 'in')
+```
+
+It seems that adding an outer label will be easiest to do in Adobe Illustrator where I will combine all the figures. The left side is controls and right side Mpl; with whole bone marrow (wbm) on top and enriched wbm on the bottom
+
+## b) Bar graph of distribution of cells in WBM
+
+Changing how we view this. Most of the figure will be generated in R, but then I will enhance it in Ai with more lines connecting the clusters with potentially deltas showing the change in percentages.
+
+```{r formatting data 3b}
+wbm$new_cluster_IDs <- wbm@meta.data$cluster_IDs
+levels(wbm@meta.data$new_cluster_IDs) <- new_levels
+wbm_wbm <- wbm@meta.data[wbm@meta.data$celltype == 'WBM',]
+
+tbl <- as.data.frame(table(wbm_wbm$condition, wbm_wbm$new_cluster_IDs))
+colnames(tbl) <- c('condition','cell_type','count')
+tbl$condition_count <- ifelse(tbl$condition == 'control', sum(tbl[tbl$condition == 'control',]$count),
+                              sum(tbl[tbl$condition == 'mut',]$count))
+tbl$perc <- round(tbl$count/tbl$condition_count,4)*100
+tbl
+
+comb_counts <- c()
+cnt <- 1
+for (i in levels(tbl$cell_type)){
+        #print(i)
+        comb_counts[cnt] <- sum(tbl[tbl$cell_type == i,]$perc)
+        cnt <- cnt + 1
+}
+tbl$comb_perc <- rep(comb_counts, each = 2)
+tbl <- tbl[order(tbl$comb_perc, decreasing = T),]
+tbl$condition <- ifelse(tbl$condition == 'control', 'Control','Mpl')
+tbl$`Cell Type` <- tbl$cell_type
+```
+
+```{r 3b graph}
+color_pal <- c("#0072B2", "#CC79A7", "#009E73", "#56B4E9","#D55E00",
+               "#E69F00","#999999", "#F0E442","#000000")
+ggplot(data = tbl, aes(x = condition, y = perc, fill = `Cell Type`)) +
+        geom_bar(stat = 'identity') + 
+        scale_fill_manual(values = color_pal) +
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Condition') +
+        coord_flip()
+ggsave('./figures/version4/3b_horizontal_2bar.pdf', device = 'pdf', units = 'in',
+       height = 4, width = 6)
+```
+
+I like the idea of this but I'm not sure how informative it is. The problem is that granulocyte population completely overwhelms the Mpl condition. The differences in lymphocytes show clearly, but it's hard to see the differences in the MK populations. 
+
+This is another bar plot that was another one of the alternatives:
+
+```{r 3b try two}
+tbl$ct2 <- factor(tbl$`Cell Type`, levels = rev(levels(tbl$`Cell Type`)[c(1,2,4,7,6,5,3,8)]))
+ggplot(tbl, aes(x = ct2, y = perc, fill = condition)) + 
+        geom_bar(stat = 'identity', position = position_dodge()) + 
+        coord_flip() +
+        theme_bw() +
+        scale_fill_manual('Condition', values = c('Mpl' = 'red',
+                                                  'Control' = 'blue')) +
+        geom_text(stat = 'identity', aes(label = count),
+                  position = position_dodge(width = 1),
+                  hjust = -.1, size = 2.5) +
+        xlab('Cell Type') + ylab('Percentage of Cells') +
+        ylim (0,100) +
+        theme(text = element_text(size = 10, family = 'sans'),
+              legend.title.align = 0.5,
+              legend.position = 'bottom',
+              legend.direction = 'vertical')
+# ggsave('./figures/version4/3b_horizontal_bar_by_type.pdf', device = 'pdf', 
+#        units = 'in', height = 4, width = 6)
+
+```
+
+## c) Violin Plots for Marker Genes
+
+Key Marker Genes:
+
+* MK, MEP: Itga2b
+* Ery: Ank1
+* B-cell: Ighd
+* T-cell: Gata3
+* Macrophage: Ccr5 (also T-cell)
+* Monocyte: need a gene
+* Granulocytes: hard to get a gene for this large group, will rely on SingleR classification
+
+```{r finding monocyte key genes, include=F}
+mono.markers <- FindMarkers(wbm,
+                            ident.1 = "Monocyte",
+                            verbose = T,
+                            logfc.threshold = log(2),
+                            test.use = 'MAST'
+                            )
+VlnPlot(wbm, features = c('Cd14', 'Cd11b', 'Ccr2', 'Fcgr3', 'Clec12a'), pt.size = 0)
+
+macro.markers <- c('Ccl22','Cd1a','Cd1c','Cd19','Cd68','Cd80')
+VlnPlot(wbm, features = macro.markers, pt.size = 0)
+```
+```{r 3c violin plot}
+marker_genes <- c('Itga2b','Ank1','Ighd','Gata3','Ccr5','Cd68')
+VlnPlot(wbm, features = marker_genes, ncol = 3, pt.size = 0)
+```
+
+
+### Dot Plot alternative
+
+```{r, dot plot alternative}
+DotPlot(wbm, features = marker_genes) + ylab('Cell Identity') + xlab('Marker Genes')
+```
+
+# Figure 4
+
+Digging into the MKs
+
+## 4a UMAP subclustering of MKs
+
+```{r 4a umapping}
+wbm@meta.data$condition <- ifelse(wbm@meta.data$condition == 'control', 'Control', "Mpl")
+
+mks <- subset(wbm, new_cluster_IDs %in% 'MK')
+
+mks <- NormalizeData(mks, normalization.method = "LogNormalize", scale.factor = 10000)
+
+all.genes <- rownames(mks)
+
+mks <- ScaleData(mks, features = all.genes)
+
+mks <- RunPCA(mks, features = VariableFeatures(mks), verbose = F)
+
+#ElbowPlot(mks) # decided to go with the first 8 PCs
+
+mks <- FindNeighbors(mks, dims = 1:10)
+
+res <- seq(0,1, by = .05)
+
+clst <- c()
+cnt <- 1
+for (i in res){
+        x <- FindClusters(mks, resolution = i, verbose = F)
+        clst[cnt] <- length(unique(x$seurat_clusters))
+        cnt <- cnt + 1
+}
+names(clst) <- res
+clst
+
+mks <- FindClusters(mks , resolution = .65, verbose = F)
+
+mks <- RunUMAP(mks, dims = 1:10, verbose = F)
+
+DimPlot(mks, reduction = 'umap')
+
+DimPlot(mks, reduction = 'umap', split.by = 'condition')
+DimPlot(mks, reduction = 'umap', split.by = 'celltype')
+DimPlot(mks, reduction = 'umap', split.by = 'state')
+```
+
+```{r table of reads}
+table(mks@meta.data$state, mks@meta.data$seurat_clusters)
+```
+
+```{r 4b bar chart}
+mk.tbl <- as.data.frame(table(mks$seurat_clusters, mks$condition))
+
+colnames(mk.tbl) <- c('Cluster','Condition','Count')
+mk.tbl$cond.count <- ifelse(mk.tbl$Condition == 'Control',
+                            sum(mk.tbl[mk.tbl$Condition == 'Control',]$Count),
+                            sum(mk.tbl[mk.tbl$Condition == 'Mpl',]$Count))
+mk.tbl$Percentage <- round(mk.tbl$Count/mk.tbl$cond.count,2)*100
+mk.tbl
+
+ggplot(mk.tbl, aes(x = Condition, y = Percentage, fill = Cluster)) +
+        geom_bar(stat = 'identity') + 
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Cell Type') +
+        coord_flip()
+```
+
+Seeing what effect the enrichment of the wbm could have on the above figure (just breaking it down further). Not something I plan on including:
+
+```{r same as above but for state}
+mk.tbl2 <- as.data.frame(table(mks$seurat_clusters, mks$state))
+
+colnames(mk.tbl2) <- c('Cluster','State','Count')
+mk.tbl2$cond.count <- ifelse(mk.tbl2$State == 'WBM-control',
+                            sum(mk.tbl2[mk.tbl2$State == 'WBM-control',]$Count),
+                            ifelse(mk.tbl2$State == 'WBM-mut',
+                                sum(mk.tbl2[mk.tbl2$State == 'WBM-mut',]$Count),
+                                ifelse(mk.tbl2$State == 'enr_WBM-control',
+                                        sum(mk.tbl2[mk.tbl2$State == 'enr_WBM-control',]$Count),
+                                        sum(mk.tbl2[mk.tbl2$State == 'enr_WBM-mut',]$Count))))
+                            
+mk.tbl2$Percentage <- round(mk.tbl2$Count/mk.tbl2$cond.count,3)*100
+mk.tbl2
+
+mk.tbl2$State2 <- factor(mk.tbl2$State,levels(mk.tbl2$State)[c(1,3,2,4)])
+ggplot(mk.tbl2, aes(x = State2, y = Percentage, fill = Cluster)) +
+        geom_bar(stat = 'identity') + 
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Cell Condition') +
+        coord_flip()
+```
+
+
+So comparing the "normal" MK clusters (4 & 5) versus the "abnormal" MK clusters (0, 1, 2, 3, 6). Doing a differential expression between these groups in two different ways: using all cells in clusters 4 and 5, using only control cells in clusters 4 and 5.
+
+One goal is to find how these "abnormal" MKs are contributing to primary myelofibrosis (PMF). Another would be to compare these abnormal cells to all cell types to see if we could find markers to use for flow sorting (this would be restricted to WBM, because that's what the flow sorting would be on, but we could leverage the enrWBM to increase our power/or to check).
+
+```{r mks markers}
+abn.mk.markers <- FindMarkers(mks,
+                              ident.1 = c(0,1,2,3,6),
+                              logfc.threshold = log(2),
+                              test.use = 'MAST')
+```
+

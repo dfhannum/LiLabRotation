@@ -243,3 +243,88 @@ ggplot(df2, aes(x = Cluster, y = `Cell Label`, fill = Group, alpha = Percentage)
 DimPlot(comb.int, reduction = 'umap', label = T, repel = T) + NoLegend()
 ```
 
+# Looking at Centroid Correlation
+
+Comparing the correlation of the centroids. They have 19 different cell types, but I only clustered it into 12 groups. Their labels come from the clusters when all there data is combined, many more samples than just this one.
+
+
+```{r centroid average expression}
+av_wbm <- AverageExpression(wbm)$RNA
+
+Idents(hwbm) <- 'cell_id'
+
+av_hwbm <- AverageExpression(hwbm)$RNA
+
+rownames(av_wbm)
+rownames(av_hwbm)
+summary(rownames(av_wbm) %in% rownames(av_hwbm))
+
+av_wbm <- av_wbm[rownames(av_wbm) %in% rownames(av_hwbm),]
+av_hwbm <- av_hwbm[rownames(av_hwbm) %in% rownames(av_wbm),]
+
+dim(av_wbm)
+dim(av_hwbm)
+
+summary(rownames(av_wbm) == rownames(av_hwbm))
+
+av_wbm <- av_wbm[rownames(av_hwbm),]
+
+summary(rownames(av_wbm) == rownames(av_hwbm))
+
+cor(av_wbm)
+
+av <- cbind(av_wbm, av_hwbm)
+
+av_cor <- cor(av, method = 'kendall')
+
+library(tidyr)
+av_cor2 <- as.data.frame(av_cor)
+
+av_cor2$row <- rownames(av_cor2)
+
+av_cor2 <- gather(av_cor2, var2, cor, Granulocyte1:Megakaryocytes, factor_key = T)
+
+colnames(av_cor2) <- c('CT1','CT2','Correlation')
+
+av_cor2
+
+av_cor2$CT1 <- factor(av_cor2$CT1, levels = levels(av_cor2$CT2))
+
+
+ggplot(av_cor2, aes(x = CT1, y = CT2, fill = Correlation)) + geom_tile() +
+        theme_bw() +
+        scale_fill_gradient2(high = 'darkblue', low = 'white', mid = 'blue',
+                             midpoint = 0.6, limit= c(0,1))+
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+av_cor3 <- av_cor2[417:dim(av_cor2)[1],]
+
+av_cor3 <- av_cor3[av_cor3$CT1 %in% levels(av_cor3$CT1)[1:13],]
+
+ggplot(av_cor3, aes(x = CT1, y = CT2, fill = Correlation)) + geom_tile() +
+        theme_bw() +
+        scale_fill_gradient2(high = 'darkblue', low = 'white', mid = 'blue',
+                             midpoint = 0.6, limit= c(0,1))+
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r trying to organize}
+ac <- av_cor3
+summary(ac$Correlation > .5)
+ac$over_fifty <- ac$Correlation > .5
+
+ggplot(ac, aes(x = Correlation)) + geom_density() + theme_bw() +
+        geom_vline(xintercept = c(0.5,0.55), linetype = 2, color = 'red')
+        
+ac$over_fifty5 <- ac$Correlation > .55
+ggplot(ac, aes(x = CT1, y = CT2, fill = over_fifty)) + 
+        geom_tile(color = 'black') +
+        theme_bw() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplot(ac, aes(x = CT1, y = CT2, fill = over_fifty5)) + 
+        geom_tile(color = 'black') +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+

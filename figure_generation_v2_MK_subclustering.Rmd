@@ -1,0 +1,180 @@
+---
+title: "MK Subclustering"
+author: "D. Ford Hannum"
+date: "6/23/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+```
+
+# Overview
+
+While going through generating figures I was subclustering the MK and MEP cells. I found that some of the genes that were deferentially expressed where actually due to differences in the population of the subclusters (similar to some DE genes in bulk RNA, that are due to differences in populations).
+
+Because of this I decided to change how I was doing the differential expression analysis. I focused on looking at marker genes that distinguished subclusters and did a GO term analysis on those genes. I have an excel file that goes with this file that has tabs for the differentially epressed genes in subclusters 0, 1, and 5 (which are unique to Mpl mice) along with the GO results.
+
+This is all included in my full file figure_generation_v2 but I wanted to share separately to get input on potential consequences of these aberrant MK subclusters.
+
+# UMAP Projection of MK Clustering
+
+For this subclustering I only used the subset of MK and MEP cells.
+
+```{r reading in the data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+wbm@meta.data$condition <- ifelse(wbm@meta.data$condition == 'control', 'Control', 'Mpl')
+
+mks <- subset(wbm, cluster_IDs %in% c('MK',"MEP"))
+
+mks <- NormalizeData(mks, normalization.method = "LogNormalize", scale.factor = 10000)
+
+all.genes <- rownames(mks)
+
+mks <- ScaleData(mks, features = all.genes)
+
+mks <- RunPCA(mks, features = VariableFeatures(mks), verbose = F)
+
+# ElbowPlot(mks) # decided to go with the first 8 PCs
+
+mks <- FindNeighbors(mks, dims = 1:8)
+
+mks <- FindClusters(mks , resolution = .45, verbose = F)
+
+mks <- RunUMAP(mks, dims = 1:8, verbose = F)
+
+DimPlot(mks, reduction = 'umap', split.by = 'condition') +
+        theme(axis.text = element_blank())
+```
+
+We see that clusters 0, 1, and 5 are exclusive to Mpl.
+
+```{r plot2}
+DimPlot(mks, reduction = 'umap', split.by = 'cluster_IDs') +
+        theme(axis.text = element_blank())
+```
+
+Cluster 2 is the MEP cell population, which is expressed in both control and Mpl.
+
+# Bar Graph of Cluster Counts
+
+Similar to the bar graph which will be Figure 3b, below is a bar chart showing the percentage of clusters that comes from each condition (Control, Mpl). I normalized the cell counts to overall cell count between Control (n = 2620) and Mpl (n = 3501).
+
+```{r 4a sup. table}
+
+mk.tbl <- as.data.frame(table(mks$seurat_clusters, mks$condition))
+#mk.tbl
+colnames(mk.tbl) <- c('Cluster','Condition', 'Freq')
+#mk.tbl
+# normalization_factor <- sum(mk.tbl[mk.tbl$Condition == 'control',]$Freq)/
+#         sum(mk.tbl[mk.tbl$Condition == 'mut',]$Freq)
+
+# The normalization factor should be calculated by the total cell depth
+
+#summary(as.factor(wbm$condition))
+
+normalization_factor <- 2620/3501
+
+mk.tbl$Norm_freq <- ifelse(mk.tbl$Condition == 'Control', mk.tbl$Freq, 
+                           round(mk.tbl$Freq * normalization_factor,0))
+
+cluster_counts <- c()
+cnt <- 1
+for (i in levels(mk.tbl$Cluster)){
+        cluster_counts[cnt] <- sum(mk.tbl[mk.tbl$Cluster == i,]$Norm_freq)
+        cnt <- cnt + 1
+}
+
+mk.tbl$cluster_counts <- rep(cluster_counts,2)
+
+mk.tbl$Percentage <- round(mk.tbl$Norm_freq / mk.tbl$cluster_counts,2)*100
+
+#mk.tbl$Condition <- ifelse(mk.tbl$Condition == 'control', 'Control', 'Mpl')
+
+mk.tbl
+
+ggplot(data = mk.tbl, aes(x = Cluster, y = Percentage, fill = Condition)) +
+        scale_fill_manual(values = c('blue','red')) +
+        geom_bar(stat = 'identity') +
+        theme_bw() + 
+        ylab('Percentage of Cells') + xlab('Cell Type') +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# DE Analysis
+
+Below is the heatmap I earlier created for DE analysis within the MK cluster. 
+
+```{r original MK heatmap}
+mk.markers <- FindMarkers(wbm, ident.1 = 'Control', ident.2 = 'Mpl',
+                          group.by = 'condition',
+                          verbose = T, subset.ident = 'MK',
+                          logfc.threshold = log(2), test.use = 'MAST')
+
+sig.mk.markers <- mk.markers[mk.markers$p_val_adj < 0.05,]
+
+sig.mk.markers <- sig.mk.markers[order(sig.mk.markers$avg_logFC, decreasing = T),]
+sig.mk.genes <- rownames(sig.mk.markers)
+
+mk.cells <- WhichCells(wbm, ident = 'MK')
+DoHeatmap(wbm, features = sig.mk.genes, group.by = 'condition', 
+          cells = mk.cells, label = F) +
+        theme_minimal() + 
+        xlab('MK Cells') + ylab('DE genes') + 
+        scale_x_discrete(position = 'top') + 
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text = element_blank(),
+              axis.ticks = element_blank())
+```
+
+One of the MK DE genes is Mki67 (a proliferation gene) and it is said to be upregulated in the control compared to Mpl:
+
+```{r mki67}
+sig.mk.markers[rownames(sig.mk.markers) == 'Mki67',]
+```
+
+If we look at a violin chart this seems to also be the case.
+
+```{r mki67 violin}
+VlnPlot(wbm, 'Mki67', pt.size = 0, split.by = 'condition')
+```
+
+But if we look closer at the MK subclustering there's a different story.
+
+```{r mki67 mk violin}
+VlnPlot(mks, 'Mki67', pt.size = 0, split.by = 'condition')
+```
+
+We see that it is just one subcluster of MKs that has expression of Mki67 and we see a similar expression between control and Mpl cells within the cluster. This subcluster contains both control and Mpl cells, and the reason it comes up as differentially expressed is this subcluster makes up a much higher percentage of control cells than Mpl cells as can be seen below.
+
+```{r another bar chart}
+mk.tbl2 <- mk.tbl[,1:4]
+mk.tbl2$condition_counts <- rep(c(sum(mk.tbl2[mk.tbl2$Condition == 'Control','Norm_freq']),
+                                  sum(mk.tbl2[mk.tbl2$Condition == 'Mpl', 'Norm_freq'])),
+                                  each = 6)
+mk.tbl2$Percentage <- round(mk.tbl2$Norm_freq / mk.tbl2$condition_counts,2)*100
+
+#mk.tbl2
+
+mk.tbl2
+
+ggplot(data = mk.tbl2, aes(x = Condition, y = Percentage, fill = Cluster)) +
+        geom_bar(stat = 'identity') +
+        theme_bw() + 
+        ylab('Percentage of Cells') + xlab('Cell Type') +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        coord_flip()
+```
+
+# New DE Analysis
+
+Because of this I decided to look at what genes distinguished cluster 0, 1, and 5 from the other MK subclusters; since these are aberrant clusters that only appear in Mpl cells. The supplemental spreadsheet has the results of all the DE marker genes and the GO term analysis performed on those DE marker genes.
