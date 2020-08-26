@@ -1,0 +1,261 @@
+---
+title: "August Week 1"
+author: "D. Ford Hannum Jr."
+date: "8/6/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+```
+
+# Introduction
+
+Some extra things from discussions the past few weeks.
+
+# Splitting up the UMAP into four quadrants with quantifications
+
+
+## UMAP Projection
+
+```{r loading data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+#DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+```{r changing the levels of the data}
+new_levels <- c('Granulocyte','Granulocyte','Granulocyte', 'B-cell','Progenitor', 
+        'Granulocyte', 'Granulocyte','Monocyte','Macrophage','Erythroid','B-cell Pro.',
+        'T-cell/NK', 'MK')
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+wbm$new_cluster_IDs <- wbm@meta.data$cluster_IDs
+```
+
+```{r umap}
+color_pal <- c("#0072B2", "#CC79A7", "#009E73", "#56B4E9","#D55E00",
+               "#E69F00","#999999", 'violet',"black")
+
+wbm@meta.data$state <- factor(wbm@meta.data$state, levels = levels(as.factor(wbm@meta.data$state))[c(3,4,1,2)])
+
+DimPlot(wbm, reduction = 'umap', split.by = 'state', 
+        cols = color_pal, ncol = 2, pt.size = .01) +
+        theme_bw() +
+        theme(text = element_text(size = 10, family = 'sans'))
+
+```
+
+## Quantification
+
+```{r setup2}
+
+wbm$new_cluster_IDs <- wbm@meta.data$cluster_IDs
+levels(wbm@meta.data$new_cluster_IDs) <- new_levels
+
+tbl <- as.data.frame(table(wbm$state, wbm$new_cluster_IDs))
+#tbl
+colnames(tbl) <- c('state','cell_type','count')
+
+tbl$state_count <- ifelse(tbl$state == 'WBM-control', sum(tbl[tbl$state == 'WBM-control',]$count),
+                          ifelse(tbl$state == 'WBM-mut', sum(tbl[tbl$state == 'WBM-mut',]$count),
+                                 ifelse(tbl$state == 'enr_WBM-control', sum(tbl[tbl$state == 'enr_WBM-control',]$count),
+                                                                            sum(tbl[tbl$state == 'enr_WBM-mut',]$count))))
+tbl$perc <- round(tbl$count/tbl$state_count,4)*100
+
+comb_counts <- c()
+cnt <- 1
+for (i in levels(tbl$cell_type)){
+        #print(i)
+        comb_counts[cnt] <- sum(tbl[tbl$cell_type == i,]$perc)
+        cnt <- cnt + 1
+}
+tbl$comb_perc <- rep(comb_counts, each = 4)
+tbl <- tbl[order(tbl$comb_perc, decreasing = T),]
+#tbl
+```
+
+```{r quantification}
+tbl$Condition <- ifelse(tbl$state == 'enr_WBM-control', 'enr Migr1',
+                        ifelse(tbl$state == 'enr_WBM-mut', 'enr Mpl',
+                               ifelse(tbl$state == 'WBM-mut', 'Mpl', 'Migr1')))
+
+tbl$Condition <- factor(tbl$Condition, levels = c('Migr1','enr Migr1','Mpl', 'enr Mpl'))
+ggplot(data = tbl, aes(x = Condition, y = perc, fill = cell_type)) +
+        geom_bar(stat = 'identity') + 
+        ylim(0,100) +
+        scale_fill_manual(values = color_pal) +
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Condition') +
+        #NoLegend()+
+        scale_y_continuous(position = 'right') +
+        theme(text = element_text(size = 10, family = 'sans')) 
+
+tbl2 <- tbl
+```
+
+# Nbeal Data
+
+```{r labels for Nbeal data}
+xx <- readRDS('/Users/dfhannum/Downloads/XX.rds')
+
+hto <- xx@meta.data[,c('orig.ident','HTO_classification')]
+hto <- as.data.frame(matrix(data = c(rownames(xx@meta.data),as.character(xx@meta.data$HTO_classification)), ncol = 2))
+colnames(hto) <- c('cell','HTO')
+#write.table(hto,'./data/Experiment2/hto_labels.txt', quote = F, row.names = F, sep = '\t')
+```
+
+
+```{r viewing Nbeal data}
+wbm2 <- readRDS('./data/EXP2_clustered_filtered_SingleR_labels.rds')
+
+DimPlot(wbm2, reduction = 'umap')
+
+#levels(Idents(wbm2))
+
+new_idents <- c('Granulocytes', 'Granulocytes', 'Granulocytes', 'Granulocytes', 'Granulocytes', 'Monocytes',
+                'unkown', 'B cells', 'B cells', 'T cells', 'Granulocytes', 'B cells',
+                'B cells', 'Erythrocytes', 'Dendritic Cells', 'Basophils')
+
+names(new_idents)  <- levels(wbm2)
+#new_idents
+wbm2 <- RenameIdents(wbm2, new_idents)
+
+DimPlot(wbm2, reduction = 'umap', cols = color_pal)
+```
+
+```{r seeing HTOS}
+# summary(colnames(wbm2) %in% hto$cell)
+# dim(wbm2)[2]
+# summary(hto$cell %in% colnames(wbm2))
+```
+
+We are lossing 1,310 of 4,584 (28%) cells that don't have an HTO label. 
+
+```{r adding HTOs to metadata object}
+#head(rownames(wbm2@meta.data))
+
+cells_to_use <- hto$cell[hto$cell %in% rownames(wbm2@meta.data)]
+hto <- hto[hto$cell %in% rownames(wbm2@meta.data),]
+wbm3 <- subset(wbm2, cells = cells_to_use)
+
+#dim(wbm3)
+
+#summary(rownames(wbm3@meta.data) == hto$cell)
+
+wbm3$hto <- hto$HTO
+
+wbm3$state <- ifelse(wbm3$hto == 'HTO1', 'Mpl',
+                     ifelse(wbm3$hto == 'HTO2', 'enrMpl',
+                            ifelse(wbm3$hto == 'HTO3', 'Migr1', 'enrMigr1')))
+
+DimPlot(wbm3, reduction = 'umap', split.by = 'state', 
+        cols = color_pal, ncol = 2, pt.size = .01) +
+        theme_bw() +
+        theme(text = element_text(size = 10, family = 'sans'))
+```
+
+```{r quant setup}
+wbm3$new_idents <- Idents(wbm3)
+
+tbl <- as.data.frame(table(wbm3$state, wbm3$new_idents))
+#tbl
+colnames(tbl) <- c('state','cell_type','count')
+
+tbl$state_count <- ifelse(tbl$state == 'enrMigr1', sum(tbl[tbl$state == 'enrMigr1',]$count),
+                          ifelse(tbl$state == 'Migr1', sum(tbl[tbl$state == 'Migr1',]$count),
+                                 ifelse(tbl$state == 'enrMpl', sum(tbl[tbl$state == 'enrMpl',]$count),
+                                                                            sum(tbl[tbl$state == 'Mpl',]$count))))
+tbl$perc <- round(tbl$count/tbl$state_count,4)*100
+
+comb_counts <- c()
+cnt <- 1
+for (i in levels(tbl$cell_type)){
+        #print(i)
+        comb_counts[cnt] <- sum(tbl[tbl$cell_type == i,]$perc)
+        cnt <- cnt + 1
+}
+tbl$comb_perc <- rep(comb_counts, each = 4)
+tbl <- tbl[order(tbl$comb_perc, decreasing = T),]
+#tbl
+
+tbl$Condition <- factor(tbl$state, levels = c('Migr1','enrMigr1','Mpl', 'enrMpl'))
+ggplot(data = tbl, aes(x = Condition, y = perc, fill = cell_type)) +
+        geom_bar(stat = 'identity') + 
+        ylim(0,100) +
+        scale_fill_manual(values = color_pal) +
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Condition') +
+        #NoLegend()+
+        scale_y_continuous(position = 'right') +
+        theme(text = element_text(size = 10, family = 'sans')) 
+```
+
+
+# Raw Numbers
+
+```{r bar graph}
+tbl$exp <- "Nbeal"
+tbl2$exp <- "Mpl"
+
+#tbl3 <- tbl2
+#tbl2 <- tbl3
+tbl$state <- ifelse(tbl$state == 'Migr1', 'Control',
+                     ifelse(tbl$state == 'Mpl','Mutant',
+                            ifelse(tbl$state == 'enrMigr1', 'enrControl','enrMutant')))
+
+#tbl4 <- tbl
+#tbl <- tbl4
+#tbl$cell_type <- factor(tbl$cell_type, levels = rev(levels(as.factor(tbl$cell_type))))
+
+tbl$state <- factor(tbl$state, levels = c('Control','Mutant','enrControl','enrMutant'))
+
+ggplot(tbl, aes(x = cell_type, y = count, fill = state)) + 
+        geom_bar(stat = 'identity', position = position_dodge()) + 
+        #coord_flip() +
+        theme_bw() +
+        geom_text(stat = 'identity', aes(label = count),
+                  position = position_dodge(width = 1),
+                  vjust = -.1, size = 2.5) +
+        xlab('Cell Type') + ylab('Cell Count') +
+        theme(text = element_text(size = 10, family = 'sans'),
+              legend.title.align = 0.5,
+              legend.position = 'bottom',
+              legend.direction = 'vertical') +
+        ggtitle('Nbeal')
+
+#tbl$state <- factor(tbl$state, levels = c('Control','Mutant','enrControl','enrMutant'))
+```
+
+```{r another bar graph}
+
+#tbl2$cell_type <- factor(tbl2$cell_type, levels = rev(levels(as.factor(tbl2$cell_type))))
+tbl3 <- tbl2
+
+
+
+ggplot(tbl2, aes(x = cell_type, y = count, fill = state)) + 
+        geom_bar(stat = 'identity', position = position_dodge()) + 
+        #coord_flip() +
+        theme_bw() +
+        geom_text(stat = 'identity', aes(label = count),
+                  position = position_dodge(width = 1),
+                  vjust = -.1, size = 2.5) +
+        xlab('Cell Type') + ylab('Cell Count') +
+        theme(text = element_text(size = 10, family = 'sans'),
+              legend.title.align = 0.5,
+              legend.position = 'bottom',
+              legend.direction = 'vertical') + 
+        ggtitle('Mpl')
+```
+

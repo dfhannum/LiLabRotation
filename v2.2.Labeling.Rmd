@@ -1,0 +1,206 @@
+---
+title: "v2 Cell/Cluster Labeling "
+author: "D. Ford Hannum Jr."
+date: "8/25/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(scRNAseq)
+```
+
+```{r printing session info, include = T}
+sessionInfo()
+```
+
+```{r loading data}
+# Calling the Seurat variable wbm instead of comb.int which is what it was previously
+
+wbm <- readRDS('./data/v2/combined.integrated.rds')
+```
+
+# Introduction
+
+In v2 of the analysis we decided to include the control mice from the Nbeal experiment with the Migr1 and Mpl mice. The thought is that it may be good to have another control, since the Migr1 control has irradiated and had a bone marrow transplantation. I'm going to split the Rmarkdown files into separate part, to better organize my analysis.
+
+## This File
+
+Here I will in include my efforts in to labeling the cell clusters in the integrated dataset. Planned analysis for labeling cell clusters:
+
+1. SingleR analysis: using both reference datasets; doing centroid analysis, and looking at individual cells
+2. Marker gene expression: looking at cell type specific marker genes
+3. Comparing to labeled human single cell whole bone marrow
+
+# SingleR Analysis
+
+Following along with previous analyses I've done and also the [SingleR documentation](https://www.bioconductor.org/packages/release/bioc/vignettes/SingleR/inst/doc/SingleR.html).
+
+```{r singleR setup and running}
+
+# Loading up reference datasets
+m.ref.immgen <- ImmGenData()
+m.ref.mus <- MouseRNAseqData()
+
+ref <- list(m.ref.immgen, m.ref.mus)
+ref.label <- list(m.ref.immgen$label.main, m.ref.mus$label.main)
+
+# Creating a sc experiment from our seurat object
+
+SCwbm <- as.SingleCellExperiment(wbm)
+
+# Predicting the Cluster label
+pred_cluster <- SingleR(test = SCwbm,
+                        ref = ref,
+                        labels = ref.label,
+                        method = 'cluster',
+                        clusters = SCwbm$seurat_clusters)
+
+# Predicting individual cell labels
+pred_cell <- SingleR(test = SCwbm,
+                     ref = ref,
+                     labels = ref.label,
+                     method = 'single')
+```
+
+## Cluster Labels
+
+```{r singleR cluster labels}
+pred_cluster$scores
+
+pred_cluster$labels
+
+pred_cluster$pruned.labels
+
+pred_cluster$orig.results
+
+pred_scores_cluster <- pred_cluster$scores
+
+# Deleting columns without any values
+
+pred_scores_cluster <- as.data.frame(pred_scores_cluster[,colSums(is.na(pred_scores_cluster)) != nrow(pred_scores_cluster)])
+
+rownames(pred_scores_cluster) <- 0:14
+
+colnames(pred_scores_cluster)[8:13] <- paste0(colnames(pred_scores_cluster)[8:13],'-2')
+
+pred_scores_cluster <- gather(pred_scores_cluster, Cell.Type, Score, factor_key = T)
+
+pred_scores_cluster$seurat.cluster <- rep(0:14, 13)
+
+pred_scores_cluster$ref <- ifelse(is.na(tstrsplit(pred_scores_cluster$Cell.Type,'-')[[2]]), 'ref1','ref2')
+
+pred_scores_cluster$seurat.cluster2 <- as.factor(pred_scores_cluster$seurat.cluster)
+
+pred_scores_cluster$score2 <- ifelse(is.na(pred_scores_cluster$Score), 0, pred_scores_cluster$Score)
+
+
+
+ggplot(data = pred_scores_cluster, aes(y = Cell.Type, x = seurat.cluster2, 
+                                       fill = ref, alpha = score2)) +
+        geom_tile() +
+        scale_fill_manual(values = c('red','blue'))
+```
+
+```{r creating label summary}
+
+sum <- as.data.frame(matrix(ncol = 4, nrow = 15))
+
+colnames(sum) <- c('Cluster','SingleR-cluster-ref1','SingleR-cluster-ref2','SingleR-cluster-comb')
+
+sum$Cluster <- 0:14
+
+sum$`SingleR-comb` <- pred_cluster$pruned.labels
+
+sum$`SingleR-ref1` <- c('Neutrophils','Neutrophils','Stem Cells','Neutrophils', 
+                        'B Cells','Basophils','Monocytes','B cells',
+                        'Macrophages','Neutrophils','T cells','B cells',
+                        'Stem Cells','B cells','B cells')
+
+sum$`SingleR-ref2` <- c('Granulocytes','Granulocytes','Granulocytes','Granulocytes',
+                        'B cells', 'Granulocytes', 'Monocytes','B cells','Macrophages',
+                        'Erythrocytes','T cells','B cells','Granulocytes', 'B cells','B cells')
+
+sum
+```
+
+```{r pred SingleR cell}
+# pulling out the information we need
+pred_cell_score <- pred_cell[,c('pruned.labels','reference')]
+
+# Adding the seurat cluster to the cell
+#summary(rownames(pred_cell_score) == rownames(wbm@meta.data))
+pred_cell_score$cluster <- wbm$seurat_clusters
+
+cell_score <- as.data.frame(table(paste0(pred_cell_score$pruned.labels, pred_cell_score$reference),pred_cell_score$cluster))
+
+colnames(cell_score) <- c('Cell Type','Cluster','Count')
+
+ggplot(cell_score[cell_score$Cluster == 0,], aes(x = Cluster, y = Count, fill = `Cell Type`)) + 
+        geom_bar(stat = 'identity', position = position_dodge()) +
+        theme_bw() +
+        geom_text(stat = 'identity', aes(label = Count),
+                  position = position_dodge(width = .9),
+                  vjust = -.1, size = 2.5)
+
+cell_score$cluster_count <- NA
+
+for (i in unique(cell_score$Cluster)){
+        cell_score[cell_score$Cluster ==i,]$cluster_count <- 
+                sum(cell_score[cell_score$Cluster ==i,]$Count)
+        
+}
+
+cell_score$count_per <- round(cell_score$Count/cell_score$cluster_count,2)*100
+
+ggplot(cell_score, aes (x = Cluster, y = count_per, fill = `Cell Type`)) +
+        geom_bar(stat = 'identity', position = position_dodge()) +
+        theme_bw() +
+        geom_text(stat = 'identity', aes(label = count_per),
+                  position = position_dodge(width = .9),
+                  vjust = -.1, size = 2.5)
+
+ggplot(cell_score, aes(x = Cluster, y = `Cell Type`, fill = count_per)) +
+        geom_tile() +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',
+                             midpoint = 50)
+
+cell_score$ref <- grepl('1',cell_score$`Cell Type`)
+cell_score$ref <- ifelse(cell_score$ref == T, 'ref1','ref2')
+
+# ggplot(cell_score, aes(x = Cluster, y = `Cell Type`, alpha = count_per,
+#                        fill = ref)) +
+#         geom_tile() +
+#         scale_fill_manual(values = c('red','blue'))
+```
+
+The above image shows how best to interpret the cell prediction. Clusters (columns) that have dark red rectangles, or have shaded rectangles featuring similar cell types (ie Neutrophils/Granulocytes) lend confidence to cluster labels. Clusters like 12 show many different labels, with NA cell types, shows a lower confidence in cluster labels.
+
+```{r summ add singleR cell}
+# Just adding the label of the highest count
+
+sum$SingleR_cell_comb <- c('Granulocytes','Granulocytes','Stem Cells', 'Granulocyte',
+                           'B cells', 'Basophils', 'Monocytes','B cells', 
+                           'Macrophages','Erythrocytes', 'T cells', 'B cells',
+                           'Stem Cells','B cells', 'NA')
+
+sum
+```
+
+# Marker Gene Expression
+
+Cell type specific marker gene expression 

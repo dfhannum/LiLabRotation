@@ -1,0 +1,36 @@
+---
+title: "Velocity Project"
+author: "D. Ford Hannum Jr."
+date: "7/30/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+```
+
+Looking at using the velocyto package that Qianyi showed in a CZI presentation.
+
+```{r loading data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+#DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+```{r changing the levels of the data}
+new_levels <- c('Granulocyte','Granulocyte','Granulocyte', 'B-cell','MEP', 
+        'Granulocyte', 'Granulocyte','Monocyte','Macrophage','Erythroid','B-cell',
+        'T-cell/NK', 'MK')
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+```

@@ -1,0 +1,204 @@
+---
+title: "Figure Generation v5"
+author: "D. Ford Hannum Jr."
+date: "7/28/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+```
+
+```{r loading data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+#DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+```{r changing the levels of the data}
+new_levels <- c('Granulocyte','Granulocyte','Granulocyte', 'B-cell','Progenitor', 
+        'Granulocyte', 'Granulocyte','Monocyte','Macrophage','Erythroid','B-cell',
+        'T-cell/NK', 'MK')
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+```
+
+The fifth version of the figures.
+
+# Figure 3
+
+## a) UMAP Projection of Data
+
+A UMAP projection of the data, split into four panes for the four different conditions (Migr1/Mpl, WBM/enrWBM).
+
+```{r 3a}
+
+color_pal <- c("#0072B2", "#CC79A7", "#009E73", "#56B4E9","#D55E00",
+               "#E69F00","#999999", "black")
+
+wbm@meta.data$state <- factor(wbm@meta.data$state, levels = levels(as.factor(wbm@meta.data$state))[c(3,4,1,2)])
+
+# DimPlot(wbm, reduction = 'umap', split.by = 'state', cols = color_pal, ncol = 2) +
+#         theme_bw() + 
+#         theme(axis.text = element_blank(), strip.text = element_blank(),
+#               text = element_text(size = 10, family = 'sans'))
+
+wbm$identity <- ifelse(wbm$condition == 'mut', 'Mpl', 'Migr1')
+
+DimPlot(wbm, reduction = 'umap', split.by = 'identity', 
+        cols = color_pal, ncol = 2, pt.size = .01) +
+        theme_bw() +
+        theme(text = element_text(size = 10, family = 'sans'))
+
+ggsave('./figures/version5/3a_umap_1x2.pdf', height = 3, width = 6, units = 'in')
+```
+
+**Figure Legend** a) A UMAP projection of the data, split into four panes for the different experimental states.
+
+## b) Bar Quantification of Cell Counts
+
+A bar graph for each condition (Migr1/Mpl) and the distribution of cells within each cluster
+
+```{r 3b setup}
+wbm$new_cluster_IDs <- wbm@meta.data$cluster_IDs
+levels(wbm@meta.data$new_cluster_IDs) <- new_levels
+wbm_wbm <- wbm@meta.data[wbm@meta.data$celltype == 'WBM',]
+
+tbl <- as.data.frame(table(wbm_wbm$condition, wbm_wbm$new_cluster_IDs))
+colnames(tbl) <- c('condition','cell_type','count')
+tbl$condition_count <- ifelse(tbl$condition == 'control', sum(tbl[tbl$condition == 'control',]$count),
+                              sum(tbl[tbl$condition == 'mut',]$count))
+tbl$perc <- round(tbl$count/tbl$condition_count,4)*100
+#tbl
+
+comb_counts <- c()
+cnt <- 1
+for (i in levels(tbl$cell_type)){
+        #print(i)
+        comb_counts[cnt] <- sum(tbl[tbl$cell_type == i,]$perc)
+        cnt <- cnt + 1
+}
+tbl$comb_perc <- rep(comb_counts, each = 2)
+tbl <- tbl[order(tbl$comb_perc, decreasing = T),]
+tbl$condition <- ifelse(tbl$condition == 'control', 'Control','Mpl')
+tbl$`Cell Type` <- tbl$cell_type
+tbl
+```
+
+```{r 3b}
+tbl$Condition <- ifelse(tbl$condition == 'Mpl', 'Mpl', 'Migr1')
+ggplot(data = tbl, aes(x = Condition, y = perc, fill = `Cell Type`)) +
+        geom_bar(stat = 'identity') + 
+        ylim(0,100) +
+        scale_fill_manual(values = color_pal) +
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Condition') +
+        NoLegend()+
+        scale_y_continuous(position = 'right') +
+        theme(text = element_text(size = 10, family = 'sans')) 
+
+ggsave('./figures/version5/3b_vertical_2bar.pdf', device = 'pdf', units = 'in',
+       height = 3, width = 1.5)
+```
+
+**Figure Legend** b) Percentage o cells distributed to each cluster for the two conditions (Migr1, Mpl). There is a clear increase in the percentage of cells coming from the granulocyte cluster (blue) in Mpl (90%) compared to Migr1 (42%). There is also a decrease in the number of B-cells (pink) in Migr1 (37%) to Mpl (0.5%), and T-cells/NKs in Migr1 (6%) to Mpl (0.4%).
+
+*Note* Not sure if I should add more examples. Also can include the table in supplementary figures. 
+
+## c) Marker Plots
+
+Originally the though was to due violing plots for marker genes, but here I am looking at doing a dot plot.
+
+```{r looking for markers, include = F, }
+ery.markers <- FindMarkers(wbm,
+                           ident.1 = 'Erythroid',
+                           logfc.threshold = log(2),
+                           test.use = 'MAST')
+ery.markers <- ery.markers[ery.markers$p_val_adj < 0.05,]
+ery.markers <- ery.markers[order(ery.markers$avg_logFC, decreasing = T),]
+
+head(ery.markers,20)
+
+
+markers <- FindMarkers(wbm,
+                           ident.1 = 'Macrophage',
+                           logfc.threshold = log(2),
+                           test.use = 'MAST')
+markers <- markers[markers$p_val_adj < 0.05,]
+markers <- markers[order(markers$avg_logFC, decreasing = T),]
+
+head(markers,20)
+
+markers <- FindMarkers(wbm,
+                           ident.1 = 'MEP',
+                           logfc.threshold = log(2),
+                           test.use = 'MAST')
+markers <- markers[markers$p_val_adj < 0.05,]
+markers <- markers[order(markers$avg_logFC, decreasing = T),]
+
+head(markers,20)
+```
+```{r mast cell markers, include = F}
+mast.genes <- c('Cpa3','Prss34','Mcpt8')
+
+VlnPlot(wbm, mast.genes, pt.size = 0)
+
+mep.genes <- c('Gata1','Gata2','Runx1','Tal1')
+
+VlnPlot(wbm, mep.genes, pt.size = 0)
+
+mep.antagonist.genes <- c('Klf1','Fli1')
+
+VlnPlot(wbm, mep.antagonist.genes, pt.size = 0)
+```
+
+```{r marker dot plot}
+marker.genes <- c('Itga2b','Vwf','Gata3','Alas2','Vcam1','Cd68','Gata2','Ighd', 'Ngp')
+
+DotPlot(wbm, features = marker.genes) +
+        ylab ('Cell Cluster') + xlab ('Marker Genes') +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text.x = element_text(angle = 45, vjust = .5, size = 10, family = 'sans'),
+              axis.text.y = element_text(family = 'sans', size = 10),
+              axis.title = element_text(family = 'sans', size = 12))
+
+ggsave('./figures/version5/3c_marker_gene_dotplot.pdf', device = 'pdf', units = 'in',
+       height = 3.5, width = 6)
+```
+
+**Figure Legend** c) A dot plot of marker gene expression in the clusters. Circle size represents the percentage of cells in each cluster that express the marker gene. Color represents the average expression of the marker gene in the cluster. Large dark circles indicate marker genes are expressed highly in the majority of cells in a cluster.
+
+
+```{r dimheatmap}
+DoHeatmap(wbm,features = marker.genes, label = F) 
+
+FeaturePlot(wbm, features = marker.genes)
+```
+
+## Literature for Markers:
+
+**Ngp**: from uniprot "Expressed in myeloid bone marrow cells. Expressed in neutrophilic precursors (at protein level) (PubMed:[8749713](https://www.uniprot.org/citations/8749713)). Expressed in myeloid bone marrow cells (PubMed:[21518852](https://www.uniprot.org/citations/21518852))"
+
+**Ighd**: immunoglobulin heavy constant delta. Seems to clearly be expressed by B-cells, but still working on a good reference.
+
+**Gata2**: From Krause paper: a transcription factor required for both lineages but bind in different combinations [ref](https://ashpublications.org/blood/article/113/10/2191/24361/SCL-and-associated-proteins-distinguish-active)
+
+**Cd68**: a human macrophage marker [ref](https://pubmed.ncbi.nlm.nih.gov/7680921/). A more general [ref](https://www.nature.com/articles/labinvest2016116/)
+ 
+**Vcam1**: found papers using Vcam1+ monocytes, but haven't found a great reference.
+
+**Alas2**: an erythroid-specfiic 5-aminolevulinate synthase gene [ref](https://pubmed.ncbi.nlm.nih.gov/12663458/)
+
+**Gata3**: plays a role in the regulation of T-cells [ref](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2998182/)
+
+**Vwf** and **Itga2b**: I figure the reference would best be left to y'all.

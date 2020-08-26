@@ -328,3 +328,9 @@ ggplot(ac, aes(x = CT1, y = CT2, fill = over_fifty5)) +
 
 ```
 
+# Centroid to Centroid Comparison with Highly Variable Genes
+
+```{r}
+
+```
+

@@ -1,0 +1,81 @@
+---
+title: "T-Sne and PCA Look"
+author: "D. Ford Hannum Jr."
+date: "7/30/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+```
+
+```{r loading data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+#DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+```{r changing the levels of the data}
+new_levels <- c('Granulocyte','Granulocyte','Granulocyte', 'B-cell','MEP', 
+        'Granulocyte', 'Granulocyte','Monocyte','Macrophage','Erythroid','B-cell',
+        'T-cell/NK', 'MK')
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+```
+
+```{r tsne}
+wbm <- RunTSNE(wbm, dims = 1:10)
+```
+
+```{r 3a pallette}
+
+color_pal <- c("#0072B2", "#CC79A7", "#009E73", "#56B4E9","#D55E00",
+               "#E69F00","#999999", "black")
+
+DimPlot(wbm, reduction = 'tsne', 
+        cols = color_pal, ncol = 2, pt.size = .01) +
+        theme_bw() +
+        theme(text = element_text(size = 10, family = 'sans'))
+```
+
+Doesn't look any better than the UMAP plot, so sticking with the UMAP plot makes the most sense.
+
+
+```{r pca dimension reduction}
+DimPlot(wbm, reduction = 'pca', 
+        cols = color_pal, ncol = 2, pt.size = .01) +
+        theme_bw() +
+        theme(text = element_text(size = 10, family = 'sans'))
+
+DimPlot(wbm, reduction = 'pca', split.by = 'condition', 
+        cols = color_pal, ncol = 2, pt.size = .01) +
+        theme_bw() +
+        theme(text = element_text(size = 10, family = 'sans'))
+
+DimPlot(wbm, reduction = 'pca', split.by = 'state', 
+        cols = color_pal, ncol = 2, pt.size = .01) +
+        theme_bw() +
+        theme(text = element_text(size = 10, family = 'sans'))
+```
+
+I find it interesting that PC2 seems to be separating the MEPs from all other cells.
+
+
+```{r looking at PC2}
+print(wbm[['pca']], dims = 2, nfeatures = 10)
+
+VizDimLoadings(wbm, dims = 2, reduction = 'pca')
+
+DimHeatmap(wbm, dims = 2, cells = 500, balanced = T)
+```
+

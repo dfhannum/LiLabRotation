@@ -1,0 +1,175 @@
+---
+title: "Monocle on Progenitors"
+author: "D. Ford Hannum Jr."
+date: "8/12/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(monocle)
+```
+
+# Introduction
+
+Looking at the monocle trajectory of the progenitors. Also looking at it when including MKs and ERYs. Following previous work done on monocle and following the [vignette](http://cole-trapnell-lab.github.io/monocle-release/docs/#constructing-single-cell-trajectories)
+
+```{r loading data}
+swbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+```
+
+```{r changing the levels of the data}
+new_levels <- c('Granulocyte','Granulocyte','Granulocyte', 'B-cell','Progenitor', 
+        'Granulocyte', 'Granulocyte','Monocyte','Macrophage','Erythroid','B-cell',
+        'T-cell/NK', 'MK')
+names(new_levels)  <- levels(swbm)
+#new_levels
+swbm <- RenameIdents(swbm, new_levels)
+
+DimPlot(swbm, reduction = 'umap')
+```
+
+```{r creating monocle object}
+mtx <- readMM('./data/filtered_feature_bc_matrix/matrix.mtx')
+features <- read.table('./data/filtered_feature_bc_matrix/features.tsv')
+colnames(features)[2] <- 'gene_short_name'
+
+barcodes <- read.table('./data/filtered_feature_bc_matrix/barcodes.tsv')
+
+pd <- new("AnnotatedDataFrame", data = barcodes)
+fd <- new("AnnotatedDataFrame", data = features)
+
+library(Matrix)
+
+cds <- newCellDataSet(as(as.matrix(mtx),"sparseMatrix"),
+                      phenoData = pd,
+                      featureData = fd,
+                      lowerDetectionLimit = 0.5,
+                      expressionFamily = negbinomial.size())
+```
+
+```{r subsetting to valid cells} 
+
+valid_cells <- colnames(swbm)
+
+valid_cells <- paste0(valid_cells, '-1')
+
+valid_cells <- rownames(subset(pData(cds),
+                               V1 %in% valid_cells))
+
+cds <- cds[,valid_cells]
+```
+
+```{r adding pData to cds object}
+pData(cds)[,c('nCountRNA', 'nFeature_RNA', 'celltype','condition', 'percent.mt',
+              'seurat_clusters', 'cluster_IDs')] <- swbm@meta.data[,c(2,3,5,6,8,11,15)]
+colnames(pData(cds))[1] <- 'cell'
+pData(cds)[,'identity'] <- Idents(swbm)
+head(pData(cds),6)
+```
+
+# Focus on Progenitor Cluster
+
+```{r prog cluster ordering}
+
+prog <- cds[,cds$identity == 'Progenitor']
+
+prog <- estimateSizeFactors(prog)
+prog <- estimateDispersions(prog)
+
+prog <- detectGenes(prog, min_expr = 0.1)
+
+fData(prog)$use_for_ordering <- fData(prog)$num_cells_expressed > 0.05 * ncol(prog)
+
+prog <- reduceDimension(prog,
+                        max_compongents = 2,
+                        norm_method = 'log',
+                        num_dim = 3,
+                        reduction_method = 'tSNE',
+                        verbose = F)
+
+prog <- clusterCells(prog, verbose = F)
+
+plot_cell_clusters(prog, color_by = 'Cluster')
+
+prog <- reduceDimension(prog, reduction_method = 'DDRTree')
+
+prog <- reduceDimension()
+
+prog <- orderCells(prog)
+
+plot_cell_trajectory(prog)
+
+plot_cell_trajectory(prog, color_by = 'Pseudotime')
+
+plot_cell_trajectory(prog, color_by = 'State') +
+        facet_wrap(~State, nrow = 3)
+
+plot_cell_trajectory(prog, color_by = 'celltype')
+
+plot_cell_trajectory(prog, color_by = 'Cluster')
+```
+
+## Checking of the Pseudotime Ordering
+
+In the example they look at proliferation genes (Ccnb2, Myod1, Myog) and see how they're expressed over pseudotime. This also checks to see if the pseudotime is reversed or not.
+
+These genes made sense for the example, but we should figure out our own (looking at the marker genes we've been using to distinguish progenitors).
+
+### Example Genes
+
+```{r checking proliferation markers}
+blast_genes <- row.names(subset(fData(prog), 
+                                gene_short_name %in% c('Mpo','Ank1','Vwf')))
+plot_genes_jitter(prog[blast_genes,],
+                  grouping = 'State',
+                  min_expr = 0.1)
+plot_genes_violin(prog[blast_genes,],
+                  grouping = 'State',
+                  min_expr = 0.1)
+```
+
+They also checked markers of myogenic progress.
+
+```{r myogenic progress}
+prog_expressed_genes <- row.names(subset(fData(prog), num_cells_expressed >=10))
+
+prog_filtered <- prog[prog_expressed_genes,]
+
+my_genes <- row.names(subset(fData(prog_filtered),
+                              gene_short_name %in% c('Itga2b','Gata1','Mpo', 'Dhrs3',
+                                                     'Vwf','Myb','Cd44','Kit')))
+
+prog_subset <- prog_filtered[my_genes,]
+
+
+featureNames(prog_subset) <- fData(prog_subset)$gene_short_name
+sampleNames(prog_subset) <- prog_subset$cell
+
+plot_genes_in_pseudotime(prog_subset[1:3,])
+plot_genes_in_pseudotime(prog_subset[4:6,])
+plot_genes_in_pseudotime(prog_subset[7:8,])
+```
+
+# DE By Trajectory States
+
+```{r de for trajectory states}
+
+diff_test_res <- differentialGeneTest(prog,
+                                      fullModelFormulaStr = '~State')
+
+diff_test_res <- diff_test_res[diff_test_res$qval < 0.05,]
+head(diff_test_res)
+
+```
+

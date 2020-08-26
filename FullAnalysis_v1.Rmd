@@ -1,0 +1,172 @@
+---
+title: "Write Up w/ Figures v1"
+author: "D. Ford Hannum Jr."
+date: "8/19/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(VennDiagram)
+```
+
+# Introduction
+
+Here I plan on starting from the first steps of analysis and including all the numbers that would be necessary for the paper. I also plan on including the write-up throughout the document as well.
+
+```{r print R session, include = T}
+sessionInfo()
+```
+
+```{r loading data from 10X}
+wbm.data <- Read10X(data.dir = './data/raw_feature_bc_matrix/')
+
+# Creating Seurat Object
+
+wbm <- CreateSeuratObject(counts = wbm.data, project = 'Mpl', min.cells = 3, min.features = 200)
+
+# Reading in the HTO labels provided by Dr. Brian Parkin
+
+htos <- read.csv('./data/HTOs.csv')
+
+dim(htos)
+
+# Removing all the cells without a label
+
+htos <- htos[htos$HTOs != '',]
+
+dim(htos)
+
+# Adding the conditioni from the HTO tagged, from an e-mail from Priya
+
+htos$condition <- ifelse(htos$HTOs == 'HTO-1', 'Mpl',
+                         ifelse(htos$HTOs == 'HTO-2', 'enrMpl',
+                                ifelse(htos$HTOs == 'HTO-3', 'Migr1','enrMigr1')))
+
+# Subsetting the two data frames so they only include cells that overlap
+
+wbm <- wbm[,colnames(wbm) %in% htos$Barcode]
+
+htos <- htos[htos$Barcode %in% colnames(wbm),]
+
+# Making sure the cell order is maintained between the two dataframes, so I can
+# just add the condition to the meta data
+
+summary(rownames(wbm@meta.data) == htos$Barcode)
+
+# Adding the condition to the meta data
+
+wbm@meta.data$Condition <- htos$condition
+
+```
+
+We started out with **11,278** cells in the experiment. After a basic filtering when creating the Seurat object (minimum of 200 features, also filtered for genes that were expressed in a minimum of 3 cells) we had **10,697** cells. There were only **7,542** cells that had an HTO label, of which **7,228** passed the basic Seurat filtering.
+
+```{r setting cutoffs for cell inclusion}
+# Adding a variable for percentage of features coming from mitochondrial genes
+
+wbm[['percent.mt']] <- PercentageFeatureSet(wbm, pattern = '^mt')
+
+ggplot(data = wbm@meta.data, aes(x = nCount_RNA)) + geom_density() +
+        geom_vline(xintercept = 50000, col = 'red', linetype = 2) +
+        theme_bw()
+
+ggplot(data = wbm@meta.data, aes(x = nFeature_RNA)) + geom_density() +
+        geom_vline(xintercept = c(500,5000), col = 'red', linetype = 2) +
+        theme_bw()
+
+ggplot(data = wbm@meta.data, aes(x = percent.mt)) + geom_density() +
+        geom_vline(xintercept = 10, col = 'red', linetype = 2) +
+        theme_bw()
+
+summary(wbm[['nCount_RNA']] < 50000)
+summary(wbm[['nFeature_RNA']] > 500 & wbm[['nFeature_RNA']] < 5000)
+summary(wbm[['percent.mt']] > 10)
+
+nCount_RNA.passed.cells <- colnames(wbm[,wbm[['nCount_RNA']] < 50000])
+nFeature_RNA.passed.cells <- colnames(wbm[,wbm[['nFeature_RNA']] < 5000 & wbm[['nFeature_RNA']] > 500])
+mt.percent.passed.cells <- colnames(wbm[,wbm[['percent.mt']] < 10])
+
+venn.diagram(x = list(nCount_RNA.passed.cells, nFeature_RNA.passed.cells, mt.percent.passed.cells),
+             category.names = c('nCount_RNA','nFeature_RNA','percent.mt'),
+             filename = '#VennDiagramPlot_for_filtering.png', output = T)
+
+wbm <- subset(wbm, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 &
+                    percent.mt < 10 & nCount_RNA < 50000)
+dim(wbm)
+``` 
+
+Dashed lines indicate cutoffs I used for subsetting the Seurat dataset.
+
+![Venn Diagram of Subsetted Cells Passing Certain Thresholds]('./#VennDiagramPlot_for_filtering.png)
+
+We end up with **6,121** cells in the experiment.
+
+```{r data manipulation steps, message=F}
+
+# Normalizing the data
+wbm <- NormalizeData(wbm, normalization.method = 'LogNormalize', scale.factor = 10000)
+
+# Finding the most variable features to run future analysis on
+wbm <- FindVariableFeatures(wbm, selection.method = 'vst', nfeatures = 2000)
+
+all.genes <- rownames(wbm)
+
+# Scaling the data
+wbm <- ScaleData(wbm, features = all.genes)
+
+# Run principal component analysis
+wbm <- RunPCA(wbm, features = VariableFeatures(wbm), verbose = F)
+
+ElbowPlot(wbm) # going to use the first 15 PCs
+
+wbm <- FindNeighbors(wbm, dims = 1:15)
+
+## Looking at how the number of clusters vary based on different resolutions
+
+res <- seq(0,1, by = .05)
+cluster_list <- c()
+
+for (i in res){
+        # Finding clusters for resolution i
+        clusters <- FindClusters(wbm, resolution = i)
+        
+        # Counting the number of clusters
+        clusters <- length(levels(clusters$seurat_clusters))
+        
+        # Appending the number of clusters to a list
+        cluster_list <- c(cluster_list,clusters)
+}
+
+plot(cluster_list) # going with 10 which is resolution 0.45
+
+wbm <- FindClusters(wbm, resolution = 0.45)
+
+# Running TSNE and UMAP
+
+wbm <- RunTSNE(wbm, dims = 1:15)
+
+wbm <- RunUMAP(wbm, dims = 1:15)
+```
+
+# Plots of Full Data
+
+```{r umap plots all data}
+DimPlot(wbm, reduction = 'umap')
+```
+
+
+

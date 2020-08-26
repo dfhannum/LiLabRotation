@@ -1,0 +1,539 @@
+---
+title: "MEP Cluster Introspection"
+author: "D. Ford Hannum Jr."
+date: "7/16/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+```
+
+# Introduction
+
+Last week we saw that the megakaryocyte/erythrocyte progenitors (MEPs) were high in the Vwf complex genes (Gp1ba, Gp1bb, Gp6). These are markers of mature MKs and we would have expected to see them in our MK population (where there was little to no expression), and not see them in our MEPs. So in this analysis I'm going to look into the MEP label to see if it was previously mislabeled.
+
+# Overview and Vwf Complex Expression
+
+```{r loading data}
+wbm <- readRDS('./data/wbm_clustered_filtered_named.rds')
+#DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+```{r changing the levels of the data}
+new_levels <- c('Granulocyte','Granulocyte','Granulocyte', 'B-cell','MK', 
+        'Granulocyte', 'Granulocyte','Monocyte','Macrophage','Erythroid','B-cell',
+        'T-cell/NK', 'MEP')
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+wbm$new_cluster_IDs <- wbm@meta.data$cluster_IDs
+```
+
+```{r umap}
+DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+We see that the MK population is distinct cluster, far away from all other clusters. The MEP cluster is very close to the macrophage and erythroid populations.
+
+## Vwf Markers
+
+```{r vwf expression}
+vwf.genes <- c('Gp1ba', 'Gp1bb', 'Gp6', 'Gp9')
+
+VlnPlot(wbm, features = vwf.genes)
+
+
+VlnPlot(wbm, features = vwf.genes, split.by = 'condition')
+```
+
+We see some expression of these markers in the MK cluster, but the average is still zero expression. We see relatively high expression in the MEP cluster
+
+## MK Markers
+
+```{r mk genes}
+mk.genes <- c('Itga2b')
+
+VlnPlot(wbm, features = mk.genes)
+```
+
+Both the MK and MEP clusters express Itga2b, though MEP cells have a higher average expression. MEPs express Gp9 (a receptor of the Vwf), whereas MKs have low expression.
+
+## MEP Markers in "MEP" Cluster
+
+Looking for MEP markers. Used this [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4855892/) I picked genes that were expressed in in all there of their MEPs (Kit, Myb, Tgfb1, Cd44). They do a lot looking at MEP subtypes, and once we finalize the MEP cluster/population this would be interesting to look into.
+
+```{r mep markers}
+mep.prim.markers <- c('Cd44','Kit')
+
+mep.ery.markers <- c('Myb','Tmod1','Lef1','Klf1','Cnrip1','Ank1')
+
+mep.mk.markers <- c('Cd9','Lox','Mpl','Vwf', 'Nfib','Cd41')
+
+mep.markers <- 'Dhrs3'
+
+mep.mk.ery.markers <- c('Gata1','Cd36')
+
+print('Primative MEP Markers')
+VlnPlot(wbm, features = mep.prim.markers, pt.size = 0)
+
+print('Erythroid MEP Markers')
+VlnPlot(wbm, features = mep.ery.markers[0:3], pt.size = 0)
+VlnPlot(wbm, features = mep.ery.markers[4:6], pt.size = 0)
+
+print('MK MEP Markers')
+VlnPlot(wbm, features = mep.mk.markers[0:3], pt.size = 0)
+VlnPlot(wbm, features = mep.mk.markers[4:6], pt.size = 0)
+
+print('MEP Markers')
+VlnPlot(wbm, features = mep.markers, pt.size = 0)
+
+print('Ery/MK MEP Markers')
+VlnPlot(wbm, features = mep.mk.ery.markers, pt.size = 0)
+```
+
+**It seems that our MEP label should be changed to a MK label, since they show up as mature megakaryocytes.**
+
+Looking at some of my previous work there wasn't strong evidence to contradict the strong expression of mature MK markers.
+
+**My prediction is that our MK label is more likely the MEP populations. This would be why we see some distinct clusters, as referenced in that paper there are many types of MEPs and some give rise to myeloid cells. This would make sense with some of those clusters showing markers for leukocyte differentiation, etc**
+
+I'm going to look at the markers I've done above within MKs subclusters.
+
+# Looking at MK Subclusters
+
+This is looking at the cluster originally identified as MK, that I believe may actually consist of more MEP cells.
+
+```{r mk subclustering}
+
+wbm@meta.data$condition <- ifelse(wbm@meta.data$condition == 'control', 'Control', "Mpl")
+
+mks <- subset(wbm, new_cluster_IDs %in% 'MK')
+
+mks <- NormalizeData(mks, normalization.method = "LogNormalize", scale.factor = 10000)
+
+all.genes <- rownames(mks)
+
+mks <- FindVariableFeatures(mks, selection.method = 'vst', nfeatures = 2000)
+
+mks <- ScaleData(mks, features = all.genes)
+
+mks <- RunPCA(mks, features = VariableFeatures(mks), verbose = F)
+
+# ElbowPlot(mks) # decided to go with the first 10 PCs
+
+mks <- FindNeighbors(mks, dims = 1:10)
+
+# Resolution decided upon in analysis0716.Rmd
+
+res <- seq(0,1, by = .05)
+
+clst <- c()
+cnt <- 1
+for (i in res){
+        x <- FindClusters(mks, resolution = i, verbose = F)
+        clst[cnt] <- length(unique(x$seurat_clusters))
+        cnt <- cnt + 1
+}
+names(clst) <- res
+clst
+
+mks <- FindClusters(mks , resolution = .4, verbose = F)
+DimPlot(mks, reduction = 'umap')
+
+mks <- RunUMAP(mks, dims = 1:10, verbose = F)
+mks <- RunTSNE(mks, dims = 1:10)
+
+
+```
+
+```{r 4a Umaping}
+DimPlot(mks, reduction = 'umap')
+DimPlot(mks, reduction = 'umap', split.by = 'celltype')
+DimPlot(mks, reduction = 'umap', split.by = 'state')
+
+table(mks$seurat_clusters, mks$state)
+
+DimPlot(mks, reduction = 'umap', split.by = 'condition', label = T, repel = T)
+DimPlot(mks, reduction = 'tsne')
+```
+
+**Clusters 4 & 5 would be considered our normal clusters**
+
+## Vwf Genes
+
+```{r vwf in mks}
+VlnPlot(mks, features = vwf.genes)
+```
+
+## MK Markers
+```{r mks in mk}
+VlnPlot(mks, features = 'Itga2b')
+```
+
+## MEP markers
+
+```{r mep markers in mks}
+print('Other Gran. Markers of Interest')
+gran.genes <- c('Csf3r','Flt3','Socs3')
+VlnPlot(mks, features = gran.genes, pt.size = 0)
+
+print('Gran. Prog. Contamination?')
+gran.contam.genes <- c('Mpo')
+VlnPlot(mks, features = gran.contam.genes, pt.size = 0)
+
+print('Primative MEP Markers')
+VlnPlot(mks, features = mep.prim.markers, pt.size = 0)
+
+print('Erythroid MEP Markers')
+VlnPlot(mks, features = mep.ery.markers[0:3], pt.size = 0)
+VlnPlot(mks, features = mep.ery.markers[4:6], pt.size = 0)
+
+print('MK MEP Markers')
+VlnPlot(mks, features = mep.mk.markers[0:3], pt.size = 0)
+VlnPlot(mks, features = mep.mk.markers[4:5], pt.size = 0)
+
+print('MEP Markers')
+VlnPlot(mks, features = mep.markers, pt.size = 0)
+
+print('Ery/MK MEP Markers')
+VlnPlot(mks, features = mep.mk.ery.markers, pt.size = 0)
+```
+
+## Plot of all
+
+```{r dimplot for mks}
+genes.of.interest <- c(vwf.genes, 'Itga2b',mep.prim.markers,mep.ery.markers, mep.markers, mep.mk.markers, mep.mk.ery.markers)
+
+DotPlot(mks, features = genes.of.interest) + coord_flip()
+DoHeatmap(mks, features = genes.of.interest)
+```
+
+```{r saving RDS to use in monocle}
+#saveRDS(mks,'./data/MK-MEP_subclustering.rds')
+```
+
+# Comparing the Subclusters Excluding Mpo+ Clusters
+
+We are also getting into very granular results, ie I think are sample sizes are getting extremely small, and even with significant p-values I struggle to make conclusions with so few cells.
+
+We are excluding cluster 1, 2, and 4 because they all show expression of granulocyte marker Mpo.
+
+
+```{r count table}
+table(mks$seurat_clusters, mks$state)
+```
+
+So we are comparing clusters 0, 3 and 6 to 5 (normal). 
+
+These are included in the excel spreadsheet data/mep_excluding_mpo+_cells/abn.mep.markers.excluding.mpo.clusters.xlsx
+
+```{r, DE Expression without MPO clustesr}
+
+# abn.mep.markers <- FindMarkers(mks,
+#                                ident.1 = c(0,3,6),
+#                                ident.2 = 5,
+#                                logfc.threshold = log(2),
+#                                test.use = 'MAST')
+# abn.mep.markers <- abn.mep.markers[abn.mep.markers$p_val_adj < 0.05,]
+# 
+# abn.mep.markers <- abn.mep.markers[order(abn.mep.markers$avg_logFC, decreasing = T),]
+# 
+# #write.csv(abn.mep.markers, './data/mep_excluding_mpo+_cells/abn.mep.markers.csv', quote = F, row.names = T)
+# 
+# 
+# # Individual Cluster 0
+# 
+# abn.mep.markers <- FindMarkers(mks,
+#                                ident.1 = 0,
+#                                ident.2 = 5,
+#                                logfc.threshold = log(2),
+#                                test.use = 'MAST')
+# 
+# abn.mep.markers <- abn.mep.markers[abn.mep.markers$p_val_adj < 0.05,]
+# 
+# abn.mep.markers <- abn.mep.markers[order(abn.mep.markers$avg_logFC, decreasing = T),]
+# 
+# #write.csv(abn.mep.markers, './data/mep_excluding_mpo+_cells/abn.mep.cluster0.markers.csv', quote = F, row.names = T)
+# 
+# # Individual Cluster 3
+# 
+# abn.mep.markers <- FindMarkers(mks,
+#                                ident.1 = 3,
+#                                ident.2 = 5,
+#                                logfc.threshold = log(2),
+#                                test.use = 'MAST')
+# 
+# abn.mep.markers <- abn.mep.markers[abn.mep.markers$p_val_adj < 0.05,]
+# 
+# abn.mep.markers <- abn.mep.markers[order(abn.mep.markers$avg_logFC, decreasing = T),]
+# 
+# #write.csv(abn.mep.markers, './data/mep_excluding_mpo+_cells/abn.mep.cluster3.markers.csv', quote = F, row.names = T)
+# 
+# # Individual Cluster 6
+# 
+# abn.mep.markers <- FindMarkers(mks,
+#                                ident.1 = 6,
+#                                ident.2 = 5,
+#                                logfc.threshold = log(2),
+#                                test.use = 'MAST')
+# 
+# abn.mep.markers <- abn.mep.markers[abn.mep.markers$p_val_adj < 0.05,]
+# 
+# abn.mep.markers <- abn.mep.markers[order(abn.mep.markers$avg_logFC, decreasing = T),]
+# 
+# #write.csv(abn.mep.markers, './data/mep_excluding_mpo+_cells/abn.mep.cluster6.markers.csv', quote = F, row.names = T)
+
+```
+
+# Comparing Subcluster 3 versus Mature MK Cluster
+
+Of interest one of the MEP subclusters shows expression of some of the Vwf genes, and the thought was to compare them to the mature MK cluster to see what is differentially expressed between them.
+
+(*Reminder* fold-change greater than 0, means it had greater expression in group 1 (subcluster 3), compared to group 2 (mature filMKs))
+```{r subcluster 3 vs MKs}
+# mep_sub3_cells <- rownames(mks@meta.data[mks@meta.data$seurat_clusters == 3,])
+# #length(mep_sub3_cells
+# 
+# wbm$mep.sub3 <- NA
+# 
+# wbm@meta.data$mep.sub3 <- ifelse(rownames(wbm@meta.data) %in% mep_sub3_cells, 1,
+#                                  ifelse(wbm@meta.data$cluster_IDs == 'MEP', 2, 0 ))
+# 
+# summary(as.factor(wbm@meta.data$mep.sub3))
+# 
+# # 2 represents a mature MK, 1 represents a subcluster of "MEPs" that show some mature markers, 0 are all other cells
+# 
+# sub3_vs_MK <- FindMarkers(wbm,
+#                           ident.1 = 1,
+#                           ident.2 = 2,
+#                           group.by = "mep.sub3",
+#                           logfc.threshold = log(2),
+#                           test.use = "MAST")
+# sub3_vs_MK <- sub3_vs_MK[sub3_vs_MK$p_val_adj < 0.05,]
+# 
+# sub3_vs_MK <- sub3_vs_MK[order(sub3_vs_MK$avg_logFC, decreasing = T),]
+# 
+# #sub3_vs_MK
+# 
+# write.csv(sub3_vs_MK, './data/prog.sub3.vs.MKs.csv', row.names = T, quote = F)
+# 
+# write.table(rownames(sub3_vs_MK[sub3_vs_MK$avg_logFC>0,]), './data/prog.sub3.vs.MKs.up.genes.txt', row.names = F, quote = F)
+# write.table(rownames(sub3_vs_MK[sub3_vs_MK$avg_logFC<0,]), './data/prog.sub3.vs.MKs.down.genes.txt', row.names = F, quote = F)
+```
+
+# Looking at Mast Cell Genes
+
+When looking at genes that distinguish between MEPs and all other clusters, we see mast cell specfic genes. Wondering how they are expressed across the subclusters.
+
+```{r mast markers}
+mast.genes <- c('Cpa3','Prss34','Mcpt8')
+
+VlnPlot(wbm, features = mast.genes, pt.size = 0)
+
+VlnPlot(wbm, features = mast.genes, pt.size = 0, split.by = 'condition')
+
+VlnPlot(mks, features = mast.genes, pt.size = 0)
+```
+
+They seem to be expressed highly across all the sub clusters. This makes me believe that this subcluster is mast cells, which during a quick literature search also express Itga2b (which I thought was the key marker for MKs), which is what lead to it's mislabeling earlier on.
+
+# Markers from Krause Paper
+
+Here is the [paper](https://www.cell.com/cell-reports/pdf/S2211-1247(18)31688-7.pdf). They describe different genes that are required for MEPs (Gata1, Gata2, Runx1, Tal1), and some that are antagonistic for different lineages (Klf1, Fli1).
+
+Going to look at them in all clusters, then within subclusters.
+
+```{r krause mep markers in all}
+mep.genes <- c('Gata1','Gata2','Runx1','Tal1')
+
+VlnPlot(wbm, mep.genes, pt.size = 0)
+
+mep.antagonist.genes <- c('Klf1','Fli1')
+
+VlnPlot(wbm, mep.antagonist.genes, pt.size = 0)
+```
+
+We see pretty distinct expression of most of these markers, and the one that is expressed in many clusters, has clearly a higher expression in  MEPs.
+
+The antagonist genes doesn't really tell us anything, as for the most part they are either expressed widely (Fli1) or not rarely (Klf1).
+
+```{r krause mep markers}
+mep.genes <- c('Gata1','Gata2','Runx1','Tal1')
+
+VlnPlot(mks, mep.genes, pt.size = 0)
+
+mep.antagonist.genes <- c('Klf1','Fli1')
+
+VlnPlot(mks, mep.antagonist.genes, pt.size = 0)
+```
+
+We see high expression of all the TFs/genes required for both MEP lineages! 
+
+The antagonist genes show the same uninformative things they showed us in all clusters.
+
+# GMP vs CMP specification
+
+We see three subclusters express Mpo (1, 2 and 4) can we then further distinguish between GMP (granulocyte macrophage progenitor) and CMP (common myeloid progenitor).
+
+Sang provided me with some genes to help distinguish those and MEPs:
+
+**GMP and CMP**
+
+* *Mpo*
+
+```{r markers for gmp and cmp}
+genes <- c('Mpo', 'Hba-a2', 'Car2', 'Gata1','Gata2')
+
+VlnPlot(mks, genes, pt.size = 0)
+```
+
+# Markers from Myeloid Progenitors
+
+Paper: Transcriptional Heterogeneity and Lineage Commitment in Myeloid Progenitors
+
+Looking at the genes they use in their transcriptional networks. 
+
+```{r selected gene lists}
+selected.genes <- c('Hba-a2','Car2','Apoe','Prss34','Mpo','Prg2','Pf4', 'Itga2b','Flt3','Serpina3f','Cd74')
+
+DoHeatmap(mks, features = selected.genes)
+DotPlot(mks, features = selected.genes) + coord_flip()
+```
+
+This aligns with some of the things we'd previously thought. That subcluster 3 is MKP, subcluster 4 is CMP/GMP, subcluster 6 is ERP.
+
+Still need to figure out more on subclusters 0, 1, 2, and 5. Subcluster 5 does show some high expression of Prg2, which in their paper was restricted Eosinophils and Neutrophils.
+
+## Erythroid
+
+```{r ery transcriptional networks}
+ery.tf <- c('Gata1','Phf10','Zfpm1','Gfi1b','Cited4','Klf1','Mbd2','E2f4','Tcf3','Phb2','Hmgb3')
+
+DotPlot(mks, features = ery.tf) + coord_flip()
+```
+
+Not exactly what I thought we would see looking at the Erythroid TFs. We see highest expression of lots of these in subcluster 4, which is our CMP/GMP subcluster.
+
+## Megakaryocytes
+
+```{r mk transcriptional networks}
+mk.tf <- c('Cited2','Fli1','Pbx1','Mef2c','Meis1')
+
+DotPlot(mks, features = mk.tf) + coord_flip()
+```
+
+Interesting the Fli1 is highest in subcluster 0, 1, and 2; perhaps indicated MKPs. We do see highest expression of Cited2 in our MKP subcluster 3.
+
+## Early progenitors
+
+```{r gata2 transcriptional networks}
+gata2.tf <- c('Gata2')
+
+DotPlot(mks, features = gata2.tf) + coord_flip()
+```
+
+Gata2 is seen as an early progenitor transcription factor.
+
+## Myeloid
+
+```{r myeloid transcriptional networks}
+mye.tf <- c('Cdh3','Sox4','Stat3','Etv6','Elf1','Nfe2','Cebpa','Foxp1')
+
+DotPlot(mks, features = mye.tf) + coord_flip()
+```
+
+Doesn't really tell us much, but many of these TFs are expressed throughout many clusters.
+
+## Basophils
+
+```{r baso transcriptional networks}
+baso.tf <- c('Lmo4','Runx1')
+
+DotPlot(mks, features = baso.tf) + coord_flip()
+```
+
+Lmo4 has highest expression in our CMP/GMP population so that makes sense. Also seeing Runx1 being more widely expressed in subclusters 0, 1, and 6.
+
+## Eosinophils and Neutrophils
+
+```{r eos neu transcriptional networks}
+eos.neu.tf <- c('Cebpe','Gfi1')
+
+DotPlot(mks, features = eos.neu.tf) + coord_flip()
+```
+
+Cebpe is for both eosinphols and neutrophils and we see it highest in subcluster 5.
+
+## Monocytes and DC
+
+```{r mono.dc transcriptional networks}
+mono.dc.tf <- c('Irf8','Id2')
+
+DotPlot(mks, features = mono.dc.tf) + coord_flip()
+```
+
+In their analysis Id2 was restricted to dendritic cells, which is interesting, since we see it expressed throughout many clusters, specifically in 0 and 1.
+
+# Centroid Comparison
+
+Wanted to compare the centroids of these subclusters to the centroids of the original clusters.
+
+Doing this using multiple gene lists, for highly variable genes.
+
+## Using all genes
+
+```{r setup for centroids}
+av_wbm <- AverageExpression(wbm)$RNA
+av_mks <- AverageExpression(mks)$RNA
+
+top1K.var.genes.wbm <- head(VariableFeatures(wbm),1000)
+top1K.var.genes.mks <- head(VariableFeatures(mks),1000)
+
+summary(top1K.var.genes.mks %in% top1K.var.genes.wbm)
+
+comb.var.genes <- unique(c(top1K.var.genes.mks,top1K.var.genes.wbm))
+length(comb.var.genes)
+
+summary(rownames(av_wbm) == rownames(av_mks))
+
+av <- cbind(av_wbm, av_mks)
+
+#av_all_cor <- cor(av, method = 'kendall')
+```
+
+```{r using all genes}
+av_h <- av[rownames(av) %in% comb.var.genes,]
+
+av_high_var_cor <- cor(av_h, method = 'kendall')
+
+library(tidyr)
+
+av_high_var_cor <- as.data.frame(av_high_var_cor)
+
+av_high_var_cor$row <- rownames(av_high_var_cor)
+
+av_high_var_cor <- gather(av_high_var_cor, var2, cor, Granulocyte:`4`, factor_key = T)
+
+cor_only_mks <- av_high_var_cor[av_high_var_cor$row %in% c(0,1,2,3,4),]
+
+colnames(cor_only_mks) <- c('MK Subcluster','Cell Type','Correlation')
+
+ggplot(cor_only_mks, aes(x = `Cell Type`, y = `MK Subcluster`, fill = Correlation)) + geom_tile() +
+        theme_bw() +
+        scale_fill_gradient2(high = 'darkblue', low = 'white', mid = 'blue',
+                             midpoint = 0.6, limit= c(0,1))+
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+

@@ -1,0 +1,94 @@
+---
+title: "Whole Bone Marrow Only"
+author: "D. Ford Hannum Jr."
+date: "8/18/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+```
+
+Wanted to see what data would look like (UMAP) if I didn't include the enriched experiments
+
+```{r setting up data}
+w.dat <- Read10X(data.dir = './data/raw_feature_bc_matrix/')
+
+w <- CreateSeuratObject(counts = w.dat, project = 'wbm_only', min.cells = 3, min.features = 200)
+
+htos <- read.csv('./data/HTOs.csv')
+#head(htos)
+
+wbm_cells <- htos[htos$HTOs %in% c('HTO-1','HTO-3'),]$Barcode
+print(paste('Number of cells before limiting to only whole bone marrow:', dim(w)[2]))
+w <- w[,wbm_cells]
+print(paste('Number of cells after limiting to only whole bone marrow:', dim(w)[2]))
+w[['percent.mt']] <- PercentageFeatureSet(w, pattern = '^mt')
+
+ggplot(w@meta.data, aes(x = nCount_RNA)) + geom_density() + 
+        geom_vline(xintercept = 50000, col = 'red', linetype = 2) +
+        theme_bw()
+
+ggplot(w@meta.data, aes(x = percent.mt)) + geom_density() + 
+        geom_vline(xintercept = 10, col = 'red', linetype = 2) +
+        theme_bw()
+
+ggplot(w@meta.data, aes(x = nFeature_RNA)) + geom_density() + 
+        geom_vline(xintercept = c(500,3250), col = 'red', linetype = 2) +
+        theme_bw()
+
+w <- subset(w, subset = nFeature_RNA > 500 & nFeature_RNA < 3250 &
+                    percent.mt < 10 & nCount_RNA < 50000)
+
+print(paste('Number of cells after using cutoffs shown in plots:', dim(w)[2]))
+```
+
+```{r data steps}
+w <- NormalizeData(w, normalization.method = 'LogNormalize', scale.factor = 10000)
+
+w <- FindVariableFeatures(w, selection.method = 'vst', nfeatures = 2000)
+
+all.genes <- rownames(w)
+
+w <- ScaleData(w, features = all.genes)
+
+w <- RunPCA(w, features = VariableFeatures(w), verbose = F)
+
+ElbowPlot(w)
+
+# Gonna use the first 15 PCs
+
+w <- FindNeighbors(w, dims = 1:15)
+
+res <- seq(0,1,by = .1)
+cnt <- 0
+c <- c()
+
+for (i in res){
+        clusters <- FindClusters(w, resolution = i)
+        clusters <- length(levels(clusters$seurat_clusters))
+        c <- c(c,clusters)
+}
+
+plot(c)
+
+# going with res[4] = .3 for now
+
+w <- FindClusters(w, resolution = 0.3)
+
+w <- RunUMAP(w, dims = 1:15)
+
+DimPlot(w, reduction = 'umap')
+```
+
