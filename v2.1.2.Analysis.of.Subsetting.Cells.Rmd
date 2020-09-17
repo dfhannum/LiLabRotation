@@ -1,0 +1,85 @@
+---
+title: "v2 Analysis of Subsetting for Integration"
+author: "D. Ford Hannum Jr."
+date: "9/2/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+```
+
+```{r printing session info, include = T}
+sessionInfo()
+```
+
+```{r load data}
+wbm <- readRDS('./data/v2/combined.integrated.rds')
+lesser.wbm <- readRDS('./data/V2/lesser.combined.integrated.rds')
+```
+
+# Introduction
+
+In v2 of the analysis we decided to include the control mice from the Nbeal experiment with the Migr1 and Mpl mice. The thought is that it may be good to have another control, since the Migr1 control has irradiated and had a bone marrow transplantation. I'm going to split the Rmarkdown files into separate part, to better organize my analysis.
+
+## This File
+
+Originally I used upper bound cutoffs of 50,000 for nCount_RNA and 5,000 for nFeature_RNA. In this file I will look at a Seurat object including these cells that didn't pass the upper bound cutoff, to see where they would fit in the UMAP projection and within different clusters. 
+
+# Violin Plots
+
+Violin plots of the clusters for different metrics.
+
+```{r violin plots}
+VlnPlot(lesser.wbm, features = 'nCount_RNA', pt.size = 0) +
+        geom_hline(yintercept = 50000)
+VlnPlot(lesser.wbm, features = 'nFeature_RNA', pt.size = 0) + 
+        geom_hline(yintercept = 5000)
+```
+
+So it seems like cluster 5, 7, 9, 10, and 12 would be most affected by the cutoffs I used previously.
+
+# UMAP Projection
+
+```{r umap}
+DimPlot(lesser.wbm, reduction = 'umap', label = T, repel = T)
+```
+
+It seems like 7 and 12 (two of the harder hit) connect multiple different clusters. 
+
+Reasons this could be:
+* these cells are doublets that contain a mix of different celltypes, which leads to the transition between one cell type to another
+* these cells are in a transitionary phase between different cell types
+
+I would think that it may be the later which is more likely, and that these are cells transitioning between cell types, or they are a progenitor type.
+
+```{r feature plots}
+FeaturePlot(lesser.wbm, features = 'nCount_RNA')
+FeaturePlot(lesser.wbm, features = 'nFeature_RNA')
+
+lesser.wbm$nFeature_RNA.not.passed <- ifelse(lesser.wbm$nFeature_RNA.passed == 1, 0, 1)
+lesser.wbm$nCount_RNA.not.passed <- ifelse(lesser.wbm$nCount_RNA.passed == T, 0, 1)
+
+FeaturePlot(lesser.wbm, features = 'nCount_RNA.not.passed')
+FeaturePlot(lesser.wbm, features = 'nFeature_RNA.not.passed')
+```
+
+The last plots show 1 if it passed the cutoffs of < 50,000 for nCount_RNA and < 5,000 for nFeature_RNA and 0 otherwise. 
+
+# Conclusion
+
+I think these cells that didn't passed my first subset **should be included** for downstream analysis.

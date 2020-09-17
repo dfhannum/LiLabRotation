@@ -1,0 +1,63 @@
+---
+title: "UMAP Projections"
+author: "D. Ford Hannum Jr."
+date: "9/14/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(ggrepel)
+```
+
+```{r printing session info, include = T}
+sessionInfo()
+```
+
+```{r load data}
+#wbm <- readRDS('./data/v2/combined.integrated.rds')
+wbm <- readRDS('./data/V2/lesser.combined.integrated.rds')
+```
+
+```{r changing idents}
+#wbm <- readRDS('./data/v2/lesser.combined.integrated.rds')
+
+wbm$State <- wbm$Condition
+
+wbm$Condition <- ifelse(grepl('enr', wbm$Condition), 'Enriched', 'Not enriched')
+
+wbm$Experiment <- ifelse(grepl('Mpl', wbm$State), 'Mpl',
+                         ifelse(grepl('Migr', wbm$State), 'Migr1', 'Control'))
+
+sumry <- read.table('./data/v2/summary_naming.tsv', header = T, sep = '\t')
+# sumry
+
+new_levels <- sumry$final2
+
+# new_levels <- c('Gran-1','Gran-2','?GMP','B cell-1','Gran-3','Monocyte','?MEP/Mast',
+#                 '?Prog','Macrophage','B cell-2','Erythrocyte', 'T cell',
+#                 'Megakaryocyte','B cell-3', 'B cell-4')
+
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+wbm$new_cluster_IDs <- Idents(wbm)
+
+
+DimPlot(wbm, reduction = 'umap', label = T, repel = T, group.by = 'seurat_clusters') + NoLegend()
+DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```

@@ -1,0 +1,303 @@
+---
+title: "v2 Cell/Cluster Labeling part 2"
+author: "D. Ford Hannum Jr."
+date: "9/10/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(scRNAseq)
+```
+
+```{r printing session info, include = T}
+sessionInfo()
+```
+
+```{r loading data}
+# Calling the Seurat variable wbm instead of comb.int which is what it was previously
+
+wbm <- readRDS('./data/v2/lesser.combined.integrated.rds')
+
+DimPlot(wbm, reduction = 'umap')
+```
+
+```{r changing idents}
+#wbm <- readRDS('./data/v2/lesser.combined.integrated.rds')
+
+wbm$State <- wbm$Condition
+
+wbm$Condition <- ifelse(grepl('enr', wbm$Condition), 'Enriched', 'Not enriched')
+
+wbm$Experiment <- ifelse(grepl('Mpl', wbm$State), 'Mpl',
+                         ifelse(grepl('Migr', wbm$State), 'Migr1', 'Control'))
+
+sumry <- read.table('./data/v2/summary_naming.tsv', header = T, sep = '\t')
+# sumry
+
+# new_levels <- sumry$final
+
+new_levels <- c('Gran-1','Gran-2','?GMP','B cell-1','Gran-3','Monocyte','MEP/Mast',
+                '?CMP/Neutro','Macrophage','B cell-2','Erythrocyte', 'T cell',
+                'Megakaryocyte','B cell-3', 'B cell-4')
+
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+wbm$new_cluster_IDs <- Idents(wbm)
+
+
+
+DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+# Introduction
+
+In v2 of the analysis we decided to include the control mice from the Nbeal experiment with the Migr1 and Mpl mice. The thought is that it may be good to have another control, since the Migr1 control has irradiated and had a bone marrow transplantation. I'm going to split the Rmarkdown files into separate part, to better organize my analysis.
+
+## This File
+
+The previous cell labeling file was reaching a thousand lines and taking a while to knit, so I decided to do some extra analysis in a new markdown file.
+
+* Comparing the ?CMP/Neutro and Stem Cell Clusters to the other granulocyte clusters to potentially further refine these labels.
+
+```{r gran clusters}
+gran.clusters <- c(paste0('Gran-',1:30), '?GMP','?CMP/Neutro')
+```
+
+# Surface Markers for HSPCs
+
+Using a list of surface makers for HSPCs in mouse cells from [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5305050/).
+
+```{r hspc markers}
+hspc.markers2 <- c('Kit','Ly6a','Cd34','Slamf1','Procr','Cd48')
+
+# rownames(wbm)[grepl('Ly6a', rownames(wbm), ignore.case = T)]
+
+for (i in hspc.markers2){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+        print(VlnPlot(wbm, features = i, idents = gran.clusters, pt.size = 0))
+}
+```
+
+
+# Fine Tuning Granulocyte Labels
+
+Comparing both ?CMP/Neutro & Stem Cells (which seem to be either and HSPC or GMP population) just to the other granulocyte clusters.
+
+## ?CMP/Neutro Label
+
+```{r CMP/Neutro markers}
+
+prog.markers <- FindMarkers(wbm,
+                            ident.1 = "?CMP/Neutro",
+                            ident.2 = c(paste0('Gran-',1:3), '?GMP'),
+                            logfc.threshold = log(2),
+                            test.use = 'MAST')
+
+prog.markers <- prog.markers[prog.markers$p_val_adj < 0.05,]
+prog.markers <- prog.markers[order(prog.markers$avg_logFC, decreasing = T),]
+
+head(prog.markers,10)
+
+for(i in rownames(prog.markers)[1:5]){
+        print(VlnPlot(wbm, features = i, idents = gran.clusters, pt.size = 0))
+}
+
+# for(i in rownames(tail(prog.markers))){
+#         print(VlnPlot(wbm, features = i, idents = gran.clusters, pt.size = 0))
+# }
+```
+
+Many of the same genes we saw in the previous labeling document which indicate high expression of genes associated with neutrophil azurophilic granules.
+
+## ?GMP Label
+
+```{r CMP/Neutro markers2}
+
+GMP.markers <- FindMarkers(wbm,
+                            ident.1 = "?GMP",
+                            ident.2 = c(paste0('Gran-',1:3), '?CMP/Neutro'),
+                            logfc.threshold = log(2),
+                            test.use = 'MAST')
+
+head(GMP.markers,10)
+
+for(i in rownames(GMP.markers)[1:5]){
+        print(VlnPlot(wbm, features = i, idents = gran.clusters, pt.size = 0))
+}
+```
+
+Many of these genes are being co-expressed in ?GMP and ?CMP/Neutro. Going to just compare those two clusters to see what we find.
+
+```{r GMP vs CMP/Neutro}
+sc.markers <- FindMarkers(wbm,
+                            ident.1 = "?GMP",
+                            ident.2 = c('?CMP/Neutro'),
+                            logfc.threshold = log(2),
+                            test.use = 'MAST')
+
+sc.markers <- sc.markers[sc.markers$p_val_adj < 0.05,]
+sc.markers <- sc.markers[order(sc.markers$avg_logFC, decreasing = T),]
+
+head(sc.markers,10)
+
+for(i in rownames(sc.markers)[1:5]){
+        print(VlnPlot(wbm, features = i, idents = gran.clusters, pt.size = 0))
+}
+```
+
+* **Chil3**: has chemotactic acitivity for T-lymphocytes, bone marrow cells and eosinophils.
+
+# Fine Tuning B-cell labels
+
+```{r b cell labels}
+bcells <- paste0('B cell-',1:4)
+b4.markers <- FindMarkers(wbm,
+                          ident.1 = 'B cell-4',
+                          ident.2 = paste0('B cell-',1:3),
+                          logfc.threshold = log(2),
+                          test.use = 'MAST')
+b4.markers <- b4.markers[b4.markers$p_val_adj < 0.05,]
+b4.markers <- b4.markers[order(b4.markers$avg_logFC, decreasing = T),]
+
+print('Most Up-Regulated Markers')
+head(b4.markers)
+for (i in rownames(head(b4.markers),5)){
+        print(VlnPlot(wbm, features = i, idents = bcells, pt.size = 0))
+}
+
+print('Most Down-Regulated Markers')
+tail(b4.markers)
+for (i in rownames(tail(b4.markers),5)){
+        print(VlnPlot(wbm, features = i, idents = bcells, pt.size = 0))
+}
+
+```
+
+Ebf1 (early B-cell factor) is highly down-regulated in B-cell cluster 4, so makes it seem like a more mature B-cell.
+
+## B Cell Progenitor Markers
+
+Using the [R&D Systems list of B cell markers](https://www.rndsystems.com/research-area/b-cell-markers) and from [link](https://discovery.lifemapsc.com/in-vivo-development/blood/peripheral-blood/b-cell-progenitor-cells) (the second one being more useful). I'm going to look to see how they're distributed among the B cell clsuters).
+
+```{r getting bcell prog list}
+
+b.pro.markers <- c("Cd34",'Cd117','c-kit', 'Flk-2','Cd127','Cd10','Bsap','Sca-1','Ly6','Cd19','Cd45r','Cd93','C1qR1','B220')
+
+b.pro.list <- c()
+for (i in b.pro.markers){
+        gene <- rownames(wbm)[grepl(i, rownames(wbm), ignore.case = T)]
+        b.pro.list <- c(b.pro.list,gene)
+}
+b.pro.list
+
+# Manual pruning
+b.pro.list <- b.pro.list[c(1,3,7)]
+
+# Other markers
+
+b.pro.markers.pos <-  c('Ebf1','Flt3','Cd135','Gfi1','Ikzf1','Kit','Tcf3','Spi1','Ptprc')
+b.pro.markers.neg <- c('Pax5','Il2ra','Cd24a','Cd19')
+
+b.list <- c()
+for (i in b.pro.markers.pos){
+        gene <- rownames(wbm)[grepl(i, rownames(wbm), ignore.case = T)]
+        b.list <- c(b.list,gene)
+}
+for (i in b.pro.markers.neg){
+        gene <- rownames(wbm)[grepl(i, rownames(wbm), ignore.case = T)]
+        b.list <- c(b.list,gene)
+}
+b.list
+b.list <- b.list[c(1,2,3,5,6,7,8)]
+
+```
+
+```{r b pro violin plots}
+for(i in b.pro.list){
+        print(VlnPlot(wbm, features = i, idents = bcells, pt.size = 0))
+}
+
+for(i in b.list){
+        print(VlnPlot(wbm, features = i, idents = bcells, pt.size = 0))
+}
+```
+Nothing conclusive from the above analysis. All were positive markers for B-cells except for Ly6
+
+# Splitting MK cells
+
+```{r mk umap}
+wbm$MK <- wbm$new_cluster_IDs == 'Megakaryocyte'
+DimPlot(wbm, reduction = 'umap', group.by = 'MK')
+```
+
+
+Seen in the UMAP Projection above, the teal color represents Megakaryocytes and it can be seen that the cluster is in two parts in the UMAP projection. Going to look at what is different from these two groups by subcluster MKs.
+
+```{r mk subsetting}
+mks <- subset(wbm, new_cluster_IDs %in% 'Megakaryocyte')
+
+mks2 <- mks
+# Just looking at the MK zoom in subset
+DimPlot(mks2, reduction = 'umap')
+
+DimPlot(mks2, reduction = 'umap', split.by = 'Experiment')
+DimPlot(mks2, reduction = 'umap', split.by = 'Condition')
+DimPlot(mks2, reduction = 'umap', split.by = 'State', ncol = 3)
+
+# Going to do the same processing steps
+
+DefaultAssay(mks) <- 'RNA'
+
+mks <- NormalizeData(mks, normalization.method = 'LogNormalize', scale.factor = 10000)
+
+all.genes <- row.names(mks)
+
+mks <- FindVariableFeatures(mks, selection.method = 'vst', nfeatures = 2000)
+
+mks <- ScaleData(mks, features = all.genes)
+
+mks <- RunPCA(mks, features = VariableFeatures(mks), verbose = F)
+
+#ElbowPlot(mks) # going with 10
+
+mks <- FindNeighbors(mks, dims = 1:10)
+
+res <- seq(0,1, by = 0.05)
+clustrs <- c()
+
+for (i in res){
+        clst <- FindClusters(mks, resolution = i, verbose = F)
+        clst <- length(unique(clst$seurat_clusters))
+        clustrs <- c(clustrs,clst)
+}
+names(clustrs) <- res
+
+#plot(res,clustrs)
+# # Going with 0.5
+
+mks <- FindClusters(mks, resolution = 0.5, verbose = F)
+
+mks <- RunUMAP(mks, dims = 1:10, verbose = F)
+
+DimPlot(mks, reduction = 'umap')
+DimPlot(mks, reduction = 'umap', split.by = 'Experiment')
+DimPlot(mks, reduction = 'umap', split.by = 'Condition')
+DimPlot(mks, reduction = 'umap', split.by = 'State', ncol = 3)
+```
+

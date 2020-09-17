@@ -1,0 +1,655 @@
+---
+title: "v2.1.3.Analysis.of.CCA.shift"
+author: "D. Ford Hannum Jr."
+date: "9/2/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(ggrepel)
+```
+
+```{r printing session info, include = T}
+sessionInfo()
+```
+
+```{r load data}
+#wbm <- readRDS('./data/v2/combined.integrated.rds')
+wbm <- readRDS('./data/V2/lesser.combined.integrated.rds')
+```
+
+# Introduction
+
+In v2 of the analysis we decided to include the control mice from the Nbeal experiment with the Migr1 and Mpl mice. The thought is that it may be good to have another control, since the Migr1 control has irradiated and had a bone marrow transplantation. I'm going to split the Rmarkdown files into separate part, to better organize my analysis.
+
+## This File
+
+Here I'm gather the cluster centroids for the different 15 different clusters before and after cca correction. 
+
+# Before and After Cluster Centroids
+
+Getting cluster centroids before cca ('RNA' assay) and after cca ('integrated' assay)
+
+```{r getting centroids}
+# Getting cluster centroids for all assays
+av.expression <- AverageExpression(wbm)
+
+# Subsetting the RNA assay data frame to only genes in integrated assay
+av.expression$RNA <- av.expression$RNA[rownames(av.expression$RNA) %in% rownames(av.expression$integrated),]
+
+# Adding distinguishing names to merge into one data frame
+colnames(av.expression$integrated) <- paste0("Integrated-",0:14)
+colnames(av.expression$RNA) <- paste0("RNA-", 0:14)
+
+# Combining into one data frame
+av.exp <- cbind(av.expression$RNA, av.expression$integrated)
+
+# Writing it out to a table for Jun to analyze
+# write.table(av.exp, './data/v2/cluster.centroids.before.after.cca.txt', sep = '\t', quote = F)
+```
+
+## PCA 
+
+Wanted to see how the centroids distinguished themselves
+
+```{r pca analysis}
+pca.av.exp <- prcomp(av.exp)
+
+print(pca.av.exp$sdev)
+
+pca.av.exp <- as.data.frame(pca.av.exp$rotation)
+
+pca.av.exp$assay <- tstrsplit(rownames(pca.av.exp),'-')[[1]]
+pca.av.exp$cluster <- tstrsplit(rownames(pca.av.exp),'-')[[2]]
+
+ggplot(pca.av.exp, aes(x = PC1, y = PC2, color = assay)) +
+        geom_point() + theme_bw()
+ggplot(pca.av.exp, aes(x = PC1, y = PC2, color = cluster,label = cluster)) +
+        geom_point() + theme_bw() + geom_text_repel()
+
+# DimPlot(wbm, reduction = 'umap', label = T, repel = T)
+# 
+ggplot(pca.av.exp, aes(x = PC3, y = PC4, label = cluster, color = assay)) +
+        geom_point () +
+        geom_text_repel() +
+        theme_bw()
+
+# ggplot(pca.av.exp, aes(x = PC4, y = PC5, label = cluster, color = assay)) +
+#         geom_point () +
+#         geom_text_repel() + 
+#         theme_bw()
+# 
+# ggplot(pca.av.exp, aes(x = PC6, y = PC7, label = cluster, color = assay)) +
+#         geom_point () +
+#         geom_text_repel() + 
+#         theme_bw()
+```
+
+It seems that each PC is distinguishing a particular cluster. This does make sense because that's in general how the clusters were created.
+
+# Before and After Cluster Centroids by Experiment/Condition
+
+Doing the same thing as before but further dividing the centroids for each condition (enriched or normal; Migr1, Mpl, Nbeal)
+
+```{r by experiment, message=FALSE}
+# Getting cluster centroids for each experiments for all assay
+av.expression.by.condition <- AverageExpression(wbm, add.ident = 'Condition')
+
+# Subsetting the RNA assay data frame to only genes in integrated assay
+av.expression.by.condition$RNA <- 
+        av.expression.by.condition$RNA[rownames(av.expression.by.condition$RNA) %in%
+                                               rownames(av.expression.by.condition$integrated),]
+
+# Getting unique colnames
+colnames(av.expression.by.condition$integrated) <- paste0("Integrated-",colnames(av.expression.by.condition$integrated))
+colnames(av.expression.by.condition$RNA) <- paste0("RNA-", colnames(av.expression.by.condition$RNA))
+
+# Combining into one data frame
+av.exp.by.cond <- cbind(av.expression.by.condition$RNA, av.expression.by.condition$integrated)
+
+#  Writing it out to a table for Jun to use
+# write.table(av.exp.by.cond, './data/v2/cluster.centroids.before.after.cca.by.condition.txt', 
+#             sep = '\t',
+#             quote = F)
+```
+
+## PCA
+
+```{r pca analysis2}
+pca.av.exp <- prcomp(av.exp.by.cond)
+
+print(pca.av.exp$sdev[1:30])
+
+pca.av.exp <- as.data.frame(pca.av.exp$rotation)
+
+pca.av.exp$assay <- tstrsplit(rownames(pca.av.exp),'-')[[1]]
+pca.av.exp$cluster <- tstrsplit(tstrsplit(rownames(pca.av.exp),'-')[[2]],'_')[[1]]
+pca.av.exp$condition <- tstrsplit(tstrsplit(rownames(pca.av.exp),'-')[[2]],'_')[[2]]
+
+ggplot(pca.av.exp, aes(x = PC1, y = PC2, color = cluster, shape = condition)) +
+        geom_point() + theme_bw()
+```
+
+# Comparing Clusters from original data to integreated data
+
+So doing each of these separately (Mpl/Migr1 and Nbeal) and getting clusters. For each cluster getting the cell identity and cluster centroids. Then compare these to the final clusters to see how centroids compare. Do some original clusters get split into different centroids, or just combine across experiments easily. 
+
+Also going to get cell count cross tabulation from clusters before and after integration
+
+For generating the clusters, I'm not sure if it's better to have more or less clusters in the end. Going to generate two sets of clusters to then compare downstream.
+
+```{r migr1/mpl}
+# Most of this is being copied from v2.1.Integration.UMAP.Rmd
+# Except here I am also generating clusters integration
+
+wbm.data <- Read10X(data.dir = './data/filtered_feature_bc_matrix//')
+
+# Creating Seurat Object
+
+wbm <- CreateSeuratObject(counts = wbm.data, project = 'Mpl', min.cells = 3, min.features = 200)
+
+# Reading in the HTO labels provided by Dr. Brian Parkin
+
+htos <- read.csv('./data/HTOs.csv')
+
+#dim(htos)
+
+# Removing all the cells without a label
+
+htos <- htos[htos$HTOs != '',]
+
+#dim(htos)
+
+# Adding the conditioni from the HTO tagged, from an e-mail from Priya
+
+htos$condition <- ifelse(htos$HTOs == 'HTO-1', 'Mpl',
+                         ifelse(htos$HTOs == 'HTO-2', 'enrMpl',
+                                ifelse(htos$HTOs == 'HTO-3', 'Migr1','enrMigr1')))
+
+# Subsetting the two data frames so they only include cells that overlap
+
+wbm <- wbm[,colnames(wbm) %in% htos$Barcode]
+
+htos <- htos[htos$Barcode %in% colnames(wbm),]
+
+# Making sure the cell order is maintained between the two dataframes, so I can
+# just add the condition to the meta data
+
+#summary(rownames(wbm@meta.data) == htos$Barcode)
+
+# Adding the condition to the meta data
+
+wbm@meta.data$Condition <- htos$condition
+
+wbm[['percent.mt']] <- PercentageFeatureSet(wbm, pattern = '^mt')
+
+less.subset.wbm <- subset(wbm, subset = nFeature_RNA > 500 & percent.mt < 10)
+```
+
+```{r nbeal data}
+cnt.data <- Read10X(data.dir = './data/Experiment2/filtered_feature_bc_matrix/')
+
+cnt <- CreateSeuratObject(counts = cnt.data, project = 'Nbeal', min.cells = 3, min.features = 200)
+
+# Getting the HTOs
+
+nbeal_hto <- read.table('./data/Experiment2/hto_labels.txt')
+
+nbeal_hto <- nbeal_hto[nbeal_hto$V2 %in% c('HTO3','HTO4'),]
+
+nbeal_hto$condition <- ifelse(nbeal_hto$V2 == 'HTO3', 'Nbeal_cntrl', 'enrNbeal_cntrl')
+
+nbeal_hto$cell <- paste0(nbeal_hto$V1, '-1')
+
+# summary(nbeal_hto$cell %in% colnames(cnt))
+
+cnt <- cnt[,colnames(cnt) %in% nbeal_hto$cell]
+
+# Making sure the cell order is maintained between the two dataframes, so I can
+# just add the condition to the meta data
+
+#summary(rownames(wbm@meta.data) == htos$Barcode)
+
+# Adding the condition to the meta data
+
+cnt@meta.data$Condition <- nbeal_hto$condition
+
+cnt[['percent.mt']] <- PercentageFeatureSet(cnt, pattern = '^mt')
+
+less.cnt <- subset(cnt, subset = nFeature_RNA > 500 & percent.mt < 10)
+```
+
+## Mpl/Migr1 Experiment
+
+```{r doing the steps for clustering}
+
+less.subset.wbm <- NormalizeData(less.subset.wbm, verbose = F)
+
+less.subset.wbm <- FindVariableFeatures(less.subset.wbm,
+                                        selection.method = 'vst',
+                                        nfeatures = 2000,
+                                        verbose = F)
+
+less.subset.wbm <- ScaleData(less.subset.wbm, verbose = F)
+
+less.subset.wbm <- RunPCA(less.subset.wbm, features = VariableFeatures(less.subset.wbm))
+
+ElbowPlot(less.subset.wbm)
+
+# choosing 15 PCs
+
+less.subset.wbm <- FindNeighbors(less.subset.wbm, dims = 1:15)
+
+res <- seq(0,1, by = 0.05)
+clstrs <- c()
+
+for (i in res){
+        x <- FindClusters(less.subset.wbm, resolution = i, verbose = F)
+        clstrs <- c(clstrs, length(unique(x$seurat_clusters)))
+        
+}
+plot(res,clstrs)
+
+# Going with .2 and .7
+
+less.subset.wbm <- FindClusters(less.subset.wbm, resolution = .2, verbose = F)
+less.subset.wbm <- FindClusters(less.subset.wbm, resolution = .7, verbose = F)
+
+less.subset.wbm <- RunUMAP(less.subset.wbm, dims = 1:15)
+
+DimPlot(less.subset.wbm, reduction = 'umap', label = T, repel = T) + NoLegend() + ggtitle ('Resolution 0.7')
+
+DimPlot(less.subset.wbm, reduction = 'umap', label = T, repel = T, group.by = 'RNA_snn_res.0.2') +
+        NoLegend() + ggtitle ('Resolution 0.2')
+
+```
+
+## Control Experiment
+
+```{r clustering counts}
+
+less.cnt <- NormalizeData(less.cnt, verbose = F)
+
+less.cnt <- FindVariableFeatures(less.cnt,
+                                        selection.method = 'vst',
+                                        nfeatures = 2000,
+                                        verbose = F)
+
+less.cnt <- ScaleData(less.cnt, verbose = F)
+
+less.cnt <- RunPCA(less.cnt, features = VariableFeatures(less.cnt))
+
+ElbowPlot(less.cnt)
+
+# choosing 15 PCs
+
+less.cnt <- FindNeighbors(less.cnt, dims = 1:15)
+
+res <- seq(0,1, by = 0.05)
+clstrs <- c()
+
+for (i in res){
+        x <- FindClusters(less.cnt, resolution = i, verbose = F)
+        clstrs <- c(clstrs, length(unique(x$seurat_clusters)))
+        
+}
+plot(res,clstrs)
+
+# Going with .2 and .7
+
+less.cnt <- FindClusters(less.cnt, resolution = .2, verbose = F)
+less.cnt <- FindClusters(less.cnt, resolution = .7, verbose = F)
+
+less.cnt <- RunUMAP(less.cnt, dims = 1:15)
+
+DimPlot(less.cnt, reduction = 'umap', label = T, repel = T) + NoLegend() + ggtitle ('Resolution 0.7')
+
+DimPlot(less.cnt, reduction = 'umap', label = T, repel = T, group.by = 'RNA_snn_res.0.2') +
+        NoLegend() + ggtitle ('Resolution 0.2')
+
+
+```
+
+```{r loading integrated dataset idents}
+wbm <- readRDS('./data/v2/lesser.combined.integrated.rds')
+
+wbm$State <- wbm$Condition
+
+wbm$Condition <- ifelse(grepl('enr', wbm$Condition), 'Enriched', 'Not enriched')
+
+wbm$Experiment <- ifelse(grepl('Mpl', wbm$State), 'Mpl',
+                         ifelse(grepl('Migr', wbm$State), 'Migr1', 'Control'))
+
+sumry <- read.table('./data/v2/summary_naming.tsv', header = T, sep = '\t')
+# sumry
+
+# new_levels <- sumry$final
+
+new_levels <- c('Gran-1','Gran-2','SC','B cell-1','Gran-3','Monocyte','MEP/Mast',
+                '?Prog','Macrophage','B cell-2','Erythrocyte', 'T cell',
+                'Megakaryocyte','B cell-3', 'B cell-4')
+
+names(new_levels)  <- levels(wbm)
+
+DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+wbm$new_cluster_IDs <- Idents(wbm)
+
+DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend() +
+        ggtitle ('Integrated Dataset')
+```
+
+## Cell Cross Tabulation
+
+```{r getting counts}
+wbm.less.clusters <- less.subset.wbm@meta.data[,c('Condition','RNA_snn_res.0.2','RNA_snn_res.0.7')]
+
+less.cnt.clusters <- less.cnt@meta.data[,c('Condition','RNA_snn_res.0.2','RNA_snn_res.0.7')]
+
+wbm.clusters <- wbm@meta.data[,c('State','seurat_clusters')]
+
+rownames(wbm.less.clusters) <- paste0('Mpl_', rownames(wbm.less.clusters))
+
+rownames(less.cnt.clusters) <- paste0('Nbeal_', rownames(less.cnt.clusters))
+
+mpl.clusters <- cbind(wbm.clusters[grepl('Mpl', rownames(wbm.clusters)),], wbm.less.clusters)
+nbeal.clusters <- cbind(wbm.clusters[grepl('Nbeal', rownames(wbm.clusters)),], less.cnt.clusters)
+```
+
+### Migr1/Mpl Tables
+
+```{r mpl tables}
+mpl.tbl <- as.data.frame(table( mpl.clusters$RNA_snn_res.0.2, mpl.clusters$seurat_clusters))
+
+colnames(mpl.tbl) <- c('Original Cluster','Integrated Cluster','Count')
+
+mpl.tbl$Percentage <- NA
+
+for (i in 0:length(unique(mpl.tbl$`Original Cluster`))){
+        mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Percentage <-
+                round(mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Count /
+                              sum(wbm.less.clusters$RNA_snn_res.0.2 == i),2)*100
+}
+
+
+ggplot(data = mpl.tbl, aes(x = `Integrated Cluster`, y = `Original Cluster`)) +
+        geom_tile(aes(fill = Percentage)) +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',midpoint = 50) +
+        geom_text(aes(label = Count)) +
+        ggtitle('Migr1/Mpl Experiment (res = 0.2)')
+```
+
+```{r mpl tables .7}
+mpl.tbl <- as.data.frame(table( mpl.clusters$RNA_snn_res.0.7, mpl.clusters$seurat_clusters))
+
+colnames(mpl.tbl) <- c('Original Cluster','Integrated Cluster','Count')
+
+mpl.tbl$Percentage <- NA
+
+for (i in 0:length(unique(mpl.tbl$`Original Cluster`))){
+        mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Percentage <-
+                round(mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Count /
+                              sum(wbm.less.clusters$RNA_snn_res.0.7 == i),2)*100
+}
+
+
+ggplot(data = mpl.tbl, aes(x = `Integrated Cluster`, y = `Original Cluster`)) +
+        geom_tile(aes(fill = Percentage)) +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',midpoint = 50) +
+        geom_text(aes(label = Count)) +
+        ggtitle('Migr1/Mpl Experiment (res = 0.7)')
+```
+
+
+```{r integration umap}
+DimPlot(wbm, reduction = 'umap', label = T, repel = T, group.by = 'seurat_clusters')
+```
+
+Most of the original clusters that get up into multiple clusters in the integrated umap occur within cell type groups. For example there are original clusters that are found in both integrated cluster 3 & 13 (both B-cell clusters), and same with clusters 0, 1 & 4 (Granulocytes). Of interest is to note some original clusters being split into integrated clusters 10 & 12, erythrocytes and MKs respectivaly. These are different cell types but with a close relative progenitor MEPs, so perhaps these are some MEPs being split up with the addition of the integrate Nbeal data.
+
+#### Looking at Subdividing into States
+
+Splitting up whether we are looking at enriched/non-enrich and between Mpl and Migr1
+
+Going to stick with the resolution of 0.3, not overload figures
+
+##### Migr1 Only
+
+```{r migr1 all tables}
+mpl.clusters2 <- mpl.clusters[grepl('Migr1',mpl.clusters$State),]
+mpl.tbl <- as.data.frame(table( mpl.clusters2$RNA_snn_res.0.2, mpl.clusters2$seurat_clusters))
+
+colnames(mpl.tbl) <- c('Original Cluster','Integrated Cluster','Count')
+
+mpl.tbl$Percentage <- NA
+
+for (i in 0:length(unique(mpl.tbl$`Original Cluster`))){
+        mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Percentage <-
+                round(mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Count /
+                             sum(wbm.less.clusters[grepl('Migr1',mpl.clusters$State),]$RNA_snn_res.0.2 == i),2)*100
+}
+
+
+ggplot(data = mpl.tbl, aes(x = `Integrated Cluster`, y = `Original Cluster`)) +
+        geom_tile(aes(fill = Percentage)) +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',midpoint = 50) +
+        geom_text(aes(label = Count)) +
+        ggtitle('All Migr1 Experiment (res = 0.2)')
+```
+```{r enr migr1 tables}
+mpl.clusters2 <- mpl.clusters[grepl('enrMigr1',mpl.clusters$State),]
+mpl.tbl <- as.data.frame(table( mpl.clusters2$RNA_snn_res.0.2, mpl.clusters2$seurat_clusters))
+
+colnames(mpl.tbl) <- c('Original Cluster','Integrated Cluster','Count')
+
+mpl.tbl$Percentage <- NA
+
+for (i in 0:length(unique(mpl.tbl$`Original Cluster`))){
+        mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Percentage <-
+                round(mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Count /
+                          sum(wbm.less.clusters[grepl('enrMigr1',mpl.clusters$State),]$RNA_snn_res.0.2 == i),2)*100
+}
+
+
+ggplot(data = mpl.tbl, aes(x = `Integrated Cluster`, y = `Original Cluster`)) +
+        geom_tile(aes(fill = Percentage)) +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',midpoint = 50) +
+        geom_text(aes(label = Count)) +
+        ggtitle('Enr Migr1 Experiment (res = 0.2)')
+```
+
+```{r non enriched migr1 tables}
+mpl.clusters2 <- mpl.clusters[mpl.clusters$State == 'Migr1',]
+mpl.tbl <- as.data.frame(table( mpl.clusters2$RNA_snn_res.0.2, mpl.clusters2$seurat_clusters))
+
+colnames(mpl.tbl) <- c('Original Cluster','Integrated Cluster','Count')
+
+mpl.tbl$Percentage <- NA
+
+for (i in 0:length(unique(mpl.tbl$`Original Cluster`))){
+        mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Percentage <-
+                round(mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Count /
+                          sum(wbm.less.clusters[mpl.clusters$State == 'Migr1',]$RNA_snn_res.0.2 == i),2)*100
+}
+
+
+ggplot(data = mpl.tbl, aes(x = `Integrated Cluster`, y = `Original Cluster`)) +
+        geom_tile(aes(fill = Percentage)) +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',midpoint = 50) +
+        geom_text(aes(label = Count)) +
+        ggtitle('Non-enriched Migr1 Experiment (res = 0.2)')
+```
+
+##### Mipl Only
+
+```{r mpl all tables}
+mpl.clusters2 <- mpl.clusters[grepl('Mpl',mpl.clusters$State),]
+mpl.tbl <- as.data.frame(table( mpl.clusters2$RNA_snn_res.0.2, mpl.clusters2$seurat_clusters))
+
+colnames(mpl.tbl) <- c('Original Cluster','Integrated Cluster','Count')
+
+mpl.tbl$Percentage <- NA
+
+for (i in 0:length(unique(mpl.tbl$`Original Cluster`))){
+        mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Percentage <-
+                round(mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Count /
+                             sum(wbm.less.clusters[grepl('Mpl',mpl.clusters$State),]$RNA_snn_res.0.2 == i),2)*100
+}
+
+
+ggplot(data = mpl.tbl, aes(x = `Integrated Cluster`, y = `Original Cluster`)) +
+        geom_tile(aes(fill = Percentage)) +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',midpoint = 50) +
+        geom_text(aes(label = Count)) +
+        ggtitle('All Mpl Experiment (res = 0.2)')
+```
+
+
+```{r enr Mpl tables}
+mpl.clusters2 <- mpl.clusters[grepl('enrMpl',mpl.clusters$State),]
+mpl.tbl <- as.data.frame(table( mpl.clusters2$RNA_snn_res.0.2, mpl.clusters2$seurat_clusters))
+
+colnames(mpl.tbl) <- c('Original Cluster','Integrated Cluster','Count')
+
+mpl.tbl$Percentage <- NA
+
+for (i in 0:length(unique(mpl.tbl$`Original Cluster`))){
+        mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Percentage <-
+                round(mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Count /
+                          sum(wbm.less.clusters[grepl('enrMpl',mpl.clusters$State),]$RNA_snn_res.0.2 == i),2)*100
+}
+
+
+ggplot(data = mpl.tbl, aes(x = `Integrated Cluster`, y = `Original Cluster`)) +
+        geom_tile(aes(fill = Percentage)) +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',midpoint = 50) +
+        geom_text(aes(label = Count)) +
+        ggtitle('Enr Mpl Experiment (res = 0.2)')
+```
+
+```{r non enriched mpl tables}
+mpl.clusters2 <- mpl.clusters[mpl.clusters$State == 'Mpl',]
+mpl.tbl <- as.data.frame(table( mpl.clusters2$RNA_snn_res.0.2, mpl.clusters2$seurat_clusters))
+
+colnames(mpl.tbl) <- c('Original Cluster','Integrated Cluster','Count')
+
+mpl.tbl$Percentage <- NA
+
+for (i in 0:length(unique(mpl.tbl$`Original Cluster`))){
+        mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Percentage <-
+                round(mpl.tbl[mpl.tbl$`Original Cluster` == i,]$Count /
+                          sum(wbm.less.clusters[mpl.clusters$State == 'Mpl',]$RNA_snn_res.0.2 == i),2)*100
+}
+
+
+ggplot(data = mpl.tbl, aes(x = `Integrated Cluster`, y = `Original Cluster`)) +
+        geom_tile(aes(fill = Percentage)) +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',midpoint = 50) +
+        geom_text(aes(label = Count)) +
+        ggtitle('Non-enriched Mpl Experiment (res = 0.2)')
+```
+
+### Nbeal Tables
+
+```{r nbeal tables}
+nbeal.tbl <- as.data.frame(table( nbeal.clusters$RNA_snn_res.0.2, nbeal.clusters$seurat_clusters))
+
+colnames(nbeal.tbl) <- c('Original Cluster','Integrated Cluster','Count')
+
+nbeal.tbl$Percentage <- NA
+
+for (i in 0:length(unique(nbeal.tbl$`Original Cluster`))){
+        nbeal.tbl[nbeal.tbl$`Original Cluster` == i,]$Percentage <-
+                round(nbeal.tbl[nbeal.tbl$`Original Cluster` == i,]$Count /
+                              sum(less.cnt.clusters$RNA_snn_res.0.2 == i),2)*100
+}
+
+
+ggplot(data = nbeal.tbl, aes(x = `Integrated Cluster`, y = `Original Cluster`)) +
+        geom_tile(aes(fill = Percentage)) +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',midpoint = 50) +
+        geom_text(aes(label = Count)) +
+        ggtitle('Nbeal Experiment (res = 0.2)')
+```
+
+```{r nbeal tables .7}
+nbeal.tbl <- as.data.frame(table( nbeal.clusters$RNA_snn_res.0.7, nbeal.clusters$seurat_clusters))
+
+colnames(nbeal.tbl) <- c('Original Cluster','Integrated Cluster','Count')
+
+nbeal.tbl$Percentage <- NA
+
+for (i in 0:length(unique(nbeal.tbl$`Original Cluster`))){
+        nbeal.tbl[nbeal.tbl$`Original Cluster` == i,]$Percentage <-
+                round(nbeal.tbl[nbeal.tbl$`Original Cluster` == i,]$Count /
+                              sum(less.cnt.clusters$RNA_snn_res.0.7 == i),2)*100
+}
+
+
+ggplot(data = nbeal.tbl, aes(x = `Integrated Cluster`, y = `Original Cluster`)) +
+        geom_tile(aes(fill = Percentage)) +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',midpoint = 50) +
+        geom_text(aes(label = Count)) +
+        ggtitle('Nbeal Experiment (res = 0.7)')
+```
+
+```{r normal Nbeal tables}
+nbeal.clusters2 <- nbeal.clusters[nbeal.clusters$State == 'Nbeal_cntrl',]
+nbeal.tbl <- as.data.frame(table( nbeal.clusters2$RNA_snn_res.0.2, nbeal.clusters2$seurat_clusters))
+
+colnames(nbeal.tbl) <- c('Original Cluster','Integrated Cluster','Count')
+
+nbeal.tbl$Percentage <- NA
+
+for (i in 0:length(unique(nbeal.tbl$`Original Cluster`))){
+        nbeal.tbl[nbeal.tbl$`Original Cluster` == i,]$Percentage <-
+                round(nbeal.tbl[nbeal.tbl$`Original Cluster` == i,]$Count /
+                              sum(less.cnt.clusters[less.cnt.clusters$Condition == 'Nbeal_cntrl',]$RNA_snn_res.0.2 == i),2)*100
+}
+
+
+ggplot(data = nbeal.tbl, aes(x = `Integrated Cluster`, y = `Original Cluster`)) +
+        geom_tile(aes(fill = Percentage)) +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',midpoint = 50) +
+        geom_text(aes(label = Count)) +
+        ggtitle('non-enrNbeal Experiment (res = 0.2)')
+```
+
+```{r enr Nbeal tables}
+nbeal.clusters2 <- nbeal.clusters[nbeal.clusters$State == 'enrNbeal_cntrl',]
+nbeal.tbl <- as.data.frame(table( nbeal.clusters2$RNA_snn_res.0.2, nbeal.clusters2$seurat_clusters))
+
+colnames(nbeal.tbl) <- c('Original Cluster','Integrated Cluster','Count')
+
+nbeal.tbl$Percentage <- NA
+
+for (i in 0:length(unique(nbeal.tbl$`Original Cluster`))){
+        nbeal.tbl[nbeal.tbl$`Original Cluster` == i,]$Percentage <-
+                round(nbeal.tbl[nbeal.tbl$`Original Cluster` == i,]$Count /
+                              sum(less.cnt.clusters[less.cnt.clusters$Condition == 'enrNbeal_cntrl',]$RNA_snn_res.0.2 == i),2)*100
+}
+
+
+ggplot(data = nbeal.tbl, aes(x = `Integrated Cluster`, y = `Original Cluster`)) +
+        geom_tile(aes(fill = Percentage)) +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',midpoint = 50) +
+        geom_text(aes(label = Count)) +
+        ggtitle('enrNbeal Experiment (res = 0.2)')
+```

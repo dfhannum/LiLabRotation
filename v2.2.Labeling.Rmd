@@ -31,14 +31,12 @@ sessionInfo()
 ```{r loading data}
 # Calling the Seurat variable wbm instead of comb.int which is what it was previously
 
-wbm <- readRDS('./data/v2/combined.integrated.rds')
+wbm <- readRDS('./data/v2/lesser.combined.integrated.rds')
+
+DimPlot(wbm, reduction = 'umap')
 ```
 
-# Introduction
 
-In v2 of the analysis we decided to include the control mice from the Nbeal experiment with the Migr1 and Mpl mice. The thought is that it may be good to have another control, since the Migr1 control has irradiated and had a bone marrow transplantation. I'm going to split the Rmarkdown files into separate part, to better organize my analysis.
-
-## This File
 
 Here I will in include my efforts in to labeling the cell clusters in the integrated dataset. Planned analysis for labeling cell clusters:
 
@@ -80,13 +78,13 @@ pred_cell <- SingleR(test = SCwbm,
 ## Cluster Labels
 
 ```{r singleR cluster labels}
-pred_cluster$scores
-
-pred_cluster$labels
-
-pred_cluster$pruned.labels
-
-pred_cluster$orig.results
+# pred_cluster$scores
+# 
+# pred_cluster$labels
+# 
+# pred_cluster$pruned.labels
+# 
+# pred_cluster$orig.results
 
 pred_scores_cluster <- pred_cluster$scores
 
@@ -94,7 +92,7 @@ pred_scores_cluster <- pred_cluster$scores
 
 pred_scores_cluster <- as.data.frame(pred_scores_cluster[,colSums(is.na(pred_scores_cluster)) != nrow(pred_scores_cluster)])
 
-rownames(pred_scores_cluster) <- 0:14
+# rownames(pred_scores_cluster) <- 0:14
 
 colnames(pred_scores_cluster)[8:13] <- paste0(colnames(pred_scores_cluster)[8:13],'-2')
 
@@ -118,24 +116,25 @@ ggplot(data = pred_scores_cluster, aes(y = Cell.Type, x = seurat.cluster2,
 
 ```{r creating label summary}
 
-sum <- as.data.frame(matrix(ncol = 4, nrow = 15))
+sumry <- as.data.frame(matrix(ncol = 1, nrow = 15))
 
-colnames(sum) <- c('Cluster','SingleR-cluster-ref1','SingleR-cluster-ref2','SingleR-cluster-comb')
+colnames(sumry) <- c('Cluster')
 
-sum$Cluster <- 0:14
+sumry$Cluster <- 0:14
 
-sum$`SingleR-comb` <- pred_cluster$pruned.labels
+sumry$`SingleR-comb` <- pred_cluster$pruned.labels
 
-sum$`SingleR-ref1` <- c('Neutrophils','Neutrophils','Stem Cells','Neutrophils', 
-                        'B Cells','Basophils','Monocytes','B cells',
-                        'Macrophages','Neutrophils','T cells','B cells',
+sumry$`SingleR-ref1` <- c('Neutrophils','Neutrophils','Stem Cells','B cells', 
+                        'Neutrophils','Monocytes','Basophils','Stem Cells',
+                        'Macrophages','B cells','B cells','T cells',
                         'Stem Cells','B cells','B cells')
 
-sum$`SingleR-ref2` <- c('Granulocytes','Granulocytes','Granulocytes','Granulocytes',
-                        'B cells', 'Granulocytes', 'Monocytes','B cells','Macrophages',
-                        'Erythrocytes','T cells','B cells','Granulocytes', 'B cells','B cells')
+sumry$`SingleR-ref2` <- c('Granulocytes','Granulocytes','Granulocytes','B cells',
+                        'Granulocytes', 'Monocytes', 'Granulocytes','Monocytes',
+                        'Macrophages', 'B cells','Erythrocytes','T cells',
+                        'Erythrocytes', 'B cells','B cells')
 
-sum
+sumry
 ```
 
 ```{r pred SingleR cell}
@@ -146,7 +145,9 @@ pred_cell_score <- pred_cell[,c('pruned.labels','reference')]
 #summary(rownames(pred_cell_score) == rownames(wbm@meta.data))
 pred_cell_score$cluster <- wbm$seurat_clusters
 
-cell_score <- as.data.frame(table(paste0(pred_cell_score$pruned.labels, pred_cell_score$reference),pred_cell_score$cluster))
+cell_score <- as.data.frame(table(paste0(pred_cell_score$pruned.labels,
+                                         pred_cell_score$reference),
+                                  pred_cell_score$cluster))
 
 colnames(cell_score) <- c('Cell Type','Cluster','Count')
 
@@ -193,14 +194,716 @@ The above image shows how best to interpret the cell prediction. Clusters (colum
 ```{r summ add singleR cell}
 # Just adding the label of the highest count
 
-sum$SingleR_cell_comb <- c('Granulocytes','Granulocytes','Stem Cells', 'Granulocyte',
-                           'B cells', 'Basophils', 'Monocytes','B cells', 
-                           'Macrophages','Erythrocytes', 'T cells', 'B cells',
+sumry$SingleR_cell_comb <- c('Neutrophil','Granulocytes','Stem Cells', 'B cell',
+                           'Neutrophil', 'Monocyte', 'Basophil','Stem cells', 
+                           'Macrophages','B cells', 'Erythrocytes', 'T cells',
                            'Stem Cells','B cells', 'NA')
 
-sum
+sumry
 ```
 
 # Marker Gene Expression
 
-Cell type specific marker gene expression 
+Cell type specific marker gene expression. Genes were added to the list in two different ways: canonical markers that are well known in the field, and genes that distinguished clusters and were found to play a key role in specific cells.
+
+## Literature for Markers: Previously used
+
+**Ighd**: immunoglobulin heavy constant delta. Seems to clearly be expressed by B-cells, but still working on a good reference.
+
+**Gata2**: From Krause paper: a transcription factor required for both lineages but bind in different combinations [ref](https://ashpublications.org/blood/article/113/10/2191/24361/SCL-and-associated-proteins-distinguish-active)
+
+**Cd68**: a human macrophage marker [ref](https://pubmed.ncbi.nlm.nih.gov/7680921/). A more general [ref](https://www.nature.com/articles/labinvest2016116/)
+ 
+**Vcam1**: found papers using Vcam1+ monocytes, but haven't found a great reference.
+
+**Alas2**: an erythroid-specfiic 5-aminolevulinate synthase gene [ref](https://pubmed.ncbi.nlm.nih.gov/12663458/)
+
+**Gata3**: plays a role in the regulation of T-cells [ref](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2998182/)
+
+**Vwf** and **Itga2b**: I figure the reference would best be left to y'all.
+
+## New Markers
+
+**Ly6g**: from [website](https://www.novusbio.com/antibody-news/antibodies/ly6g-a-marker-for-monocytes-granulocytes-and-neutrophils) it plays a role in monocyte, granulocyte, and neutrophil
+
+**Ngp**: from uniprot "Expressed in myeloid bone marrow cells. Expressed in neutrophilic precursors (at protein level) (PubMed:[8749713](https://www.uniprot.org/citations/8749713)). Expressed in myeloid bone marrow cells (PubMed:[21518852](https://www.uniprot.org/citations/21518852))"
+
+**Mmp8**: neutrophil/lymphocyte collagenase [link](https://www.genecards.org/cgi-bin/carddisp.pl?gene=MMP8)
+
+
+```{r granulocyte markers, include = F}
+# markers <- FindMarkers(wbm,
+#                        ident.1 = c(14),
+#                        ident.2 = c(0,1,2,3,5,6,8,9,10,12),
+#                        logfc.threshold = log(2),
+#                        test.use = 'MAST')
+# #head(markers,10)
+# markers <- FindMarkers(wbm,
+#                        ident.1 = 5,
+#                        logfc.threshold = log(2),
+#                        test.use = 'MAST')
+```
+
+```{r marker dot plot}
+marker.genes <- rev(c('Itga2b','Vwf','Gata3','Alas2','Vcam1','Cd68','Gata2','Ighd'))
+
+DotPlot(wbm, features = marker.genes) +
+        ylab ('Cell Cluster') + xlab ('Marker Genes') +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text.x = element_text(angle = 45, 
+                                         vjust = .5, size = 10, family = 'sans'),
+              axis.text.y = element_text(family = 'sans', size = 10),
+              axis.title = element_text(family = 'sans', size = 12))
+
+otros.marker.genes <- rev(c('Cebpe','Fcnb'))
+
+
+DotPlot(wbm, features = otros.marker.genes) +
+        ylab ('Cell Cluster') + xlab ('Marker Genes') +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text.x = element_text(angle = 45, 
+                                         vjust = .5, size = 10, family = 'sans'),
+              axis.text.y = element_text(family = 'sans', size = 10),
+              axis.title = element_text(family = 'sans', size = 12))
+
+new.markers <- c('Mcpt8','Prss34','Kit','Jchain','Hmgb1', 'Vpreb3','Igkc','Ighm')
+
+hspc.markers <- c('SCA-1', 'Cd38','Thy1','Kit')
+
+DotPlot(wbm, features = hspc.markers) +
+        ylab ('Cell Cluster') + xlab ('Marker Genes') +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text.x = element_text(angle = 45, 
+                                         vjust = .5, size = 10, family = 'sans'),
+              axis.text.y = element_text(family = 'sans', size = 10),
+              axis.title = element_text(family = 'sans', size = 12))
+
+DotPlot(wbm, features = c(otros.marker.genes,new.markers,marker.genes)) +
+        ylab ('Cell Cluster') + xlab ('Marker Genes') +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text.x = element_text(angle = 45, 
+                                         vjust = .5, size = 10, family = 'sans'),
+              axis.text.y = element_text(family = 'sans', size = 10),
+              axis.title = element_text(family = 'sans', size = 12))
+
+```
+
+```{r sumry update with markers}
+sumry$markers <- c('Granulocyte', 'NA', 'Granulocyte', 'B-cells',
+                   'NA','Monocytes','Mast Cell/MEP','Granulocyte?',
+                   'Monocyte/Macrophage','B-cells','Erythrocyte','T-cells',
+                   'Megakaryocyte','Lymphocyte/Stromal Cell', 'Plasma Cell')
+
+sumry
+```
+
+# Comparison to Human Whole Bone Marrow
+
+Need documentation: see slack notes
+
+```{r human wbm setup converting gene names}
+features <- read.table('./data/hum_ref_wbm/GSE120221_RAW/GSM3396161/features.HUMANGENES.tsv.gz')
+#head(features)
+
+#humgenes.test <- 'CHD7'
+humgenes <- features$V2
+
+# link to function https://www.r-bloggers.com/converting-mouse-to-human-gene-names-with-biomart-package/
+
+# Basic function to convert human to mouse gene names
+convertHumanGeneList <- function(x){
+
+require("biomaRt")
+human = useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+mouse = useMart("ensembl", dataset = "mmusculus_gene_ensembl")
+
+genesV2 = getLDS(attributes = c("hgnc_symbol"), filters = "hgnc_symbol", values = x , mart = human, attributesL = c("mgi_symbol"), martL = mouse, uniqueRows=T)
+
+return(genesV2)
+}
+
+#genes <- convertHumanGeneList(humgenes.test)
+# genes <- convertHumanGeneList(humgenes)
+
+# write.table(genes,'./data/hum_ref_wbm/GSE120221_RAW/GSM3396161/human_to_mouse.tsv',
+#             row.names = F, quote = F, sep = '\t')
+
+genes <- read.table('./data/hum_ref_wbm/GSE120221_RAW/GSM3396161/human_to_mouse.tsv',
+                 header = T)
+
+# summary(as.factor(genes$HGNC.symbol))
+# genes[genes$HGNC.symbol == 'SYCP3',][genes[genes$HGNC.symbol == 'SYCP3',]$MGI.symbol %in% rownames(wbm),]
+# 
+# genes[genes$HGNC.symbol == 'PRAMEF1',][genes[genes$HGNC.symbol == 'PRAMEF1',]$MGI.symbol %in% rownames(wbm),]
+
+tbl <- as.data.frame(table(genes$HGNC.symbol))
+
+g <- genes[genes$MGI.symbol %in% rownames(wbm),]
+
+tbl2 <- as.data.frame(table(g$HGNC.symbol))
+
+g2 <- g[1,]
+gene_list <- c()
+gene_list <- c(gene_list,g[1,1])
+
+rownames(g) <- 1:nrow(g)
+for (i in 2:nrow(g)){
+        if (!(g[i,1] %in% gene_list)){
+                g2 <- rbind(g2,g[i,])
+                gene_list <- c(gene_list,g[i,1])
+        }
+}
+# Only using the first ortholog
+
+features$V3 <- NA
+
+for (i in 1:nrow(features)){
+        if (features[i,]$V2 %in% g2$HGNC.symbol){
+                features[i,]$V3 <- g2[g2$HGNC.symbol == features[i,]$V2,]$MGI.symbol
+        }
+        else{
+                features[i,]$V3 <- features[i,]$V2
+        }
+}
+
+features <- features[,c(1,3)]
+
+# write.table(features, './data/hum_ref_wbm/GSE120221_RAW/GSM3396161/features.tsv', 
+#             sep ='\t', quote = F, row.names = F, col.names = F)
+```
+
+
+```{r reading in human into seurat}
+hwbm_ex <-Read10X(data.dir = './data/hum_ref_wbm/GSE120221_RAW/GSM3396161/')
+
+hwbm <- CreateSeuratObject(counts = hwbm_ex, project = 'hwbm', min.cells = 3, min.features = 200)
+
+hwbm_cell_labels <- read.csv('./data/hum_ref_wbm/celltype.csv')
+
+#hwbm_cell_labels
+
+hwbm_cell_labels$cell <- tstrsplit(hwbm_cell_labels$X, '_', keep = 2)[[1]]
+hwbm_cell_labels$exp <- tstrsplit(hwbm_cell_labels$X, "_", keep = 1)[[1]]
+
+hwbm_cell_labels <- hwbm_cell_labels[hwbm_cell_labels$exp == 'A',]
+hwbm_cell_labels$cell <- paste0(hwbm_cell_labels$cell, '-1')
+
+hwbm[['percent.mt']] <- PercentageFeatureSet(hwbm, pattern = "^MT-")
+
+cells_to_keep <- colnames(hwbm)[colnames(hwbm) %in% hwbm_cell_labels$cell]
+
+hwbm <- subset(hwbm, cells = cells_to_keep)
+
+genes_to_keep <- rownames(hwbm)[rownames(hwbm) %in% rownames(wbm)]
+
+hwbm <- subset(hwbm, features = genes_to_keep)
+
+hwbm <- NormalizeData(hwbm, normalization.method = 'LogNormalize', scale.factor = 10000)
+
+hwbm <- ScaleData(hwbm, features = rownames(hwbm))
+
+wbm2 <- subset(wbm, features = genes_to_keep)
+```
+
+```{r getting the correlation between the two datasets}
+#summary(hwbm_cell_labels$cell == rownames(hwbm@meta.data))
+
+hwbm@meta.data$cell_id <- hwbm_cell_labels$type
+
+Idents(hwbm) <- hwbm$cell_id
+
+av_wbm <- AverageExpression(wbm2)$RNA
+
+av_hwbm <- AverageExpression(hwbm)$RNA
+
+av <- cbind(av_wbm, av_hwbm)
+
+av_cor <- cor(av, method = 'kendall')
+
+av_cor2 <- as.data.frame(av_cor)
+
+av_cor2$row <- rownames(av_cor2)
+
+colnames(av_cor2)[1:15] <- paste0('Cluster',0:14)
+rownames(av_cor2)[1:15] <- paste0('Cluster',0:14)
+av_cor2$row <- rownames(av_cor2)
+
+# gather(av_cor2, row, cor, Cluster0:Cluster14, factor_key = T)
+
+av_cor2 <- reshape(av_cor2, direction = 'long', 
+        varying = list(names(av_cor2)[1:34]),
+        v.names = 'Correlation',
+        idvar = c('row'),
+        timevar = 'CT2',
+        times = names(av_cor2)[1:34])
+
+av_cor2$row <- factor(av_cor2$row, levels = unique(av_cor2$row))
+av_cor2$CT2 <- factor(av_cor2$CT2, levels = unique(av_cor2$CT2))
+
+ggplot(av_cor2, aes(x = row, y = CT2, fill = Correlation)) +
+        geom_tile() +
+        theme_bw() + 
+        scale_fill_gradient2(high = 'darkred', low = 'white', mid = 'red',,
+                             midpoint = 0.5, limit = c(0,1)) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+lvls <- levels(av_cor2$row)
+av_cor3 <- av_cor2[av_cor2$row %in% lvls[1:15] & av_cor2$CT2 %in% lvls[16:34],]
+ggplot(av_cor3, aes(x = row, y = CT2, fill = Correlation)) +
+        geom_tile() +
+        theme_bw() + 
+        scale_fill_gradient2(high = 'darkred', low = 'white', mid = 'red',,
+                             midpoint = 0.5, limit = c(0,1)) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Still isn't completely clear. The thought is too limit the number of genes used to make this correlation. For these figures it was using the 2,000 most highly variable genes in the mouse dataset, and finding human orthologs in the the human bone marrow dataset. Some human genes had multiple mouse orthologs, and we took the first one in the list. This left us with 1,471 genes in the above comparison.
+
+Of the 500 most variable in both mouse and human scRNA datasets (each starting with 1,471 genes), 181 overlapped between the two sets.
+
+```{r most variable genes}
+
+wbm2 <- FindVariableFeatures(wbm2, selection.method = 'vst', nfeatures = 500, verbose = F)
+
+hwbm <- FindVariableFeatures(hwbm, selection.method = 'vst', nfeatures = 500, verbose = F)
+
+summary(VariableFeatures(wbm2) %in% VariableFeatures(hwbm))
+
+top181 <- VariableFeatures(wbm2)[VariableFeatures(wbm2) %in% VariableFeatures(hwbm)]
+
+av_wbm2 <- av_wbm[rownames(av_wbm) %in% top181,]
+av_hwbm2 <- av_hwbm[rownames(av_hwbm) %in% top181,]
+
+av <- cbind(av_wbm2, av_hwbm2)
+
+av_cor <- cor(av, method = 'kendall')
+
+av_cor2 <- as.data.frame(av_cor)
+
+colnames(av_cor2)[1:15] <- paste0('Cluster',0:14)
+rownames(av_cor2)[1:15] <- paste0('Cluster',0:14)
+
+av_cor2$row <- rownames(av_cor2)
+
+# gather(av_cor2, row, cor, Cluster0:Cluster14, factor_key = T)
+
+av_cor2 <- reshape(av_cor2, direction = 'long', 
+        varying = list(names(av_cor2)[1:34]),
+        v.names = 'Correlation',
+        idvar = c('row'),
+        timevar = 'CT2',
+        times = names(av_cor2)[1:34])
+
+av_cor2$row <- factor(av_cor2$row, levels = unique(av_cor2$row))
+av_cor2$CT2 <- factor(av_cor2$CT2, levels = unique(av_cor2$CT2))
+
+ggplot(av_cor2, aes(x = row, y = CT2, fill = Correlation)) +
+        geom_tile() +
+        theme_bw() + 
+        scale_fill_gradient2(high = 'darkred', low = 'white', mid = 'red',,
+                             midpoint = 0.5, limit = c(0,1)) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+lvls <- levels(av_cor2$row)
+av_cor3 <- av_cor2[av_cor2$row %in% lvls[1:15] & av_cor2$CT2 %in% lvls[16:34],]
+ggplot(av_cor3, aes(x = row, y = CT2, fill = Correlation)) +
+        geom_tile() +
+        theme_bw() + 
+        scale_fill_gradient2(high = 'darkred', low = 'white', mid = 'red',,
+                             midpoint = 0.5, limit = c(0,1)) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+```
+
+Now just looking at the 500 most variable genes in the mouse data set.
+
+```{r mouse variable correlation}
+top500m <- VariableFeatures(wbm2)
+
+av_wbm2 <- av_wbm[rownames(av_wbm) %in% top500m,]
+av_hwbm2 <- av_hwbm[rownames(av_hwbm) %in% top500m,]
+
+av <- cbind(av_wbm2, av_hwbm2)
+
+av_cor <- cor(av, method = 'kendall')
+
+av_cor2 <- as.data.frame(av_cor)
+
+colnames(av_cor2)[1:15] <- paste0('Cluster',0:14)
+rownames(av_cor2)[1:15] <- paste0('Cluster',0:14)
+
+av_cor2$row <- rownames(av_cor2)
+
+# gather(av_cor2, row, cor, Cluster0:Cluster14, factor_key = T)
+
+av_cor2 <- reshape(av_cor2, direction = 'long', 
+        varying = list(names(av_cor2)[1:34]),
+        v.names = 'Correlation',
+        idvar = c('row'),
+        timevar = 'CT2',
+        times = names(av_cor2)[1:34])
+
+av_cor2$row <- factor(av_cor2$row, levels = unique(av_cor2$row))
+av_cor2$CT2 <- factor(av_cor2$CT2, levels = unique(av_cor2$CT2))
+
+ggplot(av_cor2, aes(x = row, y = CT2, fill = Correlation)) +
+        geom_tile() +
+        theme_bw() + 
+        scale_fill_gradient2(high = 'darkred', low = 'white', mid = 'red',,
+                             midpoint = 0.5, limit = c(0,1)) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+lvls <- levels(av_cor2$row)
+av_cor3 <- av_cor2[av_cor2$row %in% lvls[1:15] & av_cor2$CT2 %in% lvls[16:34],]
+ggplot(av_cor3, aes(x = row, y = CT2, fill = Correlation)) +
+        geom_tile() +
+        theme_bw() + 
+        scale_fill_gradient2(high = 'darkred', low = 'white', mid = 'red',,
+                             midpoint = 0.5, limit = c(0,1)) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r summary for hum}
+sumry$hum_ref <- c('','','Erythrocytes', 'B cells','','Dendritic',
+                   '','Prog.','Monocytes','B cells',
+                   'Erythrocyte','T cells','HSPCs/Ery','','Plasma')
+
+sumry$final <- c('Granulocyte','Granulocyte','Stem Cells','B cell',
+                 'Granulocyte', 'Monocyte','?MEP/Mast','?Prog','Macrophage',
+                 'B cell', 'Erythrocyte',
+                 'T cell','Megakaryocyte','B cell', 'B cell')
+
+
+write.table(sumry,'./data/v2/summary_naming.tsv', quote = F, row.names = F,
+            sep = '\t')
+```
+
+# New Cell Type Labels
+
+```{r changing idents}
+wbm <- readRDS('./data/v2/lesser.combined.integrated.rds')
+
+wbm$State <- wbm$Condition
+
+wbm$Condition <- ifelse(grepl('enr', wbm$Condition), 'Enriched', 'Not enriched')
+
+wbm$Experiment <- ifelse(grepl('Mpl', wbm$State), 'Mpl',
+                         ifelse(grepl('Migr', wbm$State), 'Migr1', 'Control'))
+
+sumry <- read.table('./data/v2/summary_naming.tsv', header = T, sep = '\t')
+# sumry
+
+# new_levels <- sumry$final
+
+new_levels <- c('Gran-1','Gran-2','SC','B cell-1','Gran-3','Monocyte','MEP/Mast',
+                '?Prog','Macrophage','B cell-2','Erythrocyte', 'T cell',
+                'Megakaryocyte','B cell-3', 'B cell-4')
+
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+wbm$new_cluster_IDs <- Idents(wbm)
+
+DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+# Distinguishing Genes
+
+Looking at genes that distinguish certain clusters from others, to help identify the cell type. This was partially done during the marker gene stage, but will be done more thoroughly in this section.
+
+## Stem Cell Cluster
+
+```{r stem cell de genes}
+sc.markers <- FindMarkers(wbm,
+                          ident.1 = 'SC',
+                          logfc.threshold = log(2),
+                          test.use = 'MAST')
+sc.markers <- sc.markers[sc.markers$p_val_adj < 0.05,]
+head(sc.markers,10)
+tail(sc.markers,10)
+```
+**Top 10**
+* *Fcnb*: a gene expressed in granulocytes
+* *Chil3*: eosinophil chemotactic cytokine
+* *Cebpe*: may be essential for terminal differentiation and functional maturation of committed granulocyte progenitor cells
+* *Mki67*: marker of proliferation
+* *Birc5*: apoptosis inhibitor
+
+**Down 10**
+Many genes associated with lymphocytes (Igha, Jchain)
+
+### Conclusion
+
+I think once again these aren't truly stem cells but a *granulocyte progenitor*
+
+## Progenitor Cluster
+
+```{r prog de genes}
+prog.markers <- FindMarkers(wbm,
+                          ident.1 = '?Prog',
+                          logfc.threshold = log(2),
+                          test.use = 'MAST')
+prog.markers <- prog.markers[prog.markers$p_val_adj < 0.05,]
+head(prog.markers,10)
+tail(prog.markers,10)
+```
+**Top 10 Markers**
+* *Elane*: creates a protein called neutrophil elastase
+* *Prtn3*: expressed in neutrophil granulocytes
+* *Mpo*: active during myeloid differentiation that consitutes the major component of neutrophil azurophilic granules.
+* *Ctsg*: found in azurophil granules of neutrophilic polymorphonuclear leukocytes.
+
+### Conclusion
+
+A neutrophil cluster
+
+## Megakaryocyte
+
+```{r mk de genes}
+mk.markers <- FindMarkers(wbm,
+                          ident.1 = 'Megakaryocyte',
+                          logfc.threshold = log(2),
+                          test.use = 'MAST')
+mk.markers <- mk.markers[mk.markers$p_val_adj < 0.05,]
+head(mk.markers,10)
+tail(mk.markers,10)
+```
+**Top 10 Markers**
+* *Pf4*: Mks regulate the quiescence of HSCs through PF4 [link](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4923518/#__sec2title)
+* *Mrv1*: similar to Jaw1, a lymphoid-restricted protein whose expression is downregulated during myeloid differentiation, may be a myeloid leukemia tumor suppressor gene
+
+### Conclusion
+This top 10 list isn't very informative
+
+## MEP/MAST
+
+```{r mep/mast de genes}
+mep.markers <- FindMarkers(wbm,
+                          ident.1 = 'MEP/Mast',
+                          logfc.threshold = log(2),
+                          test.use = 'MAST')
+mep.markers <- mep.markers[mep.markers$p_val_adj < 0.05,]
+head(mep.markers,10)
+tail(mep.markers,10)
+```
+
+**Top 10 Genes**
+* *Mcpt8, Prss34, Cpa3*: mast cell genes
+* *Ccl*: many chemokine ligand genes
+
+###Conclusions
+
+Seems like these are mast cells
+
+# MEP/MK/Ery Markers
+
+Looking at the markers I used in "MEP Cluster Introspection" to maybe clarify some clusters.
+
+## VWF Markers
+
+```{r vwf markers}
+vwf.genes <- c('Gp1ba', 'Gp1bb', 'Gp6', 'Gp9')
+
+for (i in vwf.genes){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+}
+#VlnPlot(wbm, features = vwf.genes, pt.size = 0)
+
+
+# VlnPlot(wbm, features = vwf.genes[1:3], split.by = 'Condition', pt.size = 0)
+# VlnPlot(wbm, features = vwf.genes[4], ncol = 3,split.by = 'Condition', pt.size = 0)
+# 
+# 
+# VlnPlot(wbm, features = vwf.genes[1:3], split.by = 'Experiment', pt.size = 0)
+# VlnPlot(wbm, features = vwf.genes[4], ncol = 3,split.by = 'Experiment', pt.size = 0)
+```
+
+## MK Markers
+
+```{r mk genes}
+mk.genes <- c('Itga2b')
+
+VlnPlot(wbm, features = mk.genes, pt.size = 0) + NoLegend()
+VlnPlot(wbm, features = mk.genes, pt.size = 0, split.by = 'Condition')
+VlnPlot(wbm, features = mk.genes, pt.size = 0, split.by = 'Experiment')
+```
+
+## MEP Markers in "MEP" Cluster
+
+Looking for MEP markers. Used this [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4855892/) I picked genes that were expressed in in all there of their MEPs (Kit, Myb, Tgfb1, Cd44). They do a lot looking at MEP subtypes, and once we finalize the MEP cluster/population this would be interesting to look into.
+
+```{r mep markers}
+mep.prim.markers <- c('Cd44','Kit')
+
+mep.ery.markers <- c('Myb','Tmod1','Lef1','Klf1','Cnrip1','Ank1')
+
+mep.mk.markers <- c('Cd9','Lox','Mpl','Vwf', 'Nfib','Itga2b')
+
+mep.markers <- 'Dhrs3'
+
+mep.mk.ery.markers <- c('Gata1','Cd36')
+```
+
+### Primative MEP Markers
+
+```{r primative MEPs}
+
+for (i in mep.prim.markers){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+        # VlnPlot(wbm, features = i, split.by = 'Condition', pt.size = 0)
+        # VlnPlot(wbm, features = i, split.by = 'Experiment', pt.size = 0)
+}
+```
+
+### Ery MEP Markers
+```{r ery meps mrks}
+for (i in mep.ery.markers){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+}
+# VlnPlot(wbm, features = mep.ery.markers[0:3], pt.size = 0, split.by = 'Condition')
+# VlnPlot(wbm, features = mep.ery.markers[0:3], pt.size = 0, split.by = 'Experiment')
+# 
+# 
+# VlnPlot(wbm, features = mep.ery.markers[4:6], pt.size = 0)
+# VlnPlot(wbm, features = mep.ery.markers[4:6], pt.size = 0, split.by = 'Condition')
+# VlnPlot(wbm, features = mep.ery.markers[4:6], pt.size = 0, split.by = 'Experiment')
+```
+
+### MK Mep Markers
+
+```{r mk mep mrkrs}
+
+for (i in mep.mk.markers){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+}
+# VlnPlot(wbm, features = mep.mk.markers[0:3], pt.size = 0, split.by = 'Condition')
+# VlnPlot(wbm, features = mep.mk.markers[0:3], pt.size = 0, split.by = 'Experiment')
+# 
+# VlnPlot(wbm, features = mep.mk.markers[4:6], pt.size = 0)
+# VlnPlot(wbm, features = mep.mk.markers[4:6], pt.size = 0, split.by = 'Condition')
+# VlnPlot(wbm, features = mep.mk.markers[4:6], pt.size = 0, split.by = 'Experiment')
+```
+
+### MEP Markers
+
+```{r mep dhrs3 markers}
+
+VlnPlot(wbm, features = mep.markers, pt.size = 0)
+# VlnPlot(wbm, features = mep.markers, pt.size = 0, split.by = 'Condition')
+# VlnPlot(wbm, features = mep.markers, pt.size = 0, split.by = 'Experiment')
+
+```
+
+### Ery/MK MEP Markers
+
+```{r ery/mk mep markers}
+for (i in mep.mk.ery.markers){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+}
+# VlnPlot(wbm, features = mep.mk.ery.markers, pt.size = 0, split.by = 'Condition')
+# VlnPlot(wbm, features = mep.mk.ery.markers, pt.size = 0, split.by = "Experiment")
+
+```
+
+# More Genes
+
+Looking at the Amit paper from 2015, for transciprtion factors which define one population from another.
+
+```{r tf markers}
+
+tf.ery <- c('Gata1','Phf10','Zfpm1', 'Gfi1b', 'Cited4', 'Klf1','Mbd2','E2f4','Tcf3','Phb2','Hmgb3')
+tf.mk <- c('Cited2','Fli1','Pbx1','Mef2c','Meis1')
+tf.baso <- c('Lmo4','Runx1')
+tf.eos <- c('Cebpe')
+tf.neu <- c('Cebpe','Gfi1')
+tf.mono <- c('Irf8')
+tf.dc <- c('Irf8','Id2')
+
+```
+
+# TF Erythroid
+
+```{r tf violins}
+
+for (i in tf.ery){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+}
+# VlnPlot(wbm, features = tf.ery[0:3], pt.size = 0)
+# VlnPlot(wbm, features = tf.ery[4:6], pt.size = 0)
+# VlnPlot(wbm, features = tf.ery[7:9], pt.size = 0)
+# VlnPlot(wbm, features = tf.ery[10:12], pt.size = 0)
+
+```
+
+# TF MK
+
+```{r tf.mk}
+
+
+for (i in tf.mk){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+}
+
+# VlnPlot(wbm, features = tf.mk[1:2], pt.size = 0)
+# VlnPlot(wbm, features = tf.mk[3:4], pt.size = 0)
+# VlnPlot(wbm, features = tf.mk[5], pt.size = 0)
+```
+
+## TF Basophil
+
+```{r tf.baso}
+
+
+for (i in tf.baso){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+}
+# VlnPlot(wbm, features = tf.baso, pt.size = 0)
+```
+
+## TF Eosinophil
+
+```{r tf.eos}
+
+
+for (i in tf.eos){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+}
+# VlnPlot(wbm, features = tf.eos, pt.size = 0)
+```
+
+## TF Neutrophil
+
+```{r tf.neu}
+
+
+for (i in tf.neu){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+}
+
+# VlnPlot(wbm, features = tf.neu, pt.size = 0)
+```
+
+## TF Monocyte
+
+```{r tf.mono}
+
+
+for (i in tf.mono){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+}
+
+# VlnPlot(wbm, features = tf.mono, pt.size = 0)
+```
+
+## TF Dendritic Cell
+
+```{r tf.dc}
+
+for (i in tf.dc){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+}
+
+# VlnPlot(wbm, features = tf.dc, pt.size = 0)
+```

@@ -121,6 +121,9 @@ venn.counts <- vennCounts(wbm@meta.data[,c('nCount_RNA.passed','nFeature_RNA.pas
 
 vennDiagram(venn.counts)
 
+# Lesser cutoff suggested by Jun to see where those other cells lie
+less.subset.wbm <- subset(wbm, subset = nFeature_RNA > 500 & percent.mt < 10)
+
 wbm <- subset(wbm, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 &
                     percent.mt < 10 & nCount_RNA < 50000)
 #dim(wbm)
@@ -188,6 +191,8 @@ cnt[['percent.mt.passed']] <- cnt[['percent.mt']] < 10
 venn.counts <- vennCounts(cnt@meta.data[,c('nCount_RNA.passed','nFeature_RNA.passed','percent.mt.passed')])
 
 vennDiagram(venn.counts)
+
+less.cnt <- subset(cnt, subset = nFeature_RNA > 500 & percent.mt < 10)
 
 cnt <- subset(cnt, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 &
                     percent.mt < 10 & nCount_RNA < 50000)
@@ -272,4 +277,81 @@ DimPlot(comb.int, reduction = 'umap', group.by = 'enriched') +
 
 #saveRDS(comb.int, './data/v2/combined.integrated.rds')
 ```
+
+```{r integration steps lesser}
+comb2 <- merge(x = less.subset.wbm, y = less.cnt, 
+              add.cell.ids = c('Mpl','Nbeal'),
+              project = "WBM_combo",
+              merge.data = T)
+
+comb2.list <- SplitObject(comb2, split.by = 'orig.ident')
+
+
+for(i in 1:length(comb2.list)){
+        
+        # Normalizing the data separately for each experiment
+        comb2.list[[i]] <- NormalizeData(comb2.list[[i]], verbose = F)
+        
+        # Finding hte top 2000 most variable features in each experiment
+        comb2.list[[i]] <- FindVariableFeatures(comb2.list[[i]], 
+                                               selection.method = 'vst',
+                                               nfeatures = 2000,
+                                               verbose = F)
+}
+
+ref.list <- comb2.list
+
+# This may be something I should play around with...
+
+comb2.anchors <- FindIntegrationAnchors(object.list = ref.list, dims = 1:30)
+
+comb2.int <- IntegrateData(anchorset = comb2.anchors, dims = 1:30)
+
+DefaultAssay(comb2.int) <- 'integrated'
+
+comb2.int <- ScaleData(comb2.int, verbose = F)
+comb2.int <- RunPCA(comb2.int, npcs = 30, verbose = F)
+
+ElbowPlot(comb2.int, ndims = 30) # Going with 20
+print("Going with the first 20 PCs")
+
+comb2.int <- FindNeighbors(comb2.int, dims = 1:20)
+
+# Looking at multiple clustering resolutions
+res <- seq(0,1, by = .05)
+cluster_list <- c()
+
+for (i in res){
+        # Finding clusters for resolution i
+        clusters <- FindClusters(comb2.int, resolution = i)
+        
+        # Counting the number of clusters
+        clusters <- length(levels(clusters$seurat_clusters))
+        
+        # Appending the number of clusters to a list
+        cluster_list <- c(cluster_list,clusters)
+}
+
+plot(cluster_list)
+
+print(paste0("Going with index 7 = ", res[7]))
+
+comb2.int <- FindClusters(comb2.int, resolution = 0.3)
+
+comb2.int <- RunUMAP(comb2.int, dims = 1:20)
+
+DimPlot(comb2.int, reduction = 'umap')
+DimPlot(comb2.int, reduction = 'umap', split.by = 'orig.ident')
+DimPlot(comb2.int, reduction = 'umap', group.by = 'orig.ident')
+DimPlot(comb2.int, reduction = 'umap', group.by = 'Condition')
+
+#head(comb2.int@meta.data)
+comb2.int$enriched <- grepl('enr', comb2.int@meta.data$Condition)
+
+DimPlot(comb2.int, reduction = 'umap', group.by = 'enriched') +
+        ggtitle('Enriched Cells')
+
+#saveRDS(comb2.int, './data/v2/lesser.combined.integrated.rds')
+```
+
 

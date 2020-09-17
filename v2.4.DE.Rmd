@@ -1,0 +1,193 @@
+---
+title: "v2 Differential Expression"
+author: "D. Ford Hannum Jr."
+date: "9/3/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(scRNAseq)
+```
+
+```{r printing session info, include = T}
+sessionInfo()
+```
+
+```{r loading data}
+# Calling the Seurat variable wbm instead of comb.int which is what it was previously
+
+wbm <- readRDS('./data/v2/lesser.combined.integrated.rds')
+
+wbm$State <- wbm$Condition
+
+wbm$Condition <- ifelse(grepl('enr', wbm$Condition), 'Enriched', 'Not enriched')
+
+wbm$Experiment <- ifelse(grepl('Mpl', wbm$State), 'Mpl',
+                         ifelse(grepl('Migr', wbm$State), 'Migr1', 'Control'))
+
+sumry <- read.table('./data/v2/summary_naming.tsv', header = T, sep = '\t')
+# sumry
+# sumry2 <- sumry
+# sumry$final2 <- sumry$final
+# sumry$final2[c(3,8)] <- c('?GMP','?CMP')
+# write.table(sumry,'./data/v2/summary_naming.tsv', quote = F, row.names = F, sep = '\t')
+
+new_levels <- sumry$final2
+
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+wbm$new_cluster_IDs <- Idents(wbm)
+
+DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+
+DimPlot(wbm, reduction = 'umap', split.by = 'Condition') + NoLegend()
+
+DimPlot(wbm, reduction = 'umap', split.by = 'Experiment') + NoLegend()
+
+DimPlot(wbm, reduction = 'umap', split.by = 'State', ncol = 3) + NoLegend()
+```
+
+```{r setting default assay back to RNA}
+DefaultAssay(wbm) <- 'RNA'
+```
+
+# Differential Expression Within MKs
+
+Looking at differential expression between megakaryocytes looking at different comparisons
+
+```{r mk tables}
+mks <- subset(wbm, new_cluster_IDs %in% 'Megakaryocyte')
+
+table(mks$Condition)
+table(mks$Experiment)
+table(mks$State)
+```
+
+
+## Between Enriched and Non-Enriched
+
+```{r enriched vs not enriched mks}
+table(mks$Condition)
+
+mks.markers.condition <- FindMarkers(mks,
+                                     ident.1 = 'Enriched',
+                                     group.by = 'Condition',
+                                     logfc.threshold = log(2),
+                                     test.use = 'MAST')
+
+mks.markers.condition <- mks.markers.condition[mks.markers.condition$p_val_adj < 0.05,]
+
+```
+
+No gene expression differences between enriched and non-enriched MKs, which is good.
+
+## Nbeal vs Migr1
+
+Here we hope that our two "controls will be the same"
+
+```{r nbeal vs Migr1 mks}
+table(mks$Experiment)
+
+mks.markers.controls <- FindMarkers(mks,
+                                    ident.1 = 'Control',
+                                    ident.2 = 'Migr1',
+                                    group.by = 'Experiment',
+                                    logfc.threshold = log(2),
+                                    test.use = 'MAST')
+
+mks.markers.controls <- mks.markers.controls[mks.markers.controls$p_val_adj < 0.05,]
+mks.markers.controls <- mks.markers.controls[order(mks.markers.controls$avg_logFC, decreasing = T),]
+
+for(i in rownames(mks.markers.controls)[1:5]){
+        print(VlnPlot(mks, features = i, group.by = 'Experiment',pt.size = 0))
+}
+```
+
+We see 28 genes being DE between the two controls. Doesn't seem like a whole lot and I think we could combine the two. There are only 14 Migr1 MKs so it wouldn't change the "control" profile too much.
+
+## Migr1 vs Mpl
+
+```{r mks migr1 vs mpl}
+mks.markers.controlsVSmpl <- FindMarkers(mks,
+                                    ident.1 = 'Mpl',
+                                    ident.2 = 'Migr1',
+                                    group.by = 'Experiment',
+                                    logfc.threshold = log(2),
+                                    test.use = 'MAST')
+
+mks.markers.controlsVSmpl <- mks.markers.controlsVSmpl[mks.markers.controlsVSmpl$p_val_adj < 0.05,]
+mks.markers.controlsVSmpl <- mks.markers.controlsVSmpl[order(mks.markers.controlsVSmpl$avg_logFC, decreasing = T),]
+
+# 
+# for(i in rownames(mks.markers.controlsVSmpl)[1:5]){
+#         print(VlnPlot(mks, features = i, group.by = 'Experiment',pt.size = 0))
+# }
+```
+
+No difference between Migr1 vs Mpl, which is the same thing that we saw before adding in the Nbeal sample.
+
+## Controls vs Mpl
+
+Combining both the Migr1 and Nbeal into controls
+
+```{r mks controls vs mpl}
+mks.markers.controlsVSmpl <- FindMarkers(mks,
+                                    ident.1 = 'Mpl',
+                                    ident.2 = c('Control','Migr1'),
+                                    group.by = 'Experiment',
+                                    logfc.threshold = log(2),
+                                    test.use = 'MAST')
+
+mks.markers.controlsVSmpl <- mks.markers.controlsVSmpl[mks.markers.controlsVSmpl$p_val_adj < 0.05,]
+mks.markers.controlsVSmpl <- mks.markers.controlsVSmpl[order(mks.markers.controlsVSmpl$avg_logFC, decreasing = T),]
+
+mks.markers.controlsVSmpl
+
+for(i in rownames(mks.markers.controlsVSmpl)[1:5]){
+        print(VlnPlot(mks, features = i, group.by = 'Experiment',pt.size = 0))
+}
+```
+
+### Overlap between DE Genes 
+
+Comparing the overlap in genes that were DE between NBeal & Migr1 and between Nbeal & Mpl
+
+```{r overlap with nbeal vs mpl & migr1}
+print('DE in both Comparisons')
+rownames(mks.markers.controls)[rownames(mks.markers.controls) %in% rownames(mks.markers.controlsVSmpl)]
+
+print('DE in only Migr1')
+rownames(mks.markers.controls)[!(rownames(mks.markers.controls) %in% rownames(mks.markers.controlsVSmpl))]
+
+print('DE in only Mpl')
+rownames(mks.markers.controlsVSmpl)[rownames(mks.markers.controlsVSmpl) %in% rownames(mks.markers.controls)]
+```
+
+```{r list of genes from Priya}
+priya.genes <- c('Spn','Vwf','Ptms','Lgals1','Prnp','Gata2','Hdc','Tec','Csf1',
+                 'Cd200r3','Nrgn','Ccnd2','Padi2','Enah','Hgf','Specc1','Itgb7',
+                 'Cpa3','Fcer1a','Emilin2', 'Rgs1','Ifitm1','Lat2','Ms4a2',
+                 'Ero1l','Csf2rb','Cyp11a1','Cd200r4','Ccr2','Ccl9','Csf2rb2')
+# summary(priya.genes %in% rownames(mks))
+
+mks.markers.controlsVSmpl[rownames(mks.markers.controlsVSmpl %in% priya.genes),]
+```
+
+None of the genes tested by Priya show up in this analysis, which isn't surprising since that list of genes was generated differently.
+
