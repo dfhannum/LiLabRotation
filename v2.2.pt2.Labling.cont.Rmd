@@ -301,3 +301,15 @@ DimPlot(mks, reduction = 'umap', split.by = 'Condition')
 DimPlot(mks, reduction = 'umap', split.by = 'State', ncol = 3)
 ```
 
+## MK Violins
+
+```{r mk violins}
+VlnPlot(mks, features = 'Vwf', pt.size = 0)
+VlnPlot(mks, features = 'Itga2b', pt.size = 0)
+
+```
+
+
+
+
+

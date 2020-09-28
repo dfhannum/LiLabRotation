@@ -1,0 +1,475 @@
+---
+title: "v2.2.4.Nbeal.Labeling"
+author: "D. Ford Hannum Jr."
+date: "9/28/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(ggrepel)
+```
+
+```{r printing session info, include = T}
+sessionInfo()
+```
+
+# This File
+
+Labeling the Nbeal clusters, to figure out where they are getting moved to in the integrated data. The goal here is to better label the clusters of the integrated dataset with higher confidence
+
+# Nbeal Data Only
+
+```{r nbeal data}
+cnt.data <- Read10X(data.dir = './data/Experiment2/filtered_feature_bc_matrix/')
+
+cnt <- CreateSeuratObject(counts = cnt.data, project = 'Nbeal', min.cells = 3, min.features = 200)
+
+# Getting the HTOs
+
+nbeal_hto <- read.table('./data/Experiment2/hto_labels.txt')
+
+nbeal_hto <- nbeal_hto[nbeal_hto$V2 %in% c('HTO3','HTO4'),]
+
+nbeal_hto$condition <- ifelse(nbeal_hto$V2 == 'HTO3', 'Nbeal_cntrl', 'enrNbeal_cntrl')
+
+nbeal_hto$cell <- paste0(nbeal_hto$V1, '-1')
+
+# summary(nbeal_hto$cell %in% colnames(cnt))
+
+cnt <- cnt[,colnames(cnt) %in% nbeal_hto$cell]
+
+# Making sure the cell order is maintained between the two dataframes, so I can
+# just add the condition to the meta data
+
+#summary(rownames(wbm@meta.data) == htos$Barcode)
+
+# Adding the condition to the meta data
+
+cnt@meta.data$Condition <- nbeal_hto$condition
+
+cnt[['percent.mt']] <- PercentageFeatureSet(cnt, pattern = '^mt')
+
+less.cnt <- subset(cnt, subset = nFeature_RNA > 500 & percent.mt < 10)
+```
+
+```{r clustering counts}
+
+less.cnt <- NormalizeData(less.cnt, verbose = F)
+
+less.cnt <- FindVariableFeatures(less.cnt,
+                                        selection.method = 'vst',
+                                        nfeatures = 2000,
+                                        verbose = F)
+
+less.cnt <- ScaleData(less.cnt, verbose = F)
+
+less.cnt <- RunPCA(less.cnt, features = VariableFeatures(less.cnt))
+
+ElbowPlot(less.cnt)
+
+# choosing 15 PCs
+
+less.cnt <- FindNeighbors(less.cnt, dims = 1:15)
+
+res <- seq(0,1, by = 0.05)
+clstrs <- c()
+
+for (i in res){
+        x <- FindClusters(less.cnt, resolution = i, verbose = F)
+        clstrs <- c(clstrs, length(unique(x$seurat_clusters)))
+        
+}
+plot(res,clstrs)
+
+# Going with .2 and .7
+
+less.cnt <- FindClusters(less.cnt, resolution = .2, verbose = F)
+less.cnt <- FindClusters(less.cnt, resolution = .7, verbose = F)
+
+less.cnt <- RunUMAP(less.cnt, dims = 1:15)
+
+# DimPlot(less.cnt, reduction = 'umap', label = T, repel = T) + NoLegend() + ggtitle ('Resolution 0.7')
+
+DimPlot(less.cnt, reduction = 'umap', label = T, repel = T, group.by = 'RNA_snn_res.0.2') +
+        NoLegend() + ggtitle ('Resolution 0.2')
+```
+
+![Alt Text](/Users/dfhannum/Desktop/Li_lab/nbealVSintegrated.clusters copy.png)
+
+Going to go with clustering resolution 0.2, which is what is displayed above. Of key is cluster 3 which becomes clusters 6 (MEP/Mast), 7 (CMP), part of 10 (Erythrocytes) and 12 (MKs); in the integrated dataset, see v2.1.3 Cluster Centroid for more details.
+
+# Nbeal Data in Integrated Data Set
+
+```{r loading data}
+# Calling the Seurat variable wbm instead of comb.int which is what it was previously
+
+wbm <- readRDS('./data/v2/lesser.combined.integrated.rds')
+
+wbm$State <- wbm$Condition
+
+wbm$Condition <- ifelse(grepl('enr', wbm$Condition), 'Enriched', 'Not enriched')
+
+wbm$Experiment <- ifelse(grepl('Mpl', wbm$State), 'Mpl',
+                         ifelse(grepl('Migr', wbm$State), 'Migr1', 'Control'))
+
+sumry <- read.table('./data/v2/summary_naming.tsv', header = T, sep = '\t')
+# sumry
+# sumry2 <- sumry
+# sumry$final2 <- sumry$final
+# sumry$final2[c(3,8)] <- c('?GMP','?CMP')
+# write.table(sumry,'./data/v2/summary_naming.tsv', quote = F, row.names = F, sep = '\t')
+
+lbls <- c('Gran-1','Gran-2','?GMP','Bcell-1','Gran-3','Monocyte','?MEP/MAST','?CMP','Macrophage',
+          'Bcell-2','Erythrocyte','Tcell','MK','Bcell-3','Bcell-4')
+
+new_levels <- lbls
+
+names(new_levels)  <- levels(wbm)
+#new_levels
+wbm <- RenameIdents(wbm, new_levels)
+wbm$new_cluster_IDs <- Idents(wbm)
+
+DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+
+DimPlot(wbm, reduction = 'umap', split.by = 'Condition') + NoLegend()
+
+DimPlot(wbm, reduction = 'umap', split.by = 'Experiment') + NoLegend()
+
+DimPlot(wbm, reduction = 'umap', split.by = 'State', ncol = 3) + NoLegend()
+```
+
+Now I am going to do a similar labeling as in file v2.2.Labeling, which is what was used to generate the cell types shown, but just in the NBeal-control cells.
+
+```{r nbeal subset}
+nbeal <- subset(wbm, Experiment == 'Control')
+
+DimPlot(nbeal, reduction = 'umap')
+
+table(nbeal$new_cluster_IDs)
+
+
+```
+
+# SingleR
+
+```{r singleR setup and running}
+
+# Loading up reference datasets
+m.ref.immgen <- ImmGenData()
+m.ref.mus <- MouseRNAseqData()
+
+ref <- list(m.ref.immgen, m.ref.mus)
+ref.label <- list(m.ref.immgen$label.main, m.ref.mus$label.main)
+
+# Creating a sc experiment from our seurat object
+
+SCnbeal <- as.SingleCellExperiment(nbeal)
+
+# Predicting the Cluster label
+pred_cluster <- SingleR(test = SCnbeal,
+                        ref = ref,
+                        labels = ref.label,
+                        method = 'cluster',
+                        clusters = SCnbeal$new_cluster_IDs)
+
+# Predicting individual cell labels
+pred_cell <- SingleR(test = SCnbeal,
+                     ref = ref,
+                     labels = ref.label,
+                     method = 'single')
+```
+
+## Cluster Labels
+
+```{r singleR cluster labels}
+# pred_cluster$scores
+# 
+# pred_cluster$labels
+# 
+# pred_cluster$pruned.labels
+# 
+# pred_cluster$orig.results
+
+pred_scores_cluster <- pred_cluster$scores
+
+# Deleting columns without any values
+
+pred_scores_cluster <- as.data.frame(pred_scores_cluster[,colSums(is.na(pred_scores_cluster)) != nrow(pred_scores_cluster)])
+
+rownames(pred_scores_cluster) <- lbls
+
+colnames(pred_scores_cluster)[8:13] <- paste0(colnames(pred_scores_cluster)[8:13],'-2')
+
+pred_scores_cluster <- gather(pred_scores_cluster, Cell.Type, Score, factor_key = T)
+
+pred_scores_cluster$seurat.cluster <- rep(lbls, 13)
+
+pred_scores_cluster$ref <- ifelse(is.na(tstrsplit(pred_scores_cluster$Cell.Type,'-')[[2]]), 'ref1','ref2')
+
+pred_scores_cluster$seurat.cluster2 <- as.factor(pred_scores_cluster$seurat.cluster)
+
+pred_scores_cluster$score2 <- ifelse(is.na(pred_scores_cluster$Score), 0, pred_scores_cluster$Score)
+
+
+
+ggplot(data = pred_scores_cluster, aes(y = Cell.Type, x = seurat.cluster2, 
+                                       fill = ref, alpha = score2)) +
+        geom_tile() +
+        theme(axis.text.x = element_text(angle = 45, vjust = .5)) +
+        scale_fill_manual(values = c('red','blue'))
+```
+
+For the most part what we would expect and aligns with the labels generated from the integrated analysis (x-axis labels).
+
+```{r pred SingleR cell}
+# pulling out the information we need
+pred_cell_score <- pred_cell[,c('pruned.labels','reference')]
+
+# Adding the seurat cluster to the cell
+#summary(rownames(pred_cell_score) == rownames(wbm@meta.data))
+pred_cell_score$cluster <- nbeal$new_cluster_IDs
+
+cell_score <- as.data.frame(table(paste0(pred_cell_score$pruned.labels,'-',
+                                         pred_cell_score$reference),
+                                  pred_cell_score$cluster))
+
+colnames(cell_score) <- c('Cell Type','Cluster','Count')
+
+# ggplot(cell_score[cell_score$Cluster == 'MK',], aes(x = Cluster, y = Count, fill = `Cell Type`)) + 
+#         geom_bar(stat = 'identity', position = position_dodge()) +
+#         theme_bw() +
+#         geom_text(stat = 'identity', aes(label = Count),
+#                   position = position_dodge(width = .9),
+#                   vjust = -.1, size = 2.5)
+
+cell_score$cluster_count <- NA
+
+for (i in unique(cell_score$Cluster)){
+        cell_score[cell_score$Cluster ==i,]$cluster_count <- 
+                sum(cell_score[cell_score$Cluster ==i,]$Count)
+        
+}
+
+cell_score$count_per <- round(cell_score$Count/cell_score$cluster_count,2)*100
+
+# ggplot(cell_score, aes (x = Cluster, y = count_per, fill = `Cell Type`)) +
+#         geom_bar(stat = 'identity', position = position_dodge()) +
+#         theme_bw() +
+#         geom_text(stat = 'identity', aes(label = count_per),
+#                   position = position_dodge(width = .9),
+#                   vjust = -.1, size = 2.5)
+
+ggplot(cell_score, aes(x = Cluster, y = `Cell Type`, fill = count_per)) +
+        geom_tile() +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',
+                             midpoint = 50)
+
+cell_score$ref <- grepl('1',cell_score$`Cell Type`)
+cell_score$ref <- ifelse(cell_score$ref == T, 'ref1','ref2')
+
+ggplot(cell_score, aes(x = Cluster, y = `Cell Type`, alpha = count_per,
+                       fill = ref)) +
+        scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',
+                             midpoint = 50) +
+        geom_tile() +
+        scale_fill_manual(values = c('red','blue')) + 
+        theme(axis.text.x = element_text(angle = 90, vjust = .2, hjust = .95))
+```
+
+Similar results once again. Still curious is why the ?MEP/MAST relate so highly to basophils.
+
+# Marker Gene Expression
+
+Cell type specific marker gene expression. Genes were added to the list in two different ways: canonical markers that are well known in the field, and genes that distinguished clusters and were found to play a key role in specific cells.
+
+## Literature for Markers: Previously used
+
+**Ighd**: immunoglobulin heavy constant delta. Seems to clearly be expressed by B-cells, but still working on a good reference.
+
+**Gata2**: From Krause paper: a transcription factor required for both lineages but bind in different combinations [ref](https://ashpublications.org/blood/article/113/10/2191/24361/SCL-and-associated-proteins-distinguish-active)
+
+**Cd68**: a human macrophage marker [ref](https://pubmed.ncbi.nlm.nih.gov/7680921/). A more general [ref](https://www.nature.com/articles/labinvest2016116/)
+ 
+**Vcam1**: found papers using Vcam1+ monocytes, but haven't found a great reference.
+
+**Alas2**: an erythroid-specfiic 5-aminolevulinate synthase gene [ref](https://pubmed.ncbi.nlm.nih.gov/12663458/)
+
+**Gata3**: plays a role in the regulation of T-cells [ref](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2998182/)
+
+**Vwf** and **Itga2b**: I figure the reference would best be left to y'all.
+
+## New Markers
+
+**Ly6g**: from [website](https://www.novusbio.com/antibody-news/antibodies/ly6g-a-marker-for-monocytes-granulocytes-and-neutrophils) it plays a role in monocyte, granulocyte, and neutrophil
+
+**Ngp**: from uniprot "Expressed in myeloid bone marrow cells. Expressed in neutrophilic precursors (at protein level) (PubMed:[8749713](https://www.uniprot.org/citations/8749713)). Expressed in myeloid bone marrow cells (PubMed:[21518852](https://www.uniprot.org/citations/21518852))"
+
+**Mmp8**: neutrophil/lymphocyte collagenase [link](https://www.genecards.org/cgi-bin/carddisp.pl?gene=MMP8)
+
+```{r marker dot plot}
+marker.genes <- rev(c('Itga2b','Vwf','Gata3','Alas2','Vcam1','Cd68','Gata2','Ighd'))
+
+DotPlot(wbm, features = marker.genes) +
+        ylab ('Cell Cluster') + xlab ('Marker Genes') +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text.x = element_text(angle = 45, 
+                                         vjust = .5, size = 10, family = 'sans'),
+              axis.text.y = element_text(family = 'sans', size = 10),
+              axis.title = element_text(family = 'sans', size = 12))
+
+otros.marker.genes <- rev(c('Cebpe','Fcnb'))
+
+
+DotPlot(wbm, features = otros.marker.genes) +
+        ylab ('Cell Cluster') + xlab ('Marker Genes') +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text.x = element_text(angle = 45, 
+                                         vjust = .5, size = 10, family = 'sans'),
+              axis.text.y = element_text(family = 'sans', size = 10),
+              axis.title = element_text(family = 'sans', size = 12))
+
+new.markers <- c('Mcpt8','Prss34','Kit','Jchain','Hmgb1', 'Vpreb3','Igkc','Ighm')
+
+hspc.markers <- c('SCA-1', 'Cd38','Thy1','Kit')
+
+DotPlot(wbm, features = hspc.markers) +
+        ylab ('Cell Cluster') + xlab ('Marker Genes') +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text.x = element_text(angle = 45, 
+                                         vjust = .5, size = 10, family = 'sans'),
+              axis.text.y = element_text(family = 'sans', size = 10),
+              axis.title = element_text(family = 'sans', size = 12))
+
+DotPlot(wbm, features = c(otros.marker.genes,new.markers,marker.genes)) +
+        ylab ('Cell Cluster') + xlab ('Marker Genes') +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text.x = element_text(angle = 45, 
+                                         vjust = .5, size = 10, family = 'sans'),
+              axis.text.y = element_text(family = 'sans', size = 10),
+              axis.title = element_text(family = 'sans', size = 12))
+
+```
+
+It seems that the lymphoid cells, monocyte and macrophage clusters are easily identifiable but the other questions have remaining questions.
+
+* What type of granulocyte are gran-1 and gran-2?
+* Are ?GMP and ?CMP truly a progenitor state
+* Are there better markers for Erythrocytes
+* Are the hspcs mixed in with MKs? Kit is of importance when labeling HSPCs but that MK cluster highest in Kit also is the only cluster somewhat widely expressing Vwf.
+
+* More specific markers for different stages of CMPs to helpfully clear some things up.
+
+* Why is there a cluster expressing both MEP and Mast cell markers so strongly?
+
+**MORE WORK**
+
+# Human WBM Comparison
+
+```{r reading in human into seurat}
+hwbm_ex <-Read10X(data.dir = './data/hum_ref_wbm/GSE120221_RAW/GSM3396161/')
+
+hwbm <- CreateSeuratObject(counts = hwbm_ex, project = 'hwbm', min.cells = 3, min.features = 200)
+
+hwbm_cell_labels <- read.csv('./data/hum_ref_wbm/celltype.csv')
+
+#hwbm_cell_labels
+
+hwbm_cell_labels$cell <- tstrsplit(hwbm_cell_labels$X, '_', keep = 2)[[1]]
+hwbm_cell_labels$exp <- tstrsplit(hwbm_cell_labels$X, "_", keep = 1)[[1]]
+
+hwbm_cell_labels <- hwbm_cell_labels[hwbm_cell_labels$exp == 'A',]
+hwbm_cell_labels$cell <- paste0(hwbm_cell_labels$cell, '-1')
+
+hwbm[['percent.mt']] <- PercentageFeatureSet(hwbm, pattern = "^MT-")
+
+cells_to_keep <- colnames(hwbm)[colnames(hwbm) %in% hwbm_cell_labels$cell]
+
+hwbm <- subset(hwbm, cells = cells_to_keep)
+
+genes_to_keep <- rownames(hwbm)[rownames(hwbm) %in% rownames(wbm)]
+
+hwbm <- subset(hwbm, features = genes_to_keep)
+
+hwbm <- NormalizeData(hwbm, normalization.method = 'LogNormalize', scale.factor = 10000)
+
+hwbm <- ScaleData(hwbm, features = rownames(hwbm))
+
+nbeal2 <- subset(nbeal, features = genes_to_keep)
+```
+
+
+```{r getting the correlation between the two datasets}
+#summary(hwbm_cell_labels$cell == rownames(hwbm@meta.data))
+
+hwbm@meta.data$cell_id <- hwbm_cell_labels$type
+
+Idents(hwbm) <- hwbm$cell_id
+
+av_wbm <- AverageExpression(nbeal2)$RNA
+
+av_hwbm <- AverageExpression(hwbm)$RNA
+
+av <- cbind(av_wbm, av_hwbm)
+
+av_cor <- cor(av, method = 'kendall')
+
+av_cor2 <- as.data.frame(av_cor)
+
+av_cor2$row <- rownames(av_cor2)
+
+colnames(av_cor2)[1:15] <- paste0('Cluster',0:14)
+rownames(av_cor2)[1:15] <- paste0('Cluster',0:14)
+av_cor2$row <- rownames(av_cor2)
+
+# gather(av_cor2, row, cor, Cluster0:Cluster14, factor_key = T)
+
+av_cor2 <- reshape(av_cor2, direction = 'long', 
+        varying = list(names(av_cor2)[1:34]),
+        v.names = 'Correlation',
+        idvar = c('row'),
+        timevar = 'CT2',
+        times = names(av_cor2)[1:34])
+
+av_cor2$row <- factor(av_cor2$row, levels = unique(av_cor2$row))
+av_cor2$CT2 <- factor(av_cor2$CT2, levels = unique(av_cor2$CT2))
+
+ggplot(av_cor2, aes(x = row, y = CT2, fill = Correlation)) +
+        geom_tile() +
+        theme_bw() + 
+        scale_fill_gradient2(high = 'darkred', low = 'white', mid = 'red',,
+                             midpoint = 0.5, limit = c(0,1)) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+lvls <- levels(av_cor2$row)
+av_cor3 <- av_cor2[av_cor2$row %in% lvls[1:15] & av_cor2$CT2 %in% lvls[16:34],]
+ggplot(av_cor3, aes(x = row, y = CT2, fill = Correlation)) +
+        geom_tile() +
+        theme_bw() + 
+        scale_fill_gradient2(high = 'darkred', low = 'white', mid = 'red',,
+                             midpoint = 0.5, limit = c(0,1)) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+av_cor3$row_labels <- rep(lbls,19)
+
+ggplot(av_cor3, aes(x = row_labels, y = CT2, fill = Correlation)) +
+        geom_tile() +
+        theme_bw() + 
+        scale_fill_gradient2(high = 'darkred', low = 'white', mid = 'red',,
+                             midpoint = 0.5, limit = c(0,1)) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
