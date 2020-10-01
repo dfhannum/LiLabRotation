@@ -179,6 +179,8 @@ DimPlot(s1, reduction = 'umap', group.by = 'new_cluster_IDs')
 ```{r subcluster MEPs}
 s4 <- subset(wbm, new_cluster_IDs %in% c('?MEP/Mast'))
 
+#s4 <- subset(wbm, new_cluster_IDs %in% c('?MEP/MAST'))
+
 print('Cells in Subset 4 (MEPs)')
 table(s4$new_cluster_IDs)
 
@@ -314,7 +316,19 @@ for(i in rownames(s4.markers.controls)[1:9]){
 #### GO Terms
 
 Looking at the GO terms that are most associated with up- and down-regulated genes from Mpl compared to Nbeal and Migr1. These will be located in a supplementary excel file. See MEP.mpl.vs.migr1ANDnbeal.xlsx
-
+ 
 
 ## MEP Subclusters
+
+```{r mep insight}
+mep <- s4
+
+gof <- c('Kit','Gata2')
+
+for(i in gof){
+        print(VlnPlot(mep, features = i, group.by = 'RNA_snn_res.0.2'))
+        
+        print(VlnPlot(mep, features = i, split.by = 'Experiment', group.by = 'RNA_snn_res.0.2'))
+}
+```
 

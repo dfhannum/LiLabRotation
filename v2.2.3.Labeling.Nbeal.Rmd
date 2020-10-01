@@ -109,13 +109,19 @@ DimPlot(less.cnt, reduction = 'umap', label = T, repel = T, group.by = 'RNA_snn_
         NoLegend() + ggtitle ('Resolution 0.2')
 ```
 
-![Alt Text](/Users/dfhannum/Desktop/Li_lab/nbealVSintegrated.clusters copy.png)
+![Comparison Between Clustering](/Users/dfhannum/Desktop/Li_lab/nbealVSintegrated.clusters copy.png)
+
+```{r getting cluster ids}
+paste0(0:14,' = ',c('Gran-1','Gran-2','?GMP','Bcell-1','Gran-3','Monocyte','?MEP/MAST','?CMP','Macrophage',
+          'Bcell-2','Erythrocyte','Tcell','MK','Bcell-3','Bcell-4'))
+```
+
 
 Going to go with clustering resolution 0.2, which is what is displayed above. Of key is cluster 3 which becomes clusters 6 (MEP/Mast), 7 (CMP), part of 10 (Erythrocytes) and 12 (MKs); in the integrated dataset, see v2.1.3 Cluster Centroid for more details.
 
 # Nbeal Data in Integrated Data Set
 
-```{r loading data}
+```{r loading  wbm data}
 # Calling the Seurat variable wbm instead of comb.int which is what it was previously
 
 wbm <- readRDS('./data/v2/lesser.combined.integrated.rds')
@@ -137,6 +143,7 @@ sumry <- read.table('./data/v2/summary_naming.tsv', header = T, sep = '\t')
 lbls <- c('Gran-1','Gran-2','?GMP','Bcell-1','Gran-3','Monocyte','?MEP/MAST','?CMP','Macrophage',
           'Bcell-2','Erythrocyte','Tcell','MK','Bcell-3','Bcell-4')
 
+DimPlot(wbm, reduction = 'umap', label = T, repel = T)
 new_levels <- lbls
 
 names(new_levels)  <- levels(wbm)
@@ -144,13 +151,13 @@ names(new_levels)  <- levels(wbm)
 wbm <- RenameIdents(wbm, new_levels)
 wbm$new_cluster_IDs <- Idents(wbm)
 
-DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
-
-DimPlot(wbm, reduction = 'umap', split.by = 'Condition') + NoLegend()
-
-DimPlot(wbm, reduction = 'umap', split.by = 'Experiment') + NoLegend()
-
-DimPlot(wbm, reduction = 'umap', split.by = 'State', ncol = 3) + NoLegend()
+# DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+# 
+# DimPlot(wbm, reduction = 'umap', split.by = 'Condition') + NoLegend()
+# 
+# DimPlot(wbm, reduction = 'umap', split.by = 'Experiment') + NoLegend()
+# 
+# DimPlot(wbm, reduction = 'umap', split.by = 'State', ncol = 3) + NoLegend()
 ```
 
 Now I am going to do a similar labeling as in file v2.2.Labeling, which is what was used to generate the cell types shown, but just in the NBeal-control cells.
@@ -158,11 +165,11 @@ Now I am going to do a similar labeling as in file v2.2.Labeling, which is what 
 ```{r nbeal subset}
 nbeal <- subset(wbm, Experiment == 'Control')
 
-DimPlot(nbeal, reduction = 'umap')
+DimPlot(nbeal, reduction = 'umap', label = T, repel = T)
 
 table(nbeal$new_cluster_IDs)
 
-
+DefaultAssay(nbeal) <- 'RNA'
 ```
 
 # SingleR
@@ -213,11 +220,11 @@ pred_scores_cluster <- as.data.frame(pred_scores_cluster[,colSums(is.na(pred_sco
 
 rownames(pred_scores_cluster) <- lbls
 
-colnames(pred_scores_cluster)[8:13] <- paste0(colnames(pred_scores_cluster)[8:13],'-2')
+colnames(pred_scores_cluster)[7:12] <- paste0(colnames(pred_scores_cluster)[7:12],'-2')
 
 pred_scores_cluster <- gather(pred_scores_cluster, Cell.Type, Score, factor_key = T)
 
-pred_scores_cluster$seurat.cluster <- rep(lbls, 13)
+pred_scores_cluster$seurat.cluster <- rep(lbls, 12)
 
 pred_scores_cluster$ref <- ifelse(is.na(tstrsplit(pred_scores_cluster$Cell.Type,'-')[[2]]), 'ref1','ref2')
 
@@ -230,7 +237,7 @@ pred_scores_cluster$score2 <- ifelse(is.na(pred_scores_cluster$Score), 0, pred_s
 ggplot(data = pred_scores_cluster, aes(y = Cell.Type, x = seurat.cluster2, 
                                        fill = ref, alpha = score2)) +
         geom_tile() +
-        theme(axis.text.x = element_text(angle = 45, vjust = .5)) +
+        theme(axis.text.x = element_text(angle = 90, vjust = .2, hjust = .95)) +
         scale_fill_manual(values = c('red','blue'))
 ```
 
@@ -473,3 +480,462 @@ ggplot(av_cor3, aes(x = row_labels, y = CT2, fill = Correlation)) +
                              midpoint = 0.5, limit = c(0,1)) +
         theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
+
+# Granulocytes
+
+Of interest are the many granulocyte populations and how we distinguish these from each other (if we even want to). From the above information it seems that both GMPs and CMPs share many characteristics with stem cells (ie HSPCs). We don't think these are truly HSPCs but instead a downstream progenitor of HSPCs.
+
+These clusters (CMPs, GMPs) also express many markers of Neutrophils very highly, whereas the Gran 1, 2, & 3 don't express these in the same amount.
+
+Going to specifically look at these markers (some from above):
+
+**Ly6g**: from [website](https://www.novusbio.com/antibody-news/antibodies/ly6g-a-marker-for-monocytes-granulocytes-and-neutrophils) it plays a role in monocyte, granulocyte, and neutrophil
+
+**Ngp**: from uniprot "Expressed in myeloid bone marrow cells. Expressed in neutrophilic precursors (at protein level) (PubMed:[8749713](https://www.uniprot.org/citations/8749713)). Expressed in myeloid bone marrow cells (PubMed:[21518852](https://www.uniprot.org/citations/21518852))"
+
+**Mmp8**: neutrophil/lymphocyte collagenase [link](https://www.genecards.org/cgi-bin/carddisp.pl?gene=MMP8)
+
+**Fcnb**: identified as belonging tot he myeloid cell lineage by magnetic sorting by subsequent RT-PCR in BM cells [link](https://www.wikigenes.org/e/ref/e/15950722.html)
+
+**Cebpe**: encoded protein may be essential for terminal differentiation and functional maturation of committed granulocyte progenitor cells.
+
+From [Panglaodb](https://panglaodb.se/index.html)
+
+For **Basophils**: *Hist1h1d, Nt5c3, Npl, Nfil3, Mboat1, Lama5, L1cam, Inf2, Ifitm1, Hist1h2ac*
+
+For **Eosinophils**: *Ear2, Siglecf, Il5ra, Csf2, Ccl5, Ccl11, Cpa3, Prg3, Il5*
+
+For **Neutrophils**: *Itgax, Ccrl2, Il1r2, Mrgpra2b, Bst1, Arg2, Sorl1, Trem1, Ly6g, Ncf1, Ccr1, Cd177, Trem3, Mmp9*
+
+```{r nbeal gran markers}
+gran.markers <- c('Ly6g','Ngp', 'Mmp8','Fcnb','Cebpe')
+
+baso.markers <- c('Hist1h1d', 'Nt5c3', 'Npl', 'Nfil3', 'Mboat1', 'Lama5', 'L1cam', 'Inf2', 'Ifitm1', 'Hist1h2ac')
+
+eos.markers <- c('Ear2', 'Siglecf', 'Il5ra', 'Csf2', 'Ccl5', 'Ccl11', 'Cpa3', 'Prg3', 'Il5')
+
+neut.markers <- c('Itgax', 'Ccrl2', 'Il1r2', 'Mrgpra2b', 'Bst1', 'Arg2', 'Sorl1', 'Trem1', 'Ly6g', 'Ncf1', 'Ccr1', 'Cd177', 'Trem3', 'Mmp9')
+```
+
+```{r nbeal gran dotplots}
+nbeal.gran <- subset(nbeal, new_cluster_IDs %in% c(paste0('Gran-',1:3), '?CMP','?GMP'))
+
+DotPlot(nbeal, features = gran.markers) + ggtitle ('Granulocyte Markers') +
+        theme(axis.text.x = element_text(angle = 90, vjust = .2, hjust = .95))
+
+DotPlot(nbeal.gran, features = gran.markers) + ggtitle ('Granulocyte Markers') +
+        theme(axis.text.x = element_text(angle = 90, vjust = .2, hjust = .95))
+
+DotPlot(nbeal, features = baso.markers) + ggtitle('Basophil Markers') +
+        theme(axis.text.x = element_text(angle = 90, vjust = .2, hjust = .95))
+
+DotPlot(nbeal.gran, features = baso.markers) + ggtitle('Basophil Markers') +
+        theme(axis.text.x = element_text(angle = 90, vjust = .2, hjust = .95))
+
+DotPlot(nbeal, features = neut.markers) + ggtitle('Neutrophil Markers') +
+        theme(axis.text.x = element_text(angle = 90, vjust = .2, hjust = .95))
+
+DotPlot(nbeal.gran, features = neut.markers) + ggtitle('Neutrophil Markers') +
+        theme(axis.text.x = element_text(angle = 90, vjust = .2, hjust = .95))
+```
+
+# CMP Cluster
+
+Looking specfically at the CMP cluster, since it didn't show as much expression of different granulocyte markers. This isn't that surprising since it is a more distant relative to granulocytes.
+
+```{r CMP de}
+# Comparing to all other cell types
+cmp.markers.all <- FindMarkers(nbeal,
+                               ident.1 = '?CMP',
+                               logfc.threshold = log(2),
+                               test.use = 'MAST')
+
+# Comparing to granulocytes
+cmp.markers.gran <- FindMarkers(nbeal.gran,
+                                ident.1 = '?CMP',
+                                logfc.threshold = log(2),
+                                test.use = 'MAST')
+
+# Cleaning up the lists
+
+cmp.markers.all <- cmp.markers.all[cmp.markers.all$p_val_adj < 0.05,]
+cmp.markers.all <- cmp.markers.all[order(cmp.markers.all$avg_logFC, decreasing = T),]
+
+cmp.markers.gran <- cmp.markers.gran[cmp.markers.gran$p_val_adj < 0.05,]
+cmp.markers.gran <- cmp.markers.gran[order(cmp.markers.gran$avg_logFC, decreasing = T),]
+
+dim(cmp.markers.all)
+dim(cmp.markers.gran)
+
+# Including only upregulated genes
+
+cmp.markers.all <- cmp.markers.all[cmp.markers.all$avg_logFC > 0,]
+cmp.markers.gran <- cmp.markers.gran[cmp.markers.gran$avg_logFC > 0,]
+
+dim(cmp.markers.all)
+dim(cmp.markers.gran)
+
+head(cmp.markers.gran)
+```
+
+# Looking at progenitors
+
+![Alt Text](/Users/dfhannum/Desktop/Li_lab/nihms817018f1.jpg)
+
+# HSPCs
+
+Reading through this [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5119546/) it states that in mice all long-term HSCs are Hoxb5+
+
+```{r hoxb5}
+VlnPlot(nbeal, features = 'Hoxb5')
+FeaturePlot(nbeal, features = 'Hoxb5', reduction = 'umap') 
+FeaturePlot(nbeal, features = 'Kit', reduction = 'umap')
+```
+
+There seems to only be some slight expression of this gene in MKs, with a couple in Macrophages.
+
+They also use a few genes to identify different multipotent progenitors (ie short-term HSPCs): Kit, Sca1, Flk2, CD34 and Slamf1.
+
+```{r st-hsc genes}
+hsc.genes <- c('Kit', 'Flt3', 'Ly6a', 'Cd34', 'Slamf1')
+#hsc.genes %in% rownames(nbeal)
+
+for (i in hsc.genes){
+        print(VlnPlot(nbeal, i))
+}
+```
+
+It seems like the MK cluster may actually be st-HSPCs.
+
+They also use a few genes to identify different oligopotent progenitors: Kit, Flk2, IL7Ra, CD27, CD34 and FcgR.
+
+```{r prog genes}
+prog.genes <- c('Kit', 'Flt3', 'Il7', 'Ly6a','Cd27', 'Cd34', 'Fcgr2b')
+# prog.genes %in% rownames(nbeal)
+# 
+# rownames(nbeal)[grep('Fcgr',rownames(nbeal))]
+
+for(i in prog.genes){
+        print(VlnPlot(nbeal, i))
+}
+```
+
+First I'm going to look at **CMPs**, which are:
+
+* **Kit^+^**: we see all CMPs positive for Kit expression
+* **Sca1^-/low^**: we do see some expression of Ly6a but where we do it is low
+* **Cd34^+^**: we see high average expression, with some null values
+* **FcgR^low^**: we see relatively low to no expression of Fcgr2b, this gene is part of the FcgR surface marker but not sure how well it correlates
+
+**Conclusion**: the identification of CMPs seems pretty spot on
+
+Next going to look for **MEPs**:
+
+* **Kit^+^**: see some expression in ?MEP/MAST, with full expression in ?CMP, and high expression in MKs
+* **Sca1^-^**: we see no Ly6a expression in ?MEP/MAST, low expression in ?CMP, and some high expression in MKs
+* **Cd34^-^**: we see some expression in all three groups (?MEP/MAST, ?CMP, MK)
+* **FcgR^-^**: relative expression in MEP/MAST and CMP, with little/no expression in MKs
+
+**Conclusion**: the identification of of MEPs seems uncertain. MEP/MAST match up some with both Kit and Sca but not Cd34 and FcgR. Perhaps there is a subset of MEPs within MEP/MAST.
+
+Finally going to look at **GMPs**:
+
+* **Kit^+^**: see some expression the GMP, but the average is still zero.
+* **Sca1^-^**: see some expression the GMP, but the average is still zero.
+* **Cd34^+^**: we see no expression in GMPs
+* **FcgR^+^**: we see relative expression in GMPs.
+
+**Conclusion**: doesn't seem like GMP is the best label and perhaps GMPs are a subset of the CMPs.
+
+# Subcluster of CMPs
+
+```{r subclustering cmps}
+cmps <- subset(nbeal, new_cluster_IDs == '?CMP')
+dim(cmps)
+```
+
+Twenty-six seems like too small of a number for useful subclustering so going to look at all CMPs.
+
+```{r all cmps subclustering}
+cmps <- subset(wbm, new_cluster_IDs == '?CMP')
+
+dim(cmps)
+table(cmps$Experiment)
+```
+
+
+# What Distinguishes Granulocyte Clusters
+
+Looking at what genes distinguish granulocyte clusters from one another (GMP, Gran 1-3)
+
+# MK Look
+
+So when looking at markers for HSPCs it seems like the MK cluster may actually be short-term HSPCs (st-HSPCs), but it is also the cluster that shows expression of intracellular megakryocyte-associated genes in myelofibrosis [paper](https://www.cell.com/molecular-cell/pdf/S1097-2765(20)30234-3.pdf).
+
+```{r mk genes}
+mk.genes <- c('Pf4','Vwf','Itga2b','Mpig6b','Selp')
+
+for (i in mk.genes){
+        print(VlnPlot(nbeal, features = i))
+}
+```
+
+
+It's interesting but I would stick with these genes being **MKs** instead of HSPCs. Also an interesting [paper](https://pubmed.ncbi.nlm.nih.gov/1370386/) discussing how Kit plays a role in MKs, so perhaps not surprising we do see Kit expressed in our MKs (when of the key genes to identiy st-HSPCs)
+
+Going to look at splitting up the MKs based on the UMAP projection to see if we can see a split between MKs and HSCs.
+
+```{r mks}
+mks <- subset(nbeal, new_cluster_IDs == 'MK')
+#dim(mks)
+DimPlot(mks, reduction = 'umap')
+mks$UMAP1 <- as.data.frame(mks[['umap']]@cell.embeddings)$UMAP_1
+mks$grp <- ifelse(mks$UMAP1 < 8, 1,2)
+DimPlot(mks, reduction = 'umap', group.by = 'grp')
+
+for (i in hsc.genes){
+        print(VlnPlot(mks, features = i, group.by = 'grp'))
+}
+
+for (i in mk.genes){
+        print(VlnPlot(mks, features = i, group.by = 'grp'))
+}
+```
+
+Seems like group 2 may be more like HSCs, and group 1 seems to be more similar to MKs. I think it could make sense to split these into HSPCs and MKs.
+
+# MEP Introspection
+
+This evidence supports that this is actually a mast cell progenitor (MCP), but may also contain other progenitors. Of interest are there cells showing different types of progenitors.
+
+We see only 18 cells in the MEP/MAST cluster, not enough to truly subcluster by...may decide to look look at all wbm for this one.
+
+```{r zooming into MEP/MAST}
+nbeal.mep.mast <- subset(nbeal, new_cluster_IDs == '?MEP/MAST')
+dim(nbeal.mep.mast)
+DimPlot(nbeal.mep.mast, reduction = 'umap')
+```
+
+Instead here it makes sense to use all cells to help identify this cluster.
+
+```{r all mast subset}
+mast.mep <- subset(wbm, new_cluster_IDs == '?MEP/MAST')
+DefaultAssay(mast.mep) <- 'RNA'
+
+DimPlot(mast.mep, reduction = 'umap')
+
+table(mast.mep$Experiment)
+table(mast.mep$State)
+```
+
+So we were using the control (Nbeal) to identify this cluster, but it is really the Mpl experiment where we see most of these cells and the enriched state at that.
+
+## DE Genes
+
+```{r mast.mep DE genes}
+mast.mep.markers <- FindMarkers(wbm,
+                                ident.1 = '?MEP/MAST',
+                                logfc.threshold = log(2),
+                                test.use = 'MAST')
+mast.mep.markers <- mast.mep.markers[mast.mep.markers$p_val_adj < 0.05,]
+mast.mep.markers <- mast.mep.markers[order(mast.mep.markers$avg_logFC, decreasing = T),]
+
+head(mast.mep.markers)
+
+for (i in rownames(mast.mep.markers)[1:2]){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+}
+```
+
+Top DE Genes:
+* *Mcpt8*: from [uniprot](https://www.uniprot.org/uniprot/P43430), mast cell protease 8
+* *Prss34*: from [uniprot](https://www.uniprot.org/uniprot/Q80UR4), mast cell protease-11. Interesting [paper](https://pubmed.ncbi.nlm.nih.gov/19703899/) from 2009 titles basophils preferentially express mouse Mast Cell Protease 11 among the mast cell tryptase family in contrast to mast cells.
+
+## MEP Cell Surface Markers
+
+Looking at the same cell surface markers I check before in the NBeal control, but also looking at the Migr1 and Mpl clusters as well.
+
+We want to see: *Kit^+^Ly6a^-^Cd34^-^Fcgr2b^-^*
+
+```{r mep progenitor genes}
+
+mep.prog.genes <- c('Kit','Ly6a','Cd34','Fcgr2b')
+for (i in mep.prog.genes){
+        print(VlnPlot(mast.mep, features = i, split.by = 'Experiment'))
+}
+```
+
+Things don't seem any clearer when adding in the extra cells. Still don't clearly follow the pattern we would expect. The control cells actually follow a GMP pattern: *Kit^+^Ly6a^-^Cd34^+^Fcgr2b^+^*
+
+## Krause Paper MEP Genes
+
+In this [paper](https://www.cell.com/cell-reports/pdf/S2211-1247(18)31688-7.pdf) they compare, common myeloid progenitors (CMPs), megakaryocyte-erthrocyte progenitors (MEPs), megakaryocyte progenitors (MKPs) and erythrocyte progenitors (ERPs). Thist study was done on human cells, and I will change the gene names to the mouse counterpart.
+
+Genes used in the study:
+
+* *Klf1* and *Fli1* play antagonizing roles between MK and E lineages.
+* *Gata-1*, *Gata-2*, *Runx1*, and *Tal1* are all transcription factors that are required for both lineages.
+* *Myb* can toggle MEP fates
+
+Most of the other genes they show in the study were used to differentiate between the different progenitors.
+
+### Looking in all clusters
+
+```{r krause genes}
+mep.genes <- c('Klf1','Fli1','Gata1','Gata2','Runx1','Tal1','Myb')
+
+# mep.genes %in% rownames(mast.mep)
+# rownames(mast.mep)[grepl('Gata', rownames(mast.mep), ignore.case = T)]
+
+for (i in mep.genes){
+        print(VlnPlot(wbm, features = i, pt.size = 0))
+}
+```
+
+From this is does seem like the ?MEP/MAST cluster looks like it could be MEPs.
+
+## Subclustering of MEP/MAST
+
+```{r mep.mast subclustering, message=FALSE}
+DefaultAssay(mast.mep) <- 'RNA'
+mast.mep <- NormalizeData(mast.mep, normalization.method = 'LogNormalize', scale.factor = 10000)
+
+mast.mep <- FindVariableFeatures(mast.mep, selection.method = 'vst', nfeatures = 2000)
+
+mast.mep <- ScaleData(mast.mep, features = rownames(mast.mep))
+
+mast.mep <- RunPCA(mast.mep, features = VariableFeatures(mast.mep))
+
+DimPlot(mast.mep, reduction = 'pca') + ggtitle("PCA Plot of MAST/MEP Subcluster")
+DimPlot(mast.mep, reduction = 'pca', group.by = 'Condition')
+DimPlot(mast.mep, reduction = 'pca', group.by = 'Experiment')
+
+#ElbowPlot(mast.mep) # going with the classic 10
+
+mast.mep <- FindNeighbors(mast.mep, dims = 1:10)
+mast.mep <- FindClusters(mast.mep, resolution = .5)
+
+mast.mep <- RunUMAP(mast.mep, dims = 1:10)
+
+DimPlot(mast.mep, reduction = 'umap')
+DimPlot(mast.mep, reduction = 'umap', group.by = 'Experiment')
+```
+
+Going to look at the MEP cell surface markers, the genes from the Krause paper in the subclusterings, and the mast cell proteases that identify this cluster; in the subclusters.
+
+```{r mep.mast subcluster violins}
+for (i in rownames(mast.mep.markers)[1:2]){
+        print(VlnPlot(mast.mep, features = i, pt.size = 0))
+}
+```
+
+The mast cell proteases are expressed highly in all subclusters.
+
+```{r mep.mast mep prog genes}
+for (i in mep.prog.genes){
+        print(VlnPlot(mast.mep, features = i, pt.size = 0))
+}
+```
+
+No clear expression following the MEP pattern (*Kit^+^Ly6a^-^Cd34^-^Fcgr2b^-^*), but that isn't surprising since we see little to no expression of Kit.
+
+
+```{r mep krause markers subcluster violings}
+for (i in mep.genes){
+        print(VlnPlot(mast.mep, features = i, pt.size = 0))
+}
+```
+
+The only gene that really distiniguished between clusters in Myb, which is used to toggle MEP fates between MKs and Erys. So it doesn't seem like there is specifically a MEP cluster.
+
+## SingleR on Combined Data
+
+Want to look at what this cluster correlates to when also using the Mpl (which makes up the majority of this cluster) and Migr1.
+
+```{r singleR all data}
+
+# Done earlier
+# # Loading up reference datasets
+# m.ref.immgen <- ImmGenData()
+# m.ref.mus <- MouseRNAseqData()
+# 
+# ref <- list(m.ref.immgen, m.ref.mus)
+# ref.label <- list(m.ref.immgen$label.main, m.ref.mus$label.main)
+
+# Creating a sc experiment from our seurat object
+
+SCmast.mep <- as.SingleCellExperiment(mast.mep)
+
+# Predicting the sub cluster label
+pred_clusters <- SingleR(test = SCmast.mep,
+                        ref = ref,
+                        labels = ref.label,
+                        method = 'cluster',
+                        clusters = SCmast.mep$seurat_clusters)
+
+# Predicting whole cluster label
+pred_whole_cluster <- SingleR(test = SCmast.mep,
+                        ref = ref,
+                        labels = ref.label,
+                        method = 'cluster',
+                        clusters = SCmast.mep$new_cluster_IDs)
+
+# Predicting individual cell labels
+pred_cell <- SingleR(test = SCmast.mep,
+                     ref = ref,
+                     labels = ref.label,
+                     method = 'single')
+```
+
+### Subclusters
+
+```{r single subclusters}
+
+```
+
+
+## Conclusions
+
+The cell surface markers don't show this cluster to follow the typical MEP pattern, but gene expression and cell surface markers don't always correlate exactly. Many of the Krause genes show high expression,indicating this may be an MEP cluster.
+
+The SingleR data while looking at just Nbeal cells, indicdates that this is a stem cell cluster. The SingleR datasets are missing progenitor states (MEP, CMP, GMP) and some subtypes (MKs), and it seems more likely that this is a cluster of progenitors. 
+
+# Final Table
+
+```{r final labels}
+
+#Idents(wbm)
+
+wbm$new_cluster_IDs2 <- wbm$new_cluster_IDs
+
+wbm$umap1 <- as.data.frame(wbm[['umap']]@cell.embeddings)$UMAP_1
+
+wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != 'MK', as.character(wbm$new_cluster_IDs2),
+                               ifelse(wbm$umap1 < 8, 'MK','HSPC'))
+
+
+wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != '?CMP', 
+                               as.character(wbm$new_cluster_IDs2), 'CMP')
+
+wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != '?MEP/MAST', 
+                               as.character(wbm$new_cluster_IDs2), 'MCP')
+
+wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs %in% c(paste0('Bcell-',1:4)), 'B-cell',
+                               as.character(wbm$new_cluster_IDs2))
+
+wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs %in% c(paste0('Gran-',1:3)), 'Granulocyte',
+                               as.character(wbm$new_cluster_IDs2))
+
+wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs %in% c(paste0('Bcell-',1:4)), 'B-cell',
+                               as.character(wbm$new_cluster_IDs2))
+
+wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != '?GMP', 
+                               as.character(wbm$new_cluster_IDs2), 'Granulocyte')
+
+#DimPlot(wbm, reduction = 'umap', group.by = 'new_cluster_IDs2')
+
+Idents(wbm) <- wbm$new_cluster_IDs2
+
+DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
