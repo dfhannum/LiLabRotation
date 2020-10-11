@@ -71,8 +71,11 @@ wbm$new_cluster_IDs <- Idents(wbm)
 #                          ifelse(grepl('Migr', wbm$State), 'Migr1', 'Control'))
 
 DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+table(wbm$State)
 DimPlot(wbm, reduction = 'umap', split.by = 'State', ncol = 3) + ggtitle('By State')
+table(wbm$Condition)
 DimPlot(wbm, reduction = 'umap', split.by = 'Condition', ncol = 3) + ggtitle('By Condition')
+table(wbm$Experiment)
 DimPlot(wbm, reduction = 'umap', split.by = 'Experiment', ncol = 3) + ggtitle('By Experiment')
 
 ```
@@ -89,25 +92,64 @@ I'm going to go with the consensus names from the labeling stage and produce fig
 sumry <- read.table('./data/v2/summary_naming.tsv', header = T, sep = '\t')
 # sumry
 sumry$final2 <- sumry$final
-sumry$final2[c(3,8)] <- c('?GMP','?CMP/Neutro')
-sumry
+sumry$final2[c(3,8)] <- c('Granulocyte','CMP')
+sumry$final2[6] <- '?MEP/MCP'
 ```
 # UMAP Projections 
 
 UMAP projections of the data of different subsets of the data with the cell type labels.
 
 ```{r changing the levels of the data}
-new_levels <- sumry$final2
+# new_levels <- sumry$final2
+# 
+# names(new_levels)  <- levels(wbm)
+# #new_levels
+# wbm <- RenameIdents(wbm, new_levels)
+# wbm$new_cluster_IDs <- Idents(wbm)
 
-names(new_levels)  <- levels(wbm)
-#new_levels
-wbm <- RenameIdents(wbm, new_levels)
-wbm$new_cluster_IDs <- Idents(wbm)
+wbm$new_cluster_IDs2 <- wbm$new_cluster_IDs
 
+wbm$umap1 <- as.data.frame(wbm[['umap']]@cell.embeddings)$UMAP_1
+
+wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != 'Megakaryocyte', as.character(wbm$new_cluster_IDs2),
+                               ifelse(wbm$umap1 < 8, 'Megakarycoyte','HSPC'))
+
+
+wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != '?CMP/Neutro', 
+                               as.character(wbm$new_cluster_IDs2), 'CMP')
+
+# wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != '?MEP/MAST', 
+#                                as.character(wbm$new_cluster_IDs2), '?MCP')
+
+wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs %in% c(paste0('B cell-',1:4)), 'B-cell',
+                               as.character(wbm$new_cluster_IDs2))
+
+wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs %in% c(paste0('Gran-',1:3)), 'Granulocyte',
+                               as.character(wbm$new_cluster_IDs2))
+
+
+wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != '?GMP', 
+                               as.character(wbm$new_cluster_IDs2), 'Granulocyte')
+
+wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != 'MEP/Mast', 
+                               as.character(wbm$new_cluster_IDs2), 'MEP/MCP')
+
+
+Idents(wbm) <- wbm$new_cluster_IDs2
+summary(Idents(wbm))
+```
+
+```{r plotting new umaps}
 color_pal <- c("#0072B2", "#CC79A7", "#009E73", "#56B4E9","#D55E00",
                "#E69F00","#999999", 'violet',"black", 'red')
 
+table(wbm$new_cluster_IDs2)
 DimPlot(wbm, reduction = 'umap', cols = color_pal, label = T, repel = T)
+
+# Splits by State
+
+table(wbm$State)
+table(wbm$State, wbm$new_cluster_IDs2)
 
 DimPlot(wbm, reduction = 'umap', split.by = 'State', 
         cols = color_pal, ncol = 3, pt.size = .01) +
@@ -115,16 +157,21 @@ DimPlot(wbm, reduction = 'umap', split.by = 'State',
         ggtitle('By State') +
         theme(text = element_text(size = 10, family = 'sans'))
 
-DimPlot(wbm, reduction = 'umap', split.by = 'State', 
-        cols = color_pal, ncol = 3, pt.size = .01) +
-        theme_bw() +
-        theme(text = element_text(size = 10, family = 'sans'))
+# By Condition
+
+table(wbm$Condition)
+table(wbm$Condition, wbm$new_cluster_IDs2)
 
 DimPlot(wbm, reduction = 'umap', split.by = 'Condition', 
         cols = color_pal, ncol = 3, pt.size = .01) +
         theme_bw() +
         ggtitle('By Condition') +
         theme(text = element_text(size = 10, family = 'sans'))
+
+# By Experiment
+
+table(wbm$Experiment)
+table(wbm$Experiment, wbm$new_cluster_IDs2)
 
 DimPlot(wbm, reduction = 'umap', split.by = 'Experiment', 
         cols = color_pal, ncol = 3, pt.size = .01) +
@@ -281,8 +328,13 @@ ggplot(data = Experiment.tbl, aes(x = `Cell Type`, y = Experiment)) +
 ggplot(data = Experiment.tbl, aes(x = `Cell Type`, y = Experiment)) +
         geom_tile(aes(fill = Percentage)) +
         scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred',midpoint = 50) +
-        geom_text(aes(label = round(Percentage,0))) +
+        geom_text(aes(label = round(Percentage,2))) +
         ggtitle('Experiment by Cluster (Percentage)') +
         coord_flip() +
         theme(axis.text.x = element_text(angle = 45, vjust = .5, hjust = .5))
 ```
+
+```{r saving the data}
+#saveRDS(wbm, file = './data/v2/lesser.combined.integrated.NAMED.rds')
+```
+

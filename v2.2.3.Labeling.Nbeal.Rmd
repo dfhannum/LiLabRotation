@@ -887,18 +887,71 @@ pred_cell <- SingleR(test = SCmast.mep,
                      method = 'single')
 ```
 
+### Whole Cluster
+
+```{r singleR whole cluster}
+pred_whole_cluster$scores[!is.na(pred_whole_cluster$scores)]
+```
+
+The highest score from the first reference was basophils at 0.67 and from the second reference was 0.22 from granulocytes.
+
 ### Subclusters
 
 ```{r single subclusters}
+pred_scores_cluster <- pred_clusters$scores
 
+# Deleting columns without any values
+
+pred_scores_cluster <- as.data.frame(pred_scores_cluster[,colSums(is.na(pred_scores_cluster)) != nrow(pred_scores_cluster)])
+
+head(pred_scores_cluster)
+
+pred_scores_cluster <- gather(pred_scores_cluster, Cell.Type, Score, factor_key = T)
+
+pred_scores_cluster$seurat.cluster <- rep(0:5, 2)
+
+pred_scores_cluster$seurat.cluster2 <- as.factor(pred_scores_cluster$seurat.cluster)
+
+pred_scores_cluster$score2 <- ifelse(is.na(pred_scores_cluster$Score), 0, pred_scores_cluster$Score)
+
+pred_scores_cluster$Cell.Type <- rep(c('Basophils-1','Granulocytes-2'), each = 6)
+
+pred_scores_cluster$ref <- rep(c('1','2'), each = 6)
+
+ggplot(data = pred_scores_cluster, aes(y = Cell.Type, x = seurat.cluster2, 
+                                       fill = ref, alpha = score2)) +
+        geom_tile() +
+        theme(axis.text.x = element_text(angle = 90, vjust = .2, hjust = .95))
+        #scale_fill_gradient2(low = 'white', mid = 'red', high = 'darkred', midpoint = .45)
 ```
 
+### Individual Cell Labels
+
+```{r singleR cell labels}
+table(pred_cell$pruned.labels)
+```
+
+We see the vast majority being basophils, with some mast cell, stem cells and other granulocytes.
 
 ## Conclusions
 
 The cell surface markers don't show this cluster to follow the typical MEP pattern, but gene expression and cell surface markers don't always correlate exactly. Many of the Krause genes show high expression,indicating this may be an MEP cluster.
 
 The SingleR data while looking at just Nbeal cells, indicdates that this is a stem cell cluster. The SingleR datasets are missing progenitor states (MEP, CMP, GMP) and some subtypes (MKs), and it seems more likely that this is a cluster of progenitors. 
+
+Also looked at the SingleR for the combined data to increase the sample size. They conclusion from this data would be that this cell population in basophils.
+
+Of interest here are two papers ([1](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3855204/) [2](https://onlinelibrary.wiley.com/doi/abs/10.1111/imr.12627)) that talk about the similarity between basophils and mast cells, and a common progenitor between the two. Below is an interesting figure from the first paper.
+
+![New Differentiation Pathway](/Users/dfhannum/Desktop/Li_lab/mast.baso.diff.jpg)
+```{r}
+VlnPlot(mast.mep, features = c('Gata1','Gata2','Mitf'), pt.size = 0)
+VlnPlot(wbm, features = c('Gata1','Gata2','Mitf'), pt.size = 0)
+```
+
+But we do see high expression of both Gata1 and Gata2 in all subclusters which would also indicate that these are being moved to MEPs and not towards BasMCPs.
+
+So the conclusion for me is that there is conflicting evidence both for and agains MEPs and BasMCPs.
 
 # Final Table
 
@@ -917,8 +970,8 @@ wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != 'MK', as.character(wbm$new
 wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != '?CMP', 
                                as.character(wbm$new_cluster_IDs2), 'CMP')
 
-wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != '?MEP/MAST', 
-                               as.character(wbm$new_cluster_IDs2), 'MCP')
+# wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != '?MEP/MAST', 
+#                                as.character(wbm$new_cluster_IDs2), '?MCP')
 
 wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs %in% c(paste0('Bcell-',1:4)), 'B-cell',
                                as.character(wbm$new_cluster_IDs2))
@@ -937,5 +990,25 @@ wbm$new_cluster_IDs2 <- ifelse(wbm$new_cluster_IDs != '?GMP',
 Idents(wbm) <- wbm$new_cluster_IDs2
 
 DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+```
+
+# MK DE Expression
+
+Question was asked if there were any DE genes between Migr1 and Mpl within MK cells. Previously there were not any but above we split the MKs into both MKs and HSPCs. So below I'm going to do the DE again with the newer MK cluster.
+
+
+```{r mk DE expression}
+mk.markers <- FindMarkers(wbm,
+                          ident.1 = 'Mpl',
+                          ident.2 = 'Migr1',
+                          group.by = 'Experiment',
+                          subset.ident = 'MK',
+                          logfc.threshold = log(2),
+                          test.use = 'MAST')
+
+mk.markers <- mk.markers[mk.markers$p_val_adj < 0.05,]
+mk.markers <- mk.markers[order(mk.markers$avg_logFC, decreasing = T),]
+
+mk.markers
 ```
 

@@ -191,3 +191,44 @@ mks.markers.controlsVSmpl[rownames(mks.markers.controlsVSmpl %in% priya.genes),]
 
 None of the genes tested by Priya show up in this analysis, which isn't surprising since that list of genes was generated differently.
 
+
+# Loading the dataset created from v2.3.Quantification
+
+```{r loading new data}
+wbm <- readRDS('./data/v2/lesser.combined.integrated.NAMED.rds')
+```
+
+# Testing for enriched vs not enriched in all clusters
+
+```{r de enriched vs non-enriched}
+table(wbm$idents, wbm$Condition)
+DimPlot(wbm, split.by = 'Condition')
+
+Experiment.DE <- data.frame(p_val = numeric(),
+                            avg_logFC = numeric(),
+                            pct.1 = numeric(),
+                            pct.2 = numeric(),
+                            p_val_adj = numeric(),
+                            ident = character())
+
+for (i in unique(wbm$idents)[unique(wbm$idents) != 'Granulocyte']){
+        print(i)
+        
+        x <- FindMarkers(wbm,
+                         ident.1 = 'Enriched',
+                         ident.2 = 'Not enriched',
+                         group.by = 'Condition',
+                         subset.ident = i,
+                         logfc.threshold = log(2),
+                         test.use = 'MAST'
+                         )
+        
+        x <- x[order(x$avg_logFC, decreasing = T),]
+        x$ident <- i
+        x <- x[x$p_val_adj < 0.05,]
+        Experiment.DE <- rbind(Experiment.DE,x)
+        
+}
+
+```
+

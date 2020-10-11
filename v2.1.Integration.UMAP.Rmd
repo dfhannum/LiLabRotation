@@ -192,7 +192,13 @@ venn.counts <- vennCounts(cnt@meta.data[,c('nCount_RNA.passed','nFeature_RNA.pas
 
 vennDiagram(venn.counts)
 
+table(cnt$Condition)
+table(cnt$nFeature_RNA > 500)
+table(cnt$percent.mt.passed)
+
 less.cnt <- subset(cnt, subset = nFeature_RNA > 500 & percent.mt < 10)
+
+table(less.cnt$Condition)
 
 cnt <- subset(cnt, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 &
                     percent.mt < 10 & nCount_RNA < 50000)
@@ -351,7 +357,11 @@ comb2.int$enriched <- grepl('enr', comb2.int@meta.data$Condition)
 DimPlot(comb2.int, reduction = 'umap', group.by = 'enriched') +
         ggtitle('Enriched Cells')
 
+table(comb2.int$Condition)
+table(comb2.int$orig.ident)
+
 #saveRDS(comb2.int, './data/v2/lesser.combined.integrated.rds')
 ```
+
 
 
