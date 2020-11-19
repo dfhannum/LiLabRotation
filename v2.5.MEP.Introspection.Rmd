@@ -90,10 +90,15 @@ mep.markers <- mep.markers[order(mep.markers$avg_logFC, decreasing = T),]
 
 ## MEP Up-regulated markers
 
+Looking at the top 10 up-regulated markers plus Itga2b
+
 ```{r mep up-regulated markers 10}
-for(i in rownames(head(mep.markers,10))){
+for(i in c(rownames(head(mep.markers,10)), 'Itga2b')){
         print(VlnPlot(wbm, features = i, pt.size = 0))
 }
+
+DotPlot(wbm, features = c(rownames(mep.markers)[1:10],'Itga2b')) + 
+        theme(axis.text.x = element_text(angle = 90))
 ```
 
 
@@ -101,9 +106,9 @@ for(i in rownames(head(mep.markers,10))){
 This was also done for down-regulated markers, but it is not very informative as there are few genes that are widely expressed in all other clusters excluding MEP cluster.
 
 ```{r mep down-regulated markers}
-for(i in rev(rownames(tail(mep.markers,10)))){
-        print(VlnPlot(wbm, features = i, pt.size = 0))
-}
+# for(i in rev(rownames(tail(mep.markers,10)))){
+#         print(VlnPlot(wbm, features = i, pt.size = 0))
+# }
 ```
 
 ```{r go terms for up-regulated markers}
@@ -115,7 +120,30 @@ mep.markers.UP <- rownames(mep.markers[mep.markers$avg_logFC > 0,])
 
 ```
 
-# Subclustering
+# Focusing on Itga2b
+
+Looking specfiically at Itga2b expression
+
+```{r itga2b}
+VlnPlot(wbm, features = 'Itga2b')
+
+wbm$itga2b.expression <- as.vector(wbm$RNA['Itga2b',])
+        
+wbm$itga2b.expression.binary <- wbm$itga2b.expression > 0
+
+table(wbm$new_cluster_IDs, wbm$itga2b.expression.binary)
+
+itga2b.pos <- subset(wbm, itga2b.expression.binary > 0)
+
+itga2b.pos
+
+FeaturePlot(wbm, features = 'itga2b.expression.binary')
+DimPlot(itga2b.pos, reduction = 'umap')
+
+VlnPlot(itga2b.pos, features = 'Itga2b')
+```
+
+
 
 Going to look at a few different subclusterings:
 
@@ -219,6 +247,10 @@ s4 <- FindClusters(s4, resolution = 0.5, verbose = F)
 s4 <- RunUMAP(s4, dims = 1:10, verbose = F)
 
 DimPlot(s4, reduction = 'umap', group.by = 'RNA_snn_res.0.2')
+```
+
+```{r mep/mcp markers}
+Vln
 ```
 
 

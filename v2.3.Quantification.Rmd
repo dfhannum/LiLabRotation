@@ -338,3 +338,66 @@ ggplot(data = Experiment.tbl, aes(x = `Cell Type`, y = Experiment)) +
 #saveRDS(wbm, file = './data/v2/lesser.combined.integrated.NAMED.rds')
 ```
 
+# Quantification for each cluster
+
+```{r quantification by Experiment for clusters}
+
+Experiment.tbl <- as.data.frame(table(wbm$Experiment, wbm$idents))
+
+colnames(Experiment.tbl) <- c('Experiment','Cell Type', 'Count')
+
+Experiment.tbl$Cluster_count <- NA
+
+for (i in levels(Experiment.tbl$`Cell Type`)){
+        #print(i)
+        Experiment.tbl[Experiment.tbl$`Cell Type` == i,]$Cluster_count <- 
+                sum(Experiment.tbl[Experiment.tbl$`Cell Type` ==i,]$Count)
+}
+
+Experiment.tbl$Cluster_percentage <- round(Experiment.tbl$Count/Experiment.tbl$Cluster_count,4)*100
+
+Experiment.tbl$Experiment_count <- NA
+
+for (i in levels(Experiment.tbl$Experiment)){
+        #print(i)
+        Experiment.tbl[Experiment.tbl$Experiment == i,]$Experiment_count <- 
+                sum(Experiment.tbl[Experiment.tbl$Experiment ==i,]$Count)
+}
+
+Experiment.tbl$Normalized_Counts <- Experiment.tbl$Count / Experiment.tbl$Experiment_count
+
+Experiment.tbl$Norm.Cluster_count <- NA
+
+for (i in levels(Experiment.tbl$`Cell Type`)){
+        print(i)
+        Experiment.tbl[Experiment.tbl$`Cell Type` == i,]$Norm.Cluster_count <- 
+                sum(Experiment.tbl[Experiment.tbl$`Cell Type` ==i,]$Normalized_Counts)
+}
+
+Experiment.tbl$normalized_percentage <- round(Experiment.tbl$Normalized_Counts /
+                                                      Experiment.tbl$Norm.Cluster_count,4)*100
+
+ggplot(Experiment.tbl, aes(x = `Cell Type`, y = Cluster_percentage, fill = Experiment)) +
+        geom_bar(stat = 'identity') + 
+        ylim(0,100) +
+        scale_fill_manual(values = c('Blue','Red','Green')) +
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Cell Type') +
+        #NoLegend()+
+        #ggtitle('By Experiment') +
+        scale_y_continuous(position = 'right') +
+        coord_flip() +
+        theme(text = element_text(size = 10, family = 'sans'))
+
+ggplot(Experiment.tbl, aes(x = `Cell Type`, y = normalized_percentage, fill = Experiment)) +
+        geom_bar(stat = 'identity') + 
+        ylim(0,100) +
+        scale_fill_manual(values = c('Blue','Red','Green')) +
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Cell Type') +
+        #NoLegend()+
+        ggtitle('Normalized Cell Counts') +
+        scale_y_continuous(position = 'right') +
+        coord_flip() +
+        theme(text = element_text(size = 10, family = 'sans'))
+```

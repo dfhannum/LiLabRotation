@@ -1,0 +1,218 @@
+---
+title: "v2.5.2.MEP.Introspection.part2"
+author: "D. Ford Hannum Jr."
+date: "11/18/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(scRNAseq)
+```
+
+# Data Intro and Initial Processing
+
+```{r loading data}
+wbm <- readRDS('./data/v2/lesser.combined.integrated.NAMED.rds')
+```
+
+```{r changing labels}
+# Changing HSPC to Multipotent Progenitor
+
+# Changing CMP to Progenitors?
+
+wbm$idents2 <- ifelse(wbm$idents != 'HSPC' & wbm$idents != 'CMP' & wbm$idents != 'MEP/Mast', as.character(wbm$idents),
+                      ifelse(wbm$idents == 'MEP/Mast', 'MEP/MCP',
+                             ifelse(wbm$idents == 'HSPC','MPP', 'Progenitor')))
+
+Idents(wbm) <- wbm$idents2
+
+DefaultAssay(wbm) <- 'RNA'
+```
+
+```{r basic UMAP plot}
+color_pal <- c("#0072B2", "#CC79A7", "#009E73", "#56B4E9","#D55E00",
+               "#E69F00","#999999", 'violet',"red", 'black')
+
+DimPlot(wbm,reduction = 'umap', label = T, repel = T, cols = color_pal)
+```
+
+# Introduction
+
+Things that were brought up last meeting:
+
+**What are the MEP/Mast cells, are these really MEPs?**
+
+1. Look at Krause markers?
+2. Look at markers for MEPs?
+3. Coexpression of different markers
+4. How can we isolate these cells?
+
+# Krause Markers
+
+```{r mep gene lists}
+mep.genes <- c('Klf1','Fli1','Gata1','Gata2','Runx1','Tal1','Myb')
+
+mep.genes2 <- c('Hpgds','Smox','Lbh','Nr4a1','Gpr141')
+
+cmp.genes <- c('Spink2','Csf3r','Ighm','Glipr1','Miat')
+
+erp.genes <- c('Rhag','Ahspp','Klf1')
+
+mkp.genes <- c('Pf4','Vwf','Trpc6','Gp6','Itgb3','Fcer1g','Selp')
+
+mep.erp.genes <- c('Cnrip1','Ank1','Tfr2','Acsm3','Cpa3')
+
+mep.mkp.genes <- c('C3orf58','Pdia5','Rgs18','Pdgfa','Plek','Arhgap6')
+
+cmp.mep.genes <- c('Cd52','Id3','Smim24')
+
+mep.mkp.erp.genes <- c('Abcc4','C6orf25','Casp3','Ibtk','Gata1')
+```
+
+```{r dot plots}
+DotPlot(wbm, features = mep.genes) + coord_flip() + ggtitle ('MEP Genes') +
+        theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+DotPlot(wbm, features = mep.genes2) + coord_flip() + ggtitle ('MEP Genes #2') +
+        theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+DotPlot(wbm, features = cmp.genes) + coord_flip() + ggtitle ('CMP Genes') +
+        theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+DotPlot(wbm, features = erp.genes) + coord_flip() + ggtitle ('ERP Genes') +
+        theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+DotPlot(wbm, features = mkp.genes) + coord_flip() + ggtitle ('MKP Genes') +
+        theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+DotPlot(wbm, features = mep.erp.genes) + coord_flip() + ggtitle ('MEP/ERP Genes') +
+        theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+DotPlot(wbm, features = mep.mkp.genes) + coord_flip() + ggtitle ('MEP/MKP Genes') +
+        theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+DotPlot(wbm, features = cmp.mep.genes) + coord_flip() + ggtitle ('CMP/MEP Genes') +
+        theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+DotPlot(wbm, features = mep.mkp.erp.genes) + coord_flip() + ggtitle ('MEP/MKP/ERP Genes') +
+        theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
+## Markers of Interest
+
+```{r key ones from above}
+moi <- c('Casp3','Cpa3','Runx1')
+
+DotPlot(wbm, features = moi) + coord_flip() + ggtitle ('Strongest Markers') +
+        theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
+
+# MEP Markers
+
+Other markers that I have from priya and other sources.
+
+```{r otros}
+otro.mep.markers <- c('Cd34','Cd38')
+
+DotPlot(wbm, features = otro.mep.markers) + coord_flip() + # ggtitle ('MEP Genes') +
+        theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
+Neither of these was useful
+
+# Coexpression of different markers
+ 
+Looking at some of the top hits (Mcpt8, Prss34) and other MEP genes (Gata2, Runx1, Cpa3), to see how they overlap
+
+```{r data for goi}
+goi <- c('Itga2b','Mcpt8','Prss34','Gata2','Runx1','Cpa3')
+rnas <- as.data.frame(t(wbm@assays$RNA[goi,]))
+rnas$cluster <- wbm$idents2
+mep.mcp <- rnas[rnas$cluster == 'MEP/MCP',]
+```
+
+
+```{r coexpression data}
+combos <- combn(goi,2)
+
+for (i in 1:ncol(combos)){
+        x <- combos[1,i]
+        y <- combos[2,i]
+        # print(paste(x,y))
+        
+        temp <- mep.mcp[, colnames(mep.mcp) %in% c(x,y)]
+        
+        colnames(temp) <- c('V1','V2')
+        
+        # temp2 <- lm(V1 ~ V2, temp)
+        # r2 <- round(summary(temp2)$r.squared,2)
+        
+        print(ggplot(temp, aes(x = V1, y = V2)) + geom_point() + 
+                             theme_bw() + xlab(x) + ylab(y))
+        
+        # print(paste0('The r^2 value is : ',r2))
+        
+        tbl <- table(mep.mcp[,y] >0, mep.mcp[,x] > 0)
+        
+        colnames(tbl) <- c(paste0(x, ' = 0'), paste0(x, ' > 0'))
+        rownames(tbl) <- c(paste0(y, ' = 0'), paste0(y, ' > 0'))
+        print(tbl)
+}
+```
+
+# How to select this MEP/MCP population
+
+## First Step
+
+Most of these cells are coming from the enriched Mpl experiment so I would start there.
+
+## Second Step
+
+```{r defining by markers here first}
+# rnas$exp <- wbm$State
+# w <- rnas[rnas$exp == 'enrMpl',]
+# temp <- table(w$Itga2b > 0, w$cluster)
+# rownames(temp) <- c("No Itga2b", "Itga2b Expresion")
+# temp
+enrMpl <- subset(wbm, State == 'enrMpl')
+
+mrks <- FindMarkers(enrMpl,
+                    ident.1 = 'MEP/MCP',
+                    min.pct = .9,
+                    min.diff.pct = .5)
+
+head(mrks)
+```
+
+```{r looking at these genes in violins}
+mrks$diff <- mrks$pct.1 - mrks$pct.2
+
+mrks <- mrks[order(mrks$diff, decreasing = T),]
+
+for (i in rownames(head(mrks))){
+        print(VlnPlot(enrMpl, features = i))
+}
+
+nonEnrMpl <- subset(wbm, enriched == FALSE)
+nbeal <- subset(wbm, State == 'Nbeal_cntrl')
+for (i in rownames(head(mrks))){
+        print(VlnPlot(nbeal, features = i))
+}
+```
+

@@ -1,0 +1,231 @@
+---
+title: "v2.Meeting1105"
+author: "D. Ford Hannum Jr."
+date: "11/5/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(scRNAseq)
+```
+
+# Data Intro and Initial Processing
+
+```{r loading data}
+wbm <- readRDS('./data/v2/lesser.combined.integrated.NAMED.rds')
+```
+
+```{r changing labels}
+# Changing HSPC to Multipotent Progenitor
+
+# Changing CMP to Progenitors?
+
+wbm$idents2 <- ifelse(wbm$idents != 'HSPC' & wbm$idents != 'CMP' & wbm$idents != 'MEP/Mast', as.character(wbm$idents),
+                      ifelse(wbm$idents == 'MEP/Mast', 'MEP/MCP',
+                             ifelse(wbm$idents == 'HSPC','Multipotent Progenitor', 'Progenitor')))
+
+Idents(wbm) <- wbm$idents2
+```
+
+```{r basic UMAP plot}
+color_pal <- c("#0072B2", "#CC79A7", "#009E73", "#56B4E9","#D55E00",
+               "#E69F00","#999999", 'violet',"red", 'black')
+
+DimPlot(wbm,reduction = 'umap', label = T, repel = T, group.by = 'seurat_clusters')
+```
+
+## Text
+
+Six different single-cell samples were used in the single-cell analysis. Cells were harvested from three different mice: Mpl, Migr1, and an aged wildtype. For each different mouse model we also did an enrichment for CD41^+^ cells, which gives us two different conditions: enriched vs non-enriched cells. The first four samples, Mpl and Migr1 enriched and non-enriched, were all sequenced together to avoid batch effects between the samples. The other two aged wildtype samples were also sequenced together. All the samples were demultiplexed to get sample labels. 
+
+The two different sets of sample (Migr1/Mpl and Aged Wildtype) were then integrated together using canonical correlation analysis (CCA) in the Seurat (PMID:29608179) package to avoid batch effects. Unbiased clustering was then performed and then uniform manifold approximation and projection (UMAP) was used to visualize the clusters into 2-dimensional space (Fig ??)
+
+# Cluster Labeling
+
+```{r cluster labeling}
+
+# Loading reference datasets
+
+m.ref.immgen <- ImmGenData()
+m.ref.mus <- MouseRNAseqData()
+
+ref <- list(m.ref.immgen, m.ref.mus)
+ref.label <- list(m.ref.immgen$label.main, m.ref.mus$label.main) 
+
+# Making the default for wbm RNA from integrated
+DefaultAssay(wbm) <- 'RNA'
+
+# Getting a single cell experiment object to use with SingleR
+SCwbm <- as.SingleCellExperiment(wbm)
+
+# Predicting cluster label based on cluster centroid
+
+pred_cluster <- SingleR(test = SCwbm,
+                        ref = ref,
+                        labels = ref.label,
+                        method = 'cluster',
+                        clusters = SCwbm$seurat_clusters)
+
+pred_scores_cluster <- pred_cluster$scores
+
+# Deleting columns without any values
+
+pred_scores_cluster <- as.data.frame(pred_scores_cluster[,colSums(is.na(pred_scores_cluster)) != nrow(pred_scores_cluster)])
+
+rownames(pred_scores_cluster) <- rownames(pred_cluster)
+
+colnames(pred_scores_cluster)[8:12] <- paste0(' ',colnames(pred_scores_cluster)[8:12])
+
+pred_scores_cluster <- gather(pred_scores_cluster, Cell.Type, Score, factor_key = T)
+
+pred_scores_cluster$seurat.cluster <- rep(rownames(pred_cluster), 12)
+
+pred_scores_cluster$Reference <- c(rep('ImmGen',105), rep('GEO',75))
+
+pred_scores_cluster$seurat.cluster2 <- as.factor(pred_scores_cluster$seurat.cluster)
+
+pred_scores_cluster$Score <- ifelse(is.na(pred_scores_cluster$Score), 0, pred_scores_cluster$Score)
+
+pred_scores_cluster$seurat.cluster2 <- factor(pred_scores_cluster$seurat.cluster2, 
+                                              levels = c(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14))
+
+# Plotting
+ggplot(data = pred_scores_cluster, aes(y = Cell.Type, x = seurat.cluster2, 
+                                       fill = Reference, alpha = Score)) +
+        geom_tile() + ylab ('Reference Cell Type') + xlab('Cluster') + theme_bw() +
+        # theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        scale_fill_manual(values = c('red','blue'))
+```
+
+```{r marker gene expression}
+
+gran.markers <- FindMarkers(wbm,
+                            ident.1 = 'Granulocyte',
+                            test.use = 'MAST',
+                            logfc.threshold = log(2))
+
+gran.markers <- gran.markers[order(gran.markers$avg_logFC, decreasing = T),]
+
+markers4 <- FindMarkers(wbm,
+                        ident.1 = '4',
+                        group.by = 'seurat_clusters',
+                        test.use = 'MAST',
+                        logfc.threshold = log(2))
+
+markers4 <- markers4[order(markers4$avg_logFC, decreasing = T),]
+
+marker.genes <- rev(c('Kit','Itga2b','Vwf','Gata3','Alas2','Vcam1','Gata2','Cd68','Ighd','Ngp'))
+
+DotPlot(wbm, features = marker.genes, group.by = 'seurat_clusters') +
+        ylab ('Cell Cluster') + xlab ('Marker Genes') +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text.x = element_text(angle = 45, hjust = .95),
+              axis.text.y = element_text(family = 'sans', size = 10),
+              axis.title = element_text(family = 'sans', size = 12))
+
+```
+
+```{r mk split supp}
+mk <- subset(wbm, seurat_clusters == 12)
+
+DimPlot(mk, reduction = 'umap') + NoLegend()
+
+hspc.genes <- c('Kit','Flt3','Ly6a','Cd34','Slamf1')
+
+mk.genes <- c('Itga2b','Vwf','Gp9','Pf4')
+
+DotPlot(mk, features = c(hspc.genes, mk.genes)) + coord_flip() +
+        xlab('Marker Genes')
+```
+
+```{r mcp genes}
+# mep.mcp.markers <- FindMarkers(wbm,
+#                                ident.1 = 'MEP/MCP',
+#                                test.use = 'MAST',
+#                                logfc.threshold = log(2))
+# 
+# mep.mcp.markers <- mep.mcp.markers[order(mep.mcp.markers$avg_logFC, decreasing = T),]
+# head(mep.mcp.markers)
+```
+
+## Text
+
+These clusters were then analyzed and labeled using multiple methods. Firstly, we compared cluster centroid expression to reference datasets using the package SingleR (PMID:30643263) using two different references: Immunologic Genome Project (PBMID:18800157) and Mouse RNA Sequencing Data from GEO (PMID:30858345). We saw high correlation of our clusters with b-cell, t-cell, granulocyte, erythrocyte, and monocyte references (Supplementary Figure ?). Not all cluster expected in our data were in the reference datasets, so further steps were needed to identify all populations.
+
+Next we looked at known marker gene to refine the cluster naming. Markers genes used in this study were: Ngp for granulocytes, Ighd for b-cells, Cd68 for monocytes and macrophages, Vcam1 for monocytes, Alas2 for erythrocytes, Gata3 for t-cells, Vwf and Itga2b (Cd41) for megakaryocytes, and Kit for progenitors. Marker gene expression helped identify megakaryocyte populations, and confirm previous cluster labels provided by SingleR.
+
+Cluster 12 was further subdivided. In the UMAP projection cluster 12 is non-contiguous with cluster 7 dividing the cluster in two. When viewing cluster 12 as two separate clusters we see distinct patterns indicating one as a mulipotent progenitor and the other as megakaryocytes (Supp Fig ?).
+
+Cluster 6 was initially labeled as a megakarycoyte-erythrocyte progenitor (MEP) population based on the marker gene expression of both Gata2 and Itga2b. Upon further examination there was evidence that this cluster also contained basophil-mast cell progenitor cells. When looking at the SingleR results (Fig ?) we see that cluster 6 has a relatively high correlation with basophils. The top two genes that distinguish this cluster from all others (using the FindMarkers function in Seurat) are Mcpt8 and Prss34 which are both mast cell proteases. Upon further research we were able to find instances when MEPs gave rise to mast cells (refs).
+
+# Labeled UMAP Projections
+
+```{r labeled umaps}
+wbm$Experiment2 <- ifelse(wbm$Experiment == 'Control', 'Aged Wildtype', wbm$Experiment)
+wbm$State2 <- paste0(ifelse(wbm$Condition == 'Enriched','enr_',''), wbm$Experiment2)
+
+wbm$State <- factor(wbm$State2, levels = levels(as.factor(wbm$State2))[c(1,5,6,2,3,4)])
+
+DimPlot(wbm, reduction = 'umap', cols = color_pal) + theme_bw()
+
+DimPlot(wbm, reduction = 'umap', split.by = 'State', ncol = 3, cols = color_pal) +
+        theme_bw()
+
+DimPlot(subset(wbm, State %in% c('Migr1','Mpl')), ncol = 2, 
+        cols = color_pal, reduction = 'umap', split.by = 'State') + 
+        theme_bw()
+```
+
+# Quantification of Labeled UMAP
+
+```{r quantification}
+tbl <- as.data.frame(table(wbm$State, Idents(wbm)))
+
+colnames(tbl) <- c('State','Cell Type','Count')
+
+tbl$State_count <- NA
+
+for (i in levels(tbl$State)){
+        tbl[tbl$State == i,]$State_count <- sum(tbl[tbl$State ==i,]$Count)
+}
+
+tbl$Percentage <- round(tbl$Count/tbl$State_count,4)*100
+
+ggplot(tbl, aes(x = State, y = Percentage, fill = `Cell Type`)) +
+        geom_bar(stat = 'identity') +
+        ylim(0,100) +
+        scale_fill_manual(values = color_pal) +
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Sample') +
+        ggtitle("Cell Quantification by Sample") +
+        scale_y_continuous(position = 'right') +
+        theme(text = element_text(size = 10, family = 'sans'))
+        
+ggplot(tbl[tbl$State %in% c('Mpl','Migr1'),], aes(x = State, y = Percentage, fill = `Cell Type`)) +
+        geom_bar(stat = 'identity') +
+        ylim(0,100) +
+        scale_fill_manual(values = color_pal) +
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Sample') +
+        ggtitle("Cell Quantification by Sample") +
+        scale_y_continuous(position = 'right') +
+        theme(text = element_text(size = 10, family = 'sans'))
+        
+```
+
+
