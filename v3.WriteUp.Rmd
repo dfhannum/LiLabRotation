@@ -1,0 +1,1195 @@
+---
+title: "v3.Write.Up"
+author: "D. Ford Hannum Jr."
+date: "12/8/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(scRNAseq)
+library(ggpubr)
+library(xlsx)
+```
+
+
+# Data Introduction
+
+*Write up about the different experiments and how these cells were gathered*
+
+Four different single-cell samples were used in the single-cell analysis. Cells were harvested from two different mice: Mpl and Migr1. For each different mouse model we also did an enrichment for CD41^+^ cells, which gives us two different conditions: enriched vs non-enriched cells. These samples were all sequenced together to avoid batch effects between the samples.
+
+*Couple quick sentences about the demultiplexing from Brian Parkin*
+
+```{r}
+color_pal <- c("#0072B2", "#CC79A7", "#009E73", "#56B4E9","#D55E00",
+               "#E69F00","#999999", 'violet',"red", 'black')
+```
+
+
+```{r reading in the data}
+# Reading in the whole bone marrow data
+
+wbm.data <- Read10X(data.dir = './data/filtered_feature_bc_matrix/')
+
+# Creating the Seurat object
+
+wbm <- CreateSeuratObject(counts = wbm.data, project = 'Mpl/Migr1',
+                          min.cells = 3, min.features = 200)
+
+# Reading in the HTO labels 
+
+htos <- read.csv('./data/HTOs.csv')
+
+# Removing all the cells without a label
+
+htos <- htos[htos$HTOs != '',]
+
+# Adding the conditioni from the HTO tagged, from an e-mail from Priya
+
+htos$condition <- ifelse(htos$HTOs == 'HTO-1', 'Mpl',
+                         ifelse(htos$HTOs == 'HTO-2', 'enrMpl',
+                                ifelse(htos$HTOs == 'HTO-3', 'Migr1','enrMigr1')))
+
+# Subsetting the two data frames so they only include cells that overlap
+
+wbm <- wbm[,colnames(wbm) %in% htos$Barcode]
+
+htos <- htos[htos$Barcode %in% colnames(wbm),]
+
+# Making sure the cell order is maintained between the two dataframes, so I can
+# just add the condition to the meta data
+
+#summary(rownames(wbm@meta.data) == htos$Barcode)
+
+# Adding the condition to the meta data
+
+wbm@meta.data$Condition <- htos$condition
+```
+
+## TEXT
+
+The package Seurat (PMID:29608179) was used to analyze the single-cell data. We started out with **11,278** cells in the experiment. After a basic filtering (minimum of 200 features, also filtered for genes that were expressed in a minimum of 3 cells) we had **10,157** cells. There were only **7,542** cells that had an HTO label, of which **7,228** passed the basic filtering.
+
+```{r other filtering steps}
+wbm[['percent.mt']] <- PercentageFeatureSet(wbm, pattern = '^mt')
+
+ggplot(data = wbm@meta.data, aes(x = nCount_RNA)) + geom_density() +
+        # geom_vline(xintercept = 50000, col = 'red', linetype = 2) +
+        theme_bw()
+
+ggplot(data = wbm@meta.data, aes(x = nFeature_RNA)) + geom_density() +
+        geom_vline(xintercept = c(500), col = 'red', linetype = 2) +
+        theme_bw()
+
+ggplot(data = wbm@meta.data, aes(x = percent.mt)) + geom_density() +
+        geom_vline(xintercept = 10, col = 'red', linetype = 2) +
+        theme_bw()
+
+wbm[['nFeature_RNA.passed']] <- wbm[['nFeature_RNA']] > 500
+wbm[['percent.mt.passed']] <- wbm[['percent.mt']] < 10
+
+venn.counts <- vennCounts(wbm@meta.data[,c('nFeature_RNA.passed','percent.mt.passed')])
+
+vennDiagram(venn.counts)
+
+# Lesser cutoff suggested by Jun to see where those other cells lie
+wbm <- subset(wbm, subset = nFeature_RNA > 500 & percent.mt < 10)
+dim(wbm)
+```
+
+## TEXT
+
+After looking at the data we decided to put a lower bound cutoff on the number of RNA features at 500, and an upper bound cutoff of 10% of reads coming from mitochondrial genes. Ater these filtering steps we maintained **6,720** cells.
+
+```{r seurat pipeline}
+wbm <- NormalizeData(wbm, normalization.method = 'LogNormalize', scale.factor = 10000)
+
+wbm <- FindVariableFeatures(wbm, selection.method = 'vst', nfeatures = 2000)
+
+wbm <- ScaleData(wbm, features = rownames(wbm))
+
+wbm <- RunPCA(wbm, features = VariableFeatures(wbm))
+
+# ElbowPlot(wbm, ndims = 30)
+
+wbm <- FindNeighbors(wbm, dims = 1:10)
+
+for (i in seq(0,1,by = .1)){
+        # print(i)
+        wbm <- FindClusters(wbm, resolution = i, verbose = F)
+}
+
+wbm <- RunUMAP(wbm, dims = 1:10)
+
+wbm <- RunTSNE(wbm, dims = 1:10)
+
+# for (i in 10:20){
+#         print(DimPlot(wbm, reduction = 'umap',group.by = colnames(wbm@meta.data)[i]) + ggtitle(paste0('Resolution: ',i)))
+# }
+
+# Going with 15 for now (or resolution .5)
+
+wbm$seurat_clusters <- wbm$RNA_snn_res.0.5
+Idents(wbm) <- wbm$seurat_clusters
+
+DimPlot(wbm, reduction = 'umap', label = T, repel = T) + NoLegend()
+DimPlot(wbm, reduction = 'tsne', label = T, repel = T) + NoLegend()
+
+pc1_2 <- DimPlot(wbm, reduction = 'pca', dims = c(1,2), label = T, repel = T) + NoLegend()
+pc1_3 <- DimPlot(wbm, reduction = 'pca', dims = c(1,3), label = T, repel = T) + NoLegend()
+pc1_4 <- DimPlot(wbm, reduction = 'pca', dims = c(1,4), label = T, repel = T) + NoLegend()
+pc1_5 <- DimPlot(wbm, reduction = 'pca', dims = c(1,5), label = T, repel = T) + NoLegend()
+
+ggarrange(pc1_2, pc1_3, ncol = 2)
+ggarrange(pc1_4, pc1_5, ncol = 2)
+
+table(wbm$seurat_clusters)
+```
+
+## TEXT
+
+The Seurat pipeline was then followed to perform dimensionality reduction and to cluster the cells. The clustering generated 16 different clusters, we were then further analyzed to determine which cell population they represented.
+
+# Cluster Naming
+
+## TEXT 
+
+These clusters were then analyzed and labeled using multiple methods. Firstly, we compared cluster centroid expression to two different reference datasets: Immunologic Genome Project (PBMID:18800157) and Mouse RNA Sequencing Data from GEO (PMID:30858345). We saw high correlation of our clusters with b-cell, t-cell, granulocyte, erythrocyte, and monocyte references (Supplementary Figure ?). Not all cluster expected in our data were in the reference datasets, so further steps were needed to identify all populations.
+
+## Reference Comparison
+
+```{r refernce dataset correlation immgen}
+# Generate the average expression for our clusters
+
+av_wbm <- AverageExpression(wbm)$RNA
+
+m.ref.immgen <- ImmGenData()
+
+# m.ref.immgen$label.main
+
+m.ref.counts <- as.data.frame(assays(m.ref.immgen)$logcounts)
+
+m.ref.counts <- m.ref.counts[rownames(m.ref.counts) %in% rownames(av_wbm),]
+
+av_wbm <- av_wbm[rownames(av_wbm) %in% rownames(m.ref.counts),]
+
+m.ref.counts$gene <- rownames(m.ref.counts)
+
+av_wbm$gene <- rownames(av_wbm)
+
+mg <- merge(av_wbm, m.ref.counts, by = 'gene')
+
+rownames(mg) <- mg[,1]
+mg <- mg[,-1]
+
+# Restricting it to highly variable genes
+hv.genes <- VariableFeatures(wbm)
+
+summary(rownames(mg) %in% hv.genes)
+
+hv.mg <- mg[rownames(mg) %in% hv.genes,]
+
+temp.cor <- cor(hv.mg)
+
+key.columns <- colnames(temp.cor)[1:16]
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+temp.cor$Cluster1 <- rep(m.ref.immgen$label.fine, each = 16)
+
+temp.cor$Cluster2 <- factor(temp.cor$Cluster2,
+                            levels = 0:15)
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:11,]
+  temp <- temp[!duplicated(temp$Cluster1),][1,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+top3.hits <- top3.hits[-1,c(3,1,2)]
+
+colnames(top3.hits) <- c('Our Clusters','ImmGen Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`ImmGen Cluster`,]
+
+temp.cor$`ImmGen Clusters` <- factor(temp.cor$Cluster1, levels = unique(top3.hits$`ImmGen Cluster`))
+###
+temp.cor$cor.label <- ''
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+ggplot(temp.cor, aes(x = `ImmGen Clusters`, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  xlab('ImmGen Sample') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('ImmGen Comparison using highly variable genes')
+
+immgen.labels <- c('Neutrophil-1','Neutrophil-2','Bcell-1','Basophil',
+                   'StemCell-1','?Bcell-2','Mono-1','Neutrophil-3','?Macro-1',
+                   'Bcell-3','StemCell-2', '??Mono-2','Tcell-1','Bcell-4',
+                   '??Mono-3','DC')
+
+wbm$immgen.label <- factor(wbm$seurat_clusters,
+                           labels = immgen.labels)
+# 
+# table(wbm$immgen.label, wbm$seurat_clusters)
+```
+
+```{r refernce dataset correlation mus}
+# Generate the average expression for our clusters
+
+av_wbm <- AverageExpression(wbm)$RNA
+
+m.ref.immgen <- MouseRNAseqData()
+
+m.ref.counts <- as.data.frame(assays(m.ref.immgen)$logcounts)
+
+m.ref.counts <- m.ref.counts[rownames(m.ref.counts) %in% rownames(av_wbm),]
+
+av_wbm <- av_wbm[rownames(av_wbm) %in% rownames(m.ref.counts),]
+
+dim(av_wbm)
+
+m.ref.counts$gene <- rownames(m.ref.counts)
+
+av_wbm$gene <- rownames(av_wbm)
+
+mg <- merge(av_wbm, m.ref.counts, by = 'gene')
+
+rownames(mg) <- mg[,1]
+mg <- mg[,-1]
+
+# Restricting it to highly variable genes
+hv.genes <- VariableFeatures(wbm)
+
+summary(rownames(mg) %in% hv.genes)
+
+hv.mg <- mg[rownames(mg) %in% hv.genes,]
+
+temp.cor <- cor(hv.mg)
+
+key.columns <- colnames(temp.cor)[1:16]
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+temp.cor$Cluster1 <- rep(m.ref.immgen$label.fine, each = 16)
+
+temp.cor$Cluster2 <- factor(temp.cor$Cluster2,
+                            levels = 0:15)
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:11,]
+  temp <- temp[!duplicated(temp$Cluster1),][1,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+top3.hits <- top3.hits[-1,c(3,1,2)]
+
+colnames(top3.hits) <- c('Our Clusters','ImmGen Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`ImmGen Cluster`,]
+
+temp.cor$`ImmGen Clusters` <- factor(temp.cor$Cluster1, levels = unique(top3.hits$`ImmGen Cluster`))
+###
+temp.cor$cor.label <- ''
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$exp <- rep(1:73, each = 16)
+
+temp.cor$cluster1.plus.number <- paste0(temp.cor$Cluster1, '_', temp.cor$exp)
+
+temp.cor$keep <- 0
+
+for (i in temp.cor$cluster1.plus.number){
+  temp.df <- temp.cor[temp.cor$cluster1.plus.number == i,]
+  if (sum(temp.df$cor.label != '') != 0){
+    temp.cor[temp.cor$cluster1.plus.number == i,]$keep <- 1
+  }
+}
+
+temp.cor2 <- temp.cor[temp.cor$keep == 1,]
+
+m.samp.levels <- c('Granulocytes_18','Granulocytes_10','Granulocytes_8',
+                   'Granulocytes_16','Monocytes_47','Monocytes_44',
+                   'Macrophages_19','Macrophages_31','Erythrocytes_3',
+                   'B cells_66','B cells_70','T cells_56')
+
+temp.cor2$y.axis.label <- factor(temp.cor2$cluster1.plus.number,
+                                 levels = m.samp.levels)
+
+cluster.levels <- c('0','1','7','3','11','14','5','6','4','10','8','13','2','15','9','12')
+
+temp.cor2$x.axis.label <- factor(temp.cor2$Cluster2,
+                                 levels = cluster.levels)
+
+ggplot(temp.cor2, aes(x = cluster1.plus.number, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  xlab('MouseRNA Sample') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('MouseRNA Comparison using highly variable genes')
+
+ggplot(temp.cor2, aes(x = y.axis.label, y = x.axis.label, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  xlab('MouseRNA Sample') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('MouseRNA Comparison using highly variable genes')
+
+mouseRNA.labels <- c('Gran-1','Gran-2','Bcell-1','?Gran-3','Macro-1',
+                        'Mono-1','Mono-2','Gran-4','?Macro-2','Bcell-2','Macro-3',
+                        'Gran-5','Tcell-1','Eryth-1','Gran-6','Bcell-3')
+
+wbm$mouseRNA.label <- factor(as.factor(wbm$seurat_clusters),
+                             labels = mouseRNA.labels)
+
+```
+
+**This figure isn't completely correct, there are issues with the many replilcates for each sample that they do**
+
+## Our Marker Genes
+
+```{r marker genes}
+marker.genes <- rev(c('Kit','Itga2b','Vwf','Gata3','Alas2','Vcam1','Gata2','Cd68','Ighd','Ngp'))
+
+DotPlot(wbm, features = marker.genes, group.by = 'seurat_clusters') +
+        ylab ('Cell Cluster') + xlab ('Marker Genes') + coord_flip() +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text.x = element_text(angle = 45, hjust = .95),
+              axis.text.y = element_text(family = 'sans', size = 10),
+              axis.title = element_text(family = 'sans', size = 12))
+
+marker.labels <- c('Gran-1','Gran-2','Bcell-1','MEP','Gran-3','Gran-4','Macro-1',
+                   'Gran-5','Mono', '?1','StemCell','Eryth','Tcell','?2',
+                   'MK','Macro-2')
+
+wbm$marker.label <- factor(wbm$seurat_clusters,
+                           labels = marker.labels)
+```
+
+## Data Marker Genes
+
+```{r mg lists}
+# de.genes <- data.frame(p_val = numeric(),
+#                        avg_logFC = numeric(),
+#                        pct.1 = numeric(),
+#                        pct.2 = numeric(),
+#                        p_val_adj = numeric(),
+#                        cluster = character())
+# for (i in as.character(0:15)){
+#   print(i)
+#   x <- FindMarkers(wbm,
+#                    ident.1 = i,
+#                    test.use = 'MAST',
+#                    logfc.threshold = log(1),
+#                    only.pos = T)
+#   x$cluster <- i
+#   x <- x[x$p_val_adj < 0.05,]
+#   x <- x[abs(x$avg_logFC) > log(2),]
+#   de.genes <- rbind(de.genes,x)
+# }
+# 
+# summary(as.factor(de.genes$cluster))
+# # table(rownames(de.genes))
+# 
+# out <- split(de.genes, f = de.genes$cluster)
+# 
+# library(xlsx)
+# 
+# for (i in 1:length(out)){
+#   print(i)
+#   print(unique(out[[i]]$cluster))
+# }
+# 
+# for (i in 1:length(out)){
+#   print(i)
+#   write.xlsx(x = out[[i]], file = "data/v3/cluster.marker.genes.xlsx",
+#              sheetName=unique(out[[i]]$cluster), append = T)
+# }
+# write.xlsx(x = de.genes, file = "data/v3/cluster.marker.genes.xlsx",
+#            sheetName='All-Clusters', append = T)
+
+data.markers <- readxl::read_xlsx('./data/v3/cluster.marker.genes.xlsx', sheet = 'All-Clusters')
+
+colnames(data.markers)[1] <- 'gene'
+
+print('Below is a table of the number of data generated marker genes for each cluster')
+
+summary(as.factor(data.markers$cluster))
+
+data.markers <- as.data.frame(data.markers[order(data.markers$avg_logFC, decreasing = T),])
+
+data.markers$id <- paste0(data.markers$gene,'_',data.markers$cluster)
+
+top5.rows <- c()
+for (i in 0:15){
+  temp.df <- data.markers[data.markers$cluster == i,]
+  top5.rows <- c(top5.rows,temp.df$id[1:5])
+}
+
+rownames(data.markers) <- data.markers$id
+
+dm2 <- data.markers[top5.rows,]
+dm2$ref <- NA
+
+dm2$ref <- c('Myeloid','Gran','','Gran','Neutro',
+             'Neutro','','','','Tcell',
+             'Bcell','Bcell','Lympho','Bcell','Bcell',
+             'Mast','Mast','NonSpecific','Macro/Mono/Neutro','Macro/Myeloid',
+             'Neutro','Gran','','','Neutro',
+             'Macro','','','','',
+             '','Macro','Macro','MONO','',
+             '','?Macro','NEUTRO','','',
+             '','','','','?Mono',
+             'Immune','','','','',
+             'Neutro','Neutro','Gran','Neutro','',
+             '','','','','ERY',
+             '','Tcell','Tcell','','',
+             '',"MK",'','AML','',
+             'MK','Tcell','','Generic HCLin','MK',
+             'BCELL','','Lympho','','')
+
+data.marker.labels <- c('Gran-1','Gran-2','Bcell-1','Mast','Gran-3','Macro-1',
+                        'Mono-1','Gran-4','?Mono','Immune','Gran-5','Eryth',
+                        'Tcell-1','?MK','MK','Bcell-2')
+
+wbm$data.marker.labels <- factor(wbm$seurat_clusters,
+                                 labels = data.marker.labels)
+```
+
+
+
+## Visualizing
+
+```{r visualizng marker names}
+label.col <- colnames(wbm@meta.data)[grepl('label',colnames(wbm@meta.data), ignore.case = T)]
+
+for (i in label.col){
+  print(DimPlot(wbm,reduction = 'umap', label = T, repel = T, group.by = i) + NoLegend()+
+          ggtitle(i))
+}
+```
+
+
+```{r}
+data.frame(mouseRNA = mouseRNA.labels,
+           immgen = immgen.labels,
+           marker = marker.labels,
+           data.mark = data.marker.labels
+           )
+
+df <- as.data.frame(matrix(ncol = 4, nrow = 16, c(mouseRNA.labels, immgen.labels,marker.labels,data.marker.labels)))
+colnames(df) <- c('MouseRNA','ImmGen','Markers','Data.Markers')
+df$final <- c('Gran-1','Gran-2','Bcell-1','MEP/MCP','?','?-2', 'Mono/Macro-1','Gran-3',
+              'Mono/Macro-2','Bcell-2','Prog','Eryth','Tcell','?-3','MK','Bcel-3')
+
+df$final2 <- c('Gran-1','Gran-2','Bcell-1','MEP/MCP','Prog-1','Prog-2', 'Mono/Macro-1','Gran-3',
+              'Mono/Macro-2','Bcell-2','Prog-3','Eryth','Tcell','?-3','MK','Bcel-3')
+df
+
+wbm$v2.labels <- factor(wbm$seurat_clusters,
+                        labels = df$final2)
+
+DimPlot(wbm, reduction = "umap", label = T, repel = T, group.by = 'v2.labels')
+```
+
+### Markers with New IDs
+
+```{r}
+
+Idents(wbm) <- wbm$v2.labels
+DotPlot(wbm, features = marker.genes, group.by = 'v2.labels') +
+        ylab ('Cell Cluster') + xlab ('Marker Genes') + coord_flip() +
+        theme(text = element_text(size = 10, family = 'sans'),
+              axis.text.x = element_text(angle = 45, hjust = .95),
+              axis.text.y = element_text(family = 'sans', size = 10),
+              axis.title = element_text(family = 'sans', size = 12))
+
+VlnPlot(wbm, features = c('Pf4','Itga2b'), pt.size = 0, group.by = 'v2.labels')
+```
+
+
+# Refining Labels
+
+* Three different progenitor clusters. Can we distinguish?
+* What is the arm attached to Eryth?
+* What is different about that small Bcell-3 cluster? Bcell prog?
+* Monocyte/Macrophage Calls
+
+
+```{r}
+table(wbm$v2.labels, wbm$seurat_clusters)
+```
+
+## Progenitor Clusters
+
+```{r}
+prog.markers <- data.markers[data.markers$cluster %in% c(4,5,10),]
+# prog.markers
+gran.markers <- c('Elane','Mpo','Ngp')
+for (i in gran.markers){
+  print(VlnPlot(wbm, i, pt.size = 0))
+}
+
+DotPlot(wbm, features = gran.markers)
+
+
+df$final3 <- c('Gran-1','Gran-2','Bcell-1','MEP/MCP','Gran-4','Gran-5', 'Mono/Macro-1','Gran-3',
+              'Mono/Macro-2','Bcell-2','Gran-6','Eryth','Tcell','?-3','MK','Bcel-3')
+df
+
+wbm$v3.labels <- factor(wbm$seurat_clusters,
+                        labels = df$final3)
+
+Idents(wbm) <- wbm$v3.labels
+
+DimPlot(wbm, label = T, repel = T)
+```
+
+These are all really strong markers for Neutrophils/Granulocytes so it looks like they are all granulocytes.
+
+## ? Arm from Eryth
+
+Also known as Cluster 13
+
+Going to dive into all the marker genes for this dataset.
+
+It was labeled:
+
+* Erythrocytes from MouseRNA
+* Bcell from ImmGen
+* Wasn't clear in marker genes
+* MKs from data.markers (Pf4)
+
+
+```{r}
+arm.markers <- data.markers[data.markers$cluster == 13,]
+
+arm.markers
+
+for (i in c('Car2','Pf4','Prdx2','Npm1','Ncl')){
+  print(VlnPlot(wbm, i))
+}
+```
+
+The top markers are similar to markers expressed in Erythrocytes, gran-6 (prog), and MKs.
+
+```{r}
+VlnPlot(wbm, features = 'Gata2')
+```
+
+Also it shows expression of Gata2 which we're using as a marker for MEPs. Perhaps this a more "normal" MEP population.
+
+
+## Bcell-3
+
+Also cluster 15
+
+```{r}
+b3.markers <- data.markers[data.markers$cluster == 15,]
+
+head(b3.markers)
+
+for (i in c('Bst2','Cox6a2','Irf8','Siglech','Ly6a')){
+  print(VlnPlot(wbm, i))
+}
+```
+
+Bst2: may play a role in pre-B-cell growth
+
+Has a similar transcription profile to immune cell types. Lymphocyte Progenitor?
+
+## Monocyte/Macrophage Clusters
+
+Looking specifically at clusters 6 and 8
+
+```{r}
+mono.macro.markers <- data.markers[data.markers$cluster %in% c(6,8),]
+
+mm.genes <- c('Apoe','C1qa','C1qb','Hmox1','Vcam1')
+
+for (i in mm.genes){
+  print(VlnPlot(wbm, i))
+}
+
+mono.macro.markers
+```
+
+These are the top markers for cluster 8 Mono/Macro-2
+
+These are not very clearly defined in literature, though I am seeing a few connections with Alzheimer's (Apoe, Fth1). There are articles (link)[https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4397873/] that implicate monocytes in Alzheimer's.
+
+The top markers for Mono/Macro-1 (6) were more clearly monocyte macrophage focused. 
+
+Also the marker genes we have collaborate these clusters.
+
+# New Labels
+
+```{r}
+
+df$final4 <- c('Gran-1','Gran-2','Bcell-1','MEP/MCP','Gran-4','Gran-5', 'Mono/Macro-1','Gran-3',
+              'Mono/Macro-2','Bcell-2','Gran-6','Eryth','Tcell','?MEP','MK','?Lympho-Prog')
+df
+
+wbm$v4.labels <- factor(wbm$seurat_clusters,
+                        labels = df$final4)
+
+Idents(wbm) <- wbm$v4.labels
+
+DimPlot(wbm, label = T, repel = T)
+```
+
+
+
+# Specific protein markers
+
+## HSPCs
+
+
+All positive markers except for Flt3(negative)
+
+```{r}
+hspc.markers <- c('Hoxb5','Kit','Flt3','Ly6a','Cd34','Slamf1')
+
+for (i in hspc.markers){
+  print(VlnPlot(wbm, i))
+}
+```
+
+Gran-4 and Gran-6 may be better characterized as Progenitors
+
+## CMPS
+
+Kit^+^Sca1^-/low^Cd34^+^FcgR^low^
+
+```{r cmps}
+cmp.genes <- c('Kit','Ly6a','Cd34','Fcgr1')
+
+VlnPlot(wbm, features = cmp.genes, ncol = 2, pt.size = 0)
+
+DotPlot(wbm, features = cmp.genes)
+```
+
+Gran-6 follows the general pattern of CMPs.
+
+
+# Krause Markers
+
+## MEP Markers
+
+
+
+```{r}
+mep.genes <- c('Klf1','Fli1','Gata1','Gata2','Runx1','Tal1','Myb')
+
+DotPlot(wbm, features = mep.genes) + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+So it definitely seems like this arm cluster is actually another MEP  cluster, interestingly it is expressing the MEP markers that our other MEP/MCP cluster is not..
+
+## More MEP Genes
+
+```{r}
+mep.genes2 <- c('Hpgds','Smox','Lbh','Nr4a1','Gpr141')
+
+DotPlot(wbm, features = mep.genes2) + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+These genes don't clearly define any clusters
+
+## CMP Genes
+
+```{r}
+cmps.genes <- c('Spink2','Csf3r','Ighm','Glipr1','Miat')
+  
+DotPlot(wbm, features = cmp.genes) + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+From these genes no clear CMP cluster
+
+## ERP Genes
+
+```{r}
+erp.genes <- c('Rhag','Klf1')
+
+DotPlot(wbm, features = erp.genes) + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+So perhaps this is more of an ERP/MEP cluster :)
+
+## MKP Genes
+
+```{r}
+mkp.genes <- c('Pf4','Vwf','Trpc6','Gp6','Itgb3','Fcer1g','Selp')
+
+DotPlot(wbm, features = mkp.genes) + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Most of these markers show up in our MK cluster and are also genes that we use as markers for matures MKs (Pf4, Vwf). This isn't surprising, and likely were good for MKPs in this paper, because they were comparing between different MEPs, rather than comparing MKPs to MKs
+
+## MEP/ERP
+
+```{r}
+mep.erp.genes <- c('Cnrip1','Ank1','Tfr2','Acsm3','Cpa3')
+
+DotPlot(wbm, features = mep.erp.genes) + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Seeing some markers in both our MEP clusters, and once again interestingly showing different markers in each
+
+## MEP/MKP
+
+```{r}
+mep.mkp.genes <- c('Pdia5','Rgs18','Pdgfa','Plek','Arhgap6')
+
+DotPlot(wbm, features = mep.mkp.genes) + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Seeing some expression in our different clusters, with it being highest in MKs and MEP/MCP
+
+## CMP/MEP
+
+```{r}
+
+cmp.mep.markers <- c('Cd52','Id3','Smim24')
+
+DotPlot(wbm, features = cmp.mep.markers) + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+No clear signal
+
+## MEP/MKP/ERP
+
+```{r}
+mep.mkp.erp.genes <- c('Abcc4','C6orf25','Casp3','Ibtk','Gata1')
+
+DotPlot(wbm, features = mep.mkp.erp.genes) + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Showing strongest signs within the ?MEP cluster!
+
+# Newer Labels
+
+```{r}
+
+df$final6 <- c('Gran-1','Gran-2','Bcell-1','MEP/MCP','Gran-4','Gran-5', 'Mono/Macro-1','Gran-3',
+              'Mono/Macro-2','Bcell-2','CMP','Eryth','Tcell','MEP/ERP','MK','Bcell-Prog')
+df
+
+wbm$v6.labels <- factor(wbm$seurat_clusters,
+                        labels = df$final6)
+
+Idents(wbm) <- wbm$v6.labels
+
+DimPlot(wbm, label = T, repel = T)
+```
+
+## Combining clusters that have same name
+
+```{r}
+
+df$final7 <- c('Granulocyte','Granulocyte','Bcell','MEP/MCP','Granulocyte','Granulocyte', 'Mono/Macro','Granulocyte',
+              'Mono/Macro','Bcell','CMP','Erythroid','Tcell','MEP/ERP','MK','Bcell-Prog')
+df
+
+wbm$v7.labels <- factor(wbm$seurat_clusters,
+                        labels = df$final7)
+
+# Idents(wbm) <- wbm$v7.labels
+
+DimPlot(wbm, label = T, repel = T, group.by = 'v7.labels', cols = color_pal)
+```
+
+### Question
+
+Should the two granulocyte clusters which had properties of stem cell ish be label as GMPs or Granulocyte Prog? Doesn't really matter for this case so not going to fiddle with it for now.
+
+## Looking at Kit/Mki67 Expression
+
+```{r}
+VlnPlot(wbm, features = c('Kit','Mki67'), pt.size = 0)
+```
+
+
+# Figures
+
+## a) UMAP Projection
+
+```{r}
+DimPlot(wbm, label = T, repel = T, cols = color_pal, group.by = 'v7.labels') +
+  theme_bw()
+```
+
+## b) Split by experiment
+
+```{r}
+wbm$Condition2 <- factor(wbm$Condition, levels = levels(as.factor(wbm$Condition))[c(3,4,1,2)])
+DimPlot(wbm, cols = color_pal, 
+        group.by = 'v7.labels', split.by = 'Condition2', ncol =2 ) +
+  theme_bw()
+```
+
+## c) Quantification of Normal Conditions
+
+```{r}
+temp.obj <- subset(wbm, Condition %in% c('Migr1','Mpl'))
+temp.table <- as.data.frame(table(temp.obj$Condition, temp.obj$v7.labels))
+
+colnames(temp.table) <- c('State','Cell Type', 'Count')
+
+temp.table$State_count <- NA
+
+for (i in levels(temp.table$State)){
+  temp.table[temp.table$State == i,]$State_count <- sum(temp.table[temp.table$State == i,]$Count)
+}
+
+temp.table$Percentage <- temp.table$Count / temp.table$State_count
+
+ggplot(temp.table, aes(x = State, y = Percentage, fill = `Cell Type`)) +
+        geom_bar(stat = 'identity') +
+        ylim(0,100) +
+        scale_fill_manual(values = color_pal) +
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Sample') +
+        ggtitle("Cell Quantification by Sample") +
+        scale_y_continuous(position = 'right') +
+        theme(text = element_text(size = 10, family = 'sans'))
+        
+```
+
+## d) From normal to enriched (maybe supplement)
+
+
+### Migr1 to enrMigr1
+
+```{r}
+temp.obj <- subset(wbm, Condition %in% c('Migr1','enrMigr1'))
+temp.table <- as.data.frame(table(temp.obj$Condition, temp.obj$v7.labels))
+
+colnames(temp.table) <- c('State','Cell Type', 'Count')
+
+temp.table$State_count <- NA
+
+for (i in levels(temp.table$State)){
+  temp.table[temp.table$State == i,]$State_count <- sum(temp.table[temp.table$State == i,]$Count)
+}
+
+temp.table$Percentage <- temp.table$Count / temp.table$State_count
+
+temp.table$State <- factor(temp.table$State,
+                                 levels = levels(as.factor(temp.table$State))[c(2,1)])
+
+ggplot(temp.table, aes(x = `Cell Type`, y = Percentage, fill = State)) +
+  geom_bar(position = 'dodge',stat = 'identity') + 
+  scale_fill_manual(values = c('blue','red')) +
+  theme_bw() +
+  ylab('Percentage of Cells per State') +
+  theme(text = element_text(size = 10, family = 'sans'),
+        axis.text.x = element_text(angle = 45, hjust =1 ))
+
+```
+
+### Mpl to enrMpl
+
+```{r}
+temp.obj <- subset(wbm, Condition %in% c('Mpl','enrMpl'))
+temp.table <- as.data.frame(table(temp.obj$Condition, temp.obj$v7.labels))
+
+colnames(temp.table) <- c('State','Cell Type', 'Count')
+
+temp.table$State_count <- NA
+
+for (i in levels(temp.table$State)){
+  temp.table[temp.table$State == i,]$State_count <- sum(temp.table[temp.table$State == i,]$Count)
+}
+
+temp.table$Percentage <- temp.table$Count / temp.table$State_count
+
+temp.table$State <- factor(temp.table$State,
+                                 levels = levels(as.factor(temp.table$State))[c(2,1)])
+
+ggplot(temp.table, aes(x = `Cell Type`, y = Percentage, fill = State)) +
+  geom_bar(position = 'dodge',stat = 'identity') + 
+  scale_fill_manual(values = c('blue','red')) +
+  theme_bw() +
+  ylab('Percentage of Cells per State') +
+  theme(text = element_text(size = 10, family = 'sans'),
+        axis.text.x = element_text(angle = 45, hjust =1 ))
+
+```
+
+# Differential Expression w/in Clusters
+
+```{r}
+# # wbm <- readRDS('./data/v3/mpl.migr1.121420-2.rds')
+# 
+# wbm$Experiment <- factor(wbm$Condition2,
+#                          labels = c('Migr1','Mpl','Migr1','Mpl'))
+# 
+# de.genes <- data.frame(p_val = numeric(),
+#                        avg_logFC = numeric(),
+#                        pct.1 = numeric(),
+#                        pct.2 = numeric(),
+#                        p_val_adj = numeric(),
+#                        cluster = character())
+# 
+# clusters.that.have.log2fc.results <- unique(wbm$v6.labels)[unique(wbm$v6.labels) != 'Gran-2']
+# 
+# for (i in clusters.that.have.log2fc.results){
+#   print(i)
+#   temp.subset <- subset(wbm, v6.labels == i)
+#   x <- FindMarkers(temp.subset,
+#                    ident.1 = 'Migr1',
+#                    ident.2 = 'Mpl',
+#                    group.by = 'Experiment',
+#                    test.use = 'MAST',
+#                    logfc.threshold = log(2),
+#                    only.pos = F)
+#   x$cluster <- i
+#   x <- x[x$p_val_adj < 0.05,]
+#   x <- x[abs(x$avg_logFC) > log(2),]
+#   de.genes <- rbind(de.genes,x)
+# }
+# 
+# summary(as.factor(de.genes$cluster))
+# # table(rownames(de.genes))
+# 
+# out <- split(de.genes, f = de.genes$cluster)
+# 
+# library(xlsx)
+# 
+# for (i in 1:length(out)){
+#   print(i)
+#   print(unique(out[[i]]$cluster))
+# }
+# 
+# 
+# 
+# for (i in 1:length(out)){
+#   print(i)
+#   temp.name <- unique(out[[i]]$cluster)
+#   temp.name <- gsub('/','_',temp.name)
+#   print(temp.name)
+#   write.xlsx(x = out[[i]], file = "data/v3/within.cluster.DEGs.Migr1.vs.Mpl.xlsx",
+#              sheetName=temp.name, append = T)
+# }
+# write.xlsx(x = de.genes, file = "data/v3/within.cluster.DEGs.Migr1.vs.Mpl.xlsx",
+#            sheetName='All-Clusters', append = T)
+```
+
+## DE Expression within Group: Enriched vs Non.Enriched
+
+```{r}
+# wbm$Enrichment <- factor(wbm$Condition2,
+#                          labels = c('Not Enriched','Not Enriched','Enriched','Enriched'))
+# 
+# de.genes <- data.frame(p_val = numeric(),
+#                        avg_logFC = numeric(),
+#                        pct.1 = numeric(),
+#                        pct.2 = numeric(),
+#                        p_val_adj = numeric(),
+#                        cluster = character(),
+#                        Condition = character(),
+#                        gene = character())
+# 
+# 
+# clusters.that.have.log2fc.results <- unique(wbm$v6.labels)[!(unique(wbm$v6.labels) 
+#                                                              %in% c('Bcell-Prog','Gran-4',
+#                                                                     'Gran-3','Tcell','Gran-2',
+#                                                                     'Bcell-2'))]
+# 
+# condition <- 'Mpl'
+# 
+# for (i in clusters.that.have.log2fc.results){
+#   print(i)
+#   
+#   temp.subset <- subset(wbm, v6.labels == i & Experiment == condition)
+#   
+#   x <- FindMarkers(temp.subset,
+#                    ident.1 = 'Enriched',
+#                    ident.2 = 'Not Enriched',
+#                    group.by = 'Enrichment',
+#                    test.use = 'MAST',
+#                    logfc.threshold = log(2),
+#                    only.pos = F)
+#   x$cluster <- i
+#   x$Condition <- condition
+#   x$gene <- rownames(x)
+#   x <- x[x$p_val_adj < 0.05,]
+#   x <- x[abs(x$avg_logFC) > log(2),]
+#   de.genes <- rbind(de.genes,x)
+# 
+# }
+# 
+# 
+# clusters.that.have.log2fc.results <- unique(wbm$v6.labels)[!(unique(wbm$v6.labels) 
+#                                                              %in% c('Gran-3',
+#                                                                     'Bcell-Prog'))]
+# 
+# condition <- 'Migr1'
+# 
+# for (i in clusters.that.have.log2fc.results){
+#   print(i)
+#   
+#   temp.subset <- subset(wbm, v6.labels == i & Experiment == condition)
+#   
+#   x <- FindMarkers(temp.subset,
+#                    ident.1 = 'Enriched',
+#                    ident.2 = 'Not Enriched',
+#                    group.by = 'Enrichment',
+#                    test.use = 'MAST',
+#                    logfc.threshold = log(2),
+#                    only.pos = F)
+#   x$cluster <- i
+#   x$Condition <- condition
+#   x$gene <- rownames(x)
+#   x <- x[x$p_val_adj < 0.05,]
+#   x <- x[abs(x$avg_logFC) > log(2),]
+#   de.genes <- rbind(de.genes,x)
+# 
+# }
+# 
+# 
+# dim(de.genes)
+
+# write.xlsx(x = de.genes, file = "data/v3/within.cluster.and.Experiment.DEGs.Enriched.vs.NotEnriched.xlsx",
+#            sheetName='All-Clusters', append = T)
+
+de.genes <- read.xlsx('./data/v3/within.cluster.and.Experiment.DEGs.Enriched.vs.NotEnriched.xlsx',
+                             sheetName = 'All-Clusters')
+
+temp.subset <- subset(wbm, Experiment == 'Mpl')
+
+for (i in de.genes$gene[1:5]){
+  print(VlnPlot(temp.subset, features = i, split.by = 'Enrichment'))
+}
+
+table(de.genes$Condition, de.genes$cluster)
+```
+
+```{r}
+table(wbm$Condition, wbm$v6.labels)
+```
+
+
+We are seeing some differences between the enriched and not enriched clusters. Above I show the top 5 hits for Mpl which are all differentially expressed within the MK Cluster
+
+```{r}
+de.genes[de.genes$gene == 'Itga2b',]
+```
+
+We also see Itga2b enriched in the enriched subset of MEP/ERP genes within Mpl, which isn't too surprising since that is what we are enriching for.
+
+```{r}
+VlnPlot(wbm, features = 'Itga2b', split.by = 'Condition2')
+```
+
+
+# Saving Dataset
+```{r saving data}
+# saveRDS(wbm, './data/v3/mpl.migr1.121420-2.rds')
+```
+
+# Further Analysis
+
+For further analysis we are going to exclude the Granulocyte and Lympthocyte Clusters, becuase they area driving the clustering and UMAP projection.
+
+Would it even make a difference??????
+
+```{r}
+
+wo.GranBcell <- subset(wbm, v7.labels %in% c('MEP/MCP','Mono/Macro','CMP','Erythroid','MEP/ERP','MK'))
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

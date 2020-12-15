@@ -229,3 +229,23 @@ ggplot(tbl[tbl$State %in% c('Mpl','Migr1'),], aes(x = State, y = Percentage, fil
 ```
 
 
+# Extras
+
+## Lookinga at Slamf1 for Priya
+
+Focusing on the MEP cluster
+
+```{r slamf1}
+DefaultAssay(wbm) <- 'RNA'
+mep.wbm <- subset(wbm, idents2 == 'MEP/MCP')
+FeaturePlot(mep.wbm, features = 'Slamf1')
+VlnPlot(wbm, features = 'Slamf1', pt.size = 0)
+
+DefaultAssay(mep.wbm) <- 'RNA'
+VlnPlot(mep.wbm, features = 'Slamf1')
+VlnPlot(mep.wbm, features = 'Slamf1', split.by = 'Experiment')
+VlnPlot(mep.wbm, features = 'Slamf1', split.by = 'State')
+
+VlnPlot(wbm, features = 'Slamf1')
+```
+

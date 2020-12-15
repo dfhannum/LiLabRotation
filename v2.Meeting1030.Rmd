@@ -500,7 +500,6 @@ DotPlot(prog, features = mep.genes) + coord_flip() + ggtitle ('MEP Genes')
 ### MEP Genes 2
 
 ```{r mep2d genes}
-mep.genes <- c('Hpgds','Smox','Lbh','Nr4a1','Gpr141')
 
 # mep.genes %in% rownames(mast.mep)
 # rownames(mast.mep)[grepl('Gata', rownames(mast.mep), ignore.case = T)]

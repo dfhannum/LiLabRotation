@@ -1,0 +1,192 @@
+---
+title: "v5.CanIntegrateFromStart.."
+author: "D. Ford Hannum Jr."
+date: "12/11/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(scRNAseq)
+library(ggpubr)
+```
+
+From talking with Jun it may not be a bad idea to integrate from the beginning. Going to look at cross tabulation between the original experiments (which I started again in v3.WriteUp.Rmd), the Nbeal aged-control (which I'll generate in this document), and the integrated data from v2.1.Integration.UMAP.html.
+
+Also going to look at how the cluster centroids look across PC space.
+
+```{r loading data}
+migr.mpl <- readRDS('./data/v3/mpl.migr1.new.object.rds')
+int <- readRDS('./data/v2/lesser.combined.integrated.NAMED.rds')
+
+int$idents2 <- ifelse(int$idents != 'HSPC' & int$idents != 'CMP' & int$idents != 'MEP/Mast', as.character(int$idents),
+                      ifelse(int$idents == 'MEP/Mast', 'MEP/MCP',
+                             ifelse(int$idents == 'HSPC','Multipotent Progenitor', 'Progenitor')))
+
+Idents(int) <- int$idents2
+
+int$cluster <- int$new_cluster_IDs
+
+int$cluster <- as.character(int$cluster)
+
+int$cluster <- ifelse(int$cluster == '?GMP', 'Gran-4',
+                      ifelse(int$cluster == '?CMP/Neutro', 'Progenitor', int$cluster))
+
+int@meta.data[int$cluster == 'Megakaryocyte',]$cluster <- int@meta.data[int$cluster == 'Megakaryocyte',]$idents2
+
+table(int$cluster, Idents(int))
+
+## 
+
+migr.mpl$immgen.labels <- factor(migr.mpl$seurat_clusters,
+                                 labels = c('Gran-1','Gran-2','B cell-1','Basophil','Stem Cell','B cell-2',
+                                            'Monocyte','Gran-3','Macrophage','B cell-3','Stem Cell','NA','T cell',
+                                            'B cell-4','NA','DC'))
+
+migr.mpl$labels <- factor(migr.mpl$seurat_clusters,
+                                 labels = c('Gran-1','Gran-2','B cell-1','MEP/Mast','Prog','?',
+                                            'Monocyte','Gran-3','Macrophage','B cell-3','Stem Cell','Erythrocyte','T cell',
+                                            'Erythrocyte','MK','B cell-4'))
+
+DimPlot(migr.mpl, reduction = 'umap', group.by = 'labels', label = T, repel = T)
+```
+
+# Looking at the different centroids for migr1 mpl
+
+Focusing just on the migr1 mpl data points
+
+1. cluster centroids from the pre-integrated data
+2. cluster centroids for the post-integrated data (RNA)
+
+# Full Clusters
+
+Not making any distinction between either Migr1 vs Mpl or Enriched vs Non-enriched
+
+## Cross Tabulation
+
+```{r ct}
+head(migr.mpl@meta.data)
+
+# Will maybe use later on
+migr.mpl$exp <- ifelse(migr.mpl$Condition %in% c('enrMigr1','Migr1'), 'Migr1','Mpl')
+
+head(int@meta.data)
+
+summary(as.factor(int$orig.ident))
+
+DimPlot(int, split.by = 'orig.ident')
+
+DimPlot(int, group.by = 'orig.ident', cols = c('red','grey'))
+DimPlot(int, group.by = 'orig.ident', cols = c('grey','red'))
+
+int.migr.mpl <- subset(int, orig.ident == 'Mpl')
+
+Idents(migr.mpl) <- migr.mpl$labels
+
+summary(rownames(migr.mpl@meta.data) == tstrsplit(rownames(int.migr.mpl@meta.data),'_',keep = 2)[[1]])
+
+ct2 <- data.frame(orig.cluster = migr.mpl$seurat_clusters,
+                 orig.cluster.label = migr.mpl$labels,
+                 int.cluster = int.migr.mpl$seurat_clusters,
+                 int.cluster.label = int.migr.mpl$cluster)
+
+head(ct2)
+
+ct <- as.data.frame(table(ct2$orig.cluster.label, ct2$int.cluster.label))
+
+head(ct)
+
+colnames(ct) <- c('Orig.Cluster','Int.Cluster','Freq')
+
+head(ct)
+
+ct$Orig.Cluster.total <- NA
+for (i in unique(ct$Orig.Cluster)){
+        # print(i)
+        
+        ct[ct$Orig.Cluster ==i,]$Orig.Cluster.total <- sum(ct[ct$Orig.Cluster ==i,]$Freq)
+}
+
+ct$Int.Cluster.total <- NA
+
+for (i in unique(ct$Int.Cluster)){
+        ct[ct$Int.Cluster == i,]$Int.Cluster.total <- sum(ct[ct$Int.Cluster ==i,]$Freq)
+}
+
+ct$Orig.Cluster.perc <- ct$Freq/ct$Orig.Cluster.total
+ct$Int.Cluster.perc <- ct$Freq/ct$Int.Cluster.total
+
+int.levels <- c('Gran-1','Gran-2','Gran-3','Gran-4','Progenitor',
+                'Monocyte','Macrophage','Erythrocyte','Megakarycoyte',
+                'MEP/Mast','B cell-1','B cell-2', 'T cell',
+                'B cell-3','B cell-4', 'Multipotent Progenitor')
+
+ct$Int.Cluster2 <- factor(ct$Int.Cluster, levels = int.levels)
+
+orig.levels <- c('Gran-2','Gran-3','Gran-1','?','Prog','Stem Cell','Monocyte',
+                 'B cell-4','Macrophage','MK','Erythrocyte','MEP/Mast',
+                 'B cell-1','B cell-3','T cell')
+
+ct$Orig.Cluster2 <- factor(ct$Orig.Cluster, levels = orig.levels)
+
+ggplot(ct, aes(x = Orig.Cluster2, y = Int.Cluster2, fill = Orig.Cluster.perc)) +
+        geom_tile() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5) +
+        geom_text(aes(label = Freq))
+
+table(ct$Int.Cluster, ct$Int.Cluster2)
+```
+
+#### Aside looking at MK cluster
+
+This is something that I've mean to look at but forgot until I saw the above figure
+
+Oddly we see the integrated cluster of Macrophages also contains all the original MKs (or just about). When looking at the expression of MK markers we see that a tail of the Macrophage cluster looks like it belongs to the corresponding mk cluster.
+
+```{r looking at the oddity of hte MK cluster}
+
+DimPlot(int, label = T, repel = T, group.by = 'cluster')
+
+int.migr.mpl$orig.label <- migr.mpl$labels
+
+temp <- subset(int, cluster %in% c('Megakarycoyte','Macrophage'))
+DimPlot(temp)
+
+FeaturePlot(temp, features = 'Vwf', split.by = 'cluster', pt.size = .11)
+
+DimPlot(int.migr.mpl, label = T, repel = T, group.by = 'cluster')
+
+
+# Looking at just hte migr1.mpl cells
+
+temp <- subset(int.migr.mpl, cluster %in% c('Megakarycoyte','Macrophage'))
+
+DimPlot(temp)
+
+FeaturePlot(temp, features = 'Vwf', split.by = 'cluster', pt.size = .11)
+
+FeaturePlot(temp, features = 'Vwf', split.by = 'orig.label', pt.size = .11)
+
+temp <- subset(temp, orig.label %in% c('Macrophage','MK'))
+
+FeaturePlot(temp, features = 'Vwf', split.by = 'orig.label', pt.size = )
+
+DimPlot(temp, label= T, repel = T) + NoLegend()
+```
+
+Also interestingly there seems to be many macrophage cells occuppying the same space as our granulocyte clusters...should we be excluding the granulocytes (1-3), b cells and t cells to refine our analysis?
