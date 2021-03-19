@@ -1,0 +1,444 @@
+---
+title: "HTOs"
+author: "D. Ford Hannum Jr."
+date: "1/14/2021"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(scRNAseq)
+library(ggpubr)
+library(xlsx)
+```
+
+```{r}
+wbm <- readRDS('./data/v3/mpl.migr1.121420-2.rds')
+table(wbm$Condition2)
+```
+
+
+```{r}
+
+color_pal <- c("#0072B2", "#CC79A7", "#009E73","#D55E00","#999999",
+               "#E69F00", "#56B4E9", 'violet',"red", 'black', 'limegreen',
+               'purple')
+
+wbm$figure.labels <- ifelse(wbm$v7.labels %in% c('MEP/MCP','MEP/ERP'),
+                            ifelse(wbm$v7.labels == 'MEP/MCP', 'MEP-1','MEP-2'),
+                            as.character(wbm$v7.labels))
+
+wbm$figure.labels <- ifelse(wbm$figure.labels == 'Tcell', 'T-cell',
+                            ifelse(wbm$figure.labels == 'Bcell','B-cell',
+                                   ifelse(wbm$figure.labels == 'Bcell-Prog',
+                                          'B-cell Prog.', wbm$figure.labels)))
+wbm$UMAP1 <- wbm@reductions$umap@cell.embeddings[,1]
+wbm$UMAP2 <- wbm@reductions$umap@cell.embeddings[,2]
+
+wbm$figure.labels <- ifelse(wbm$figure.labels != 'MK', wbm$figure.labels,
+                            ifelse(wbm$UMAP1 < 0, 'MK-1','MK-2'))
+
+wbm$figure.labels <- ifelse(wbm$figure.labels != 'Mono/Macro', 
+                         as.character(wbm$figure.labels),
+                         ifelse(wbm$UMAP1 < -5, 'Mono/Macro-1','Mono/Macro-2'))
+
+DimPlot(wbm, group.by = 'figure.labels')
+
+wbm$figure.labels <- factor(wbm$figure.labels,
+                            levels = levels(as.factor(wbm$figure.labels))[c(5,3,1,2,12,10,11,4,8,9,6,7)])
+
+Idents(wbm) <- wbm$figure.labels
+```
+
+
+# Raw WBM
+
+```{r}
+rwbm <- Read10X(data.dir = './data/filtered_feature_bc_matrix/')
+```
+
+# HTO Data
+
+```{r}
+hto <- Read10X('./combined_ADT-HTO/umi_count/', gene.column = 1)
+
+overlap <- intersect(colnames(hto), tstrsplit(colnames(rwbm),'-', keep = 1)[[1]])
+
+hto <- as.matrix(hto[,overlap])
+
+colnames(hto) <- paste0(colnames(hto), '-1')
+
+rwbm <- as.matrix(rwbm[, paste0(overlap,'-1')])
+```
+
+```{r}
+final.htos <- read.csv('./data/HTOs.csv', row.names = 1)
+
+summary(tstrsplit(rownames(final.htos), '-', keep = 1)[[1]] %in% colnames(hto))
+
+row.names(final.htos) <- tstrsplit(rownames(final.htos), '-', keep = 1)[[1]]
+
+final.htos <- t(final.htos)
+
+final.htos <- final.htos[,colnames(hto)]
+
+summary(names(final.htos) == colnames(hto))
+
+hto <- as.data.frame(hto)
+
+hto[,1:5]
+
+hto['final_assignment',] <- final.htos
+
+write.table(hto,'./data/htos.for.jun.txt', sep = '\t', quote = F, row.names = T)
+
+x <- read.table('./data/htos.for.jun.txt', sep = '\t')
+
+x[,1:5]
+```
+
+```{r}
+x <- as.data.frame(t(x))
+c.o.i <- colnames(x)[-7]
+
+for (i in c.o.i){
+        print(i)
+        x[,i] <- log10(as.numeric(x[,i]))
+}
+
+for (i in c.o.i){
+        print(i)
+        print(ggplot(x, aes_string(x = i)) + geom_density() + ggtitle(i))
+}
+
+for(i in c.o.i){
+        plot(density.default(x = x[,i]), main = i)
+}
+
+ints <- combn(c(paste0('HTO_',1:4)), 2)
+ints
+
+colnames(x)[2:5]
+
+for (i in 1:dim(ints)[2]){
+        print(ints[,i])
+        
+        print(ggplot(x, aes_string(x = ints[1,i], y = ints[2,i], colour = 'final_assignment')) +
+                      geom_point())
+}
+
+for (i in c(paste0('HTO_',1:4))){
+        print(ggplot(x, aes_string(x = i, y = 'CD41', colour = 'final_assignment')) + geom_point())
+}
+```
+
+# Checking out the CD41 co-expression
+
+```{r}
+
+x <- read.table('./data/htos.for.jun.txt', sep = '\t')
+
+x[,1:5]
+
+x <- as.data.frame(t(x))
+
+summary(as.numeric(x$CD41))
+
+c.o.i <- colnames(x)[-7]
+
+for (i in 1:length(c.o.i)){
+        print(c.o.i[i])
+        x[,i +7 ] <- NA
+        x[,i + 7] <- log10(as.numeric(x[,i]))
+}
+
+colnames(x)[8:13] <- paste0(colnames(x)[1:6],'.log')
+
+ggplot(x, aes(x = CD41.log)) + geom_density() + 
+        geom_vline(xintercept = 2, colour = 'red', linetype = 2)
+
+x$high.cd41 <- ifelse(x$CD41.log > 2, 1,0)
+
+head(x[x$high.cd41 == 1,])
+
+for (i in 1:dim(x)[1]){
+        x$cd41.max[i] <- ifelse(which.max(x[i,1:6]) == 1, T,F )
+}
+
+summary(as.factor(x$cd41.max))
+
+head(x[x$cd41.max == T,],50)
+
+
+
+summary(as.factor(x[x$cd41.max == T,]$final_assignment))
+
+
+```
+
+
+```{r}
+summary(as.factor(x$high.cd41))
+summary(as.factor(x[x$high.cd41 == 1,]$final_assignment))/1793
+summary(as.factor(x[x$high.cd41 == 1,]$final_assignment))/summary(as.factor(x$final_assignment))
+dim(x)
+```
+
+```{r}
+summary(!is.na(x$final_assignment))
+x[x$high.cd41 == T & !is.na(x$final_assignment),]
+cd41.cells <- paste0(rownames(x[x$high.cd41 == T & !is.na(x$final_assignment),]),'-1')
+length(cd41.cells)
+
+rownames(x) <- paste0(rownames(x), '-1')
+x$in.wbm.data <- rownames(x) %in% colnames(wbm)
+
+
+temp <- x[x$high.cd41 == T,]
+table(temp$in.wbm.data, temp$final_assignment)
+
+809/1065
+```
+
+
+
+```{r}
+inters <- intersect(cd41.cells, colnames(wbm))
+length(inters)
+
+length(cd41.cells)
+int.cd41.cells <- cd41.cells[cd41.cells %in% inters]
+summary(int.cd41.cells %in% colnames(wbm))
+?DimPlot
+DimPlot(wbm, cells = int.cd41.cells, pt.size = 0.01)
+
+summary(rownames(wbm@meta.data) %in% cd41.cells)
+
+wbm$high.cd41 <- ifelse(rownames(wbm@meta.data) %in% cd41.cells, T,F)
+
+DimPlot(wbm, group.by = 'high.cd41', cols = c('lightgrey','red'))
+
+table(wbm$high.cd41, wbm$figure.labels)
+
+40/150
+
+itga2b.expression <- wbm@assays$RNA['Itga2b']
+
+wbm$itga2b.expression <- as.vector(itga2b.expression)
+
+ggplot(wbm@meta.data, aes(x = log10(itga2b.expression +.00000000001))) + 
+        geom_density() + geom_vline(xintercept = -1.5, linetype = 2, colour = 'red')
+
+wbm$high.itga2b <- ifelse(log10(wbm$itga2b.expression) > -1.5,T,F)
+```
+
+
+```{r}
+table(wbm$high.cd41, wbm$high.itga2b)
+
+wbm$high.both.surface.and.rna <- ifelse(wbm$high.cd41 & wbm$high.itga2b, 'Both',
+                                        ifelse(wbm$high.cd41, 'Cd41-only',
+                                               ifelse(wbm$high.itga2b,
+                                                      'Itga2b-only','Neither')))
+
+DimPlot(wbm, group.by = 'high.both.surface.and.rna', 
+        cols = c('black','red','blue','lightgrey'))
+
+t <- as.data.frame(table(wbm$figure.labels, wbm$high.both.surface.and.rna))
+t$cluster.count <- NA
+
+for(i in unique(t$Var1)){
+        print(i)
+        
+        t[t$Var1 == i,]$cluster.count <- sum(t[t$Var1 ==i,]$Freq)
+}
+
+t$Perc <- t$Freq / t$cluster.count
+
+ggplot(t, aes(x = Var2, y = Var1, fill = Perc, label = Freq)) + geom_tile() +
+        theme_bw() + ylab('Cluster') + xlab('Marker Expression') +
+        scale_fill_gradient2(low = 'blue',mid = 'white', high = 'red', 
+                             midpoint = .5) +
+        geom_text()
+```
+
+## Correlation Analysis
+
+```{r}
+temp <- x[rownames(x) %in% colnames(wbm),]
+
+summary(rownames(temp[colnames(wbm),]) == rownames(wbm@meta.data))
+
+wbm@meta.data[!(rownames(wbm@meta.data) %in% rownames(temp)),]
+
+
+to.remove <- rownames(wbm@meta.data)[!(rownames(wbm@meta.data) %in% rownames(temp))]
+
+temp2 <- wbm[, !colnames(wbm) %in% to.remove]
+
+dim(temp2)
+
+summary(rownames(temp[colnames(temp2),]) == rownames(temp2@meta.data))
+
+temp2@meta.data$cd41.expression <- temp[colnames(temp2),]$CD41.log
+
+
+temp2$itga2b.expression
+summary(temp2$cd41.expression)
+summary(temp2$cd41.expression == '-Inf')
+temp2$cd41.expression <- ifelse(temp2$cd41.expression == '-Inf', 0, temp2$cd41.expression)
+
+temp3 <- subset(temp2, itga2b.expression != 0)
+
+p <- cor.test(temp3$itga2b.expression, temp3$cd41.expression)
+
+cor.test(temp2$itga2b.expression, temp2$cd41.expression)
+
+ggplot(temp3@meta.data, aes(x = cd41.expression, y = log10(itga2b.expression))) + 
+        geom_point() + geom_smooth() + 
+        geom_vline (xintercept = 1.5, linetype = 2, colour = 'red') + 
+        geom_hline (yintercept = 10**-1.5, linetype = 2, colour = 'red') +
+        theme_bw()
+
+p
+``` 
+
+
+# Setting Up Combined Object
+
+```{r}
+
+rwbm <- CreateSeuratObject(counts = rwbm, project = 'RawWBM',
+                           min.cells = 3, min.features = 200)
+
+rwbm <- NormalizeData(rwbm)
+
+rwbm <- FindVariableFeatures(rwbm, selection.method = 'vst', nfeatures = 2000)
+
+rwbm <- ScaleData(rwbm, features = rownames(rwbm))
+
+rwbm[['HTO']] <- CreateAssayObject(counts = hto)
+
+# Centered log ration normalization for HTOs
+rwbm <- NormalizeData(rwbm, assay = 'HTO', normalization.method = 'CLR')
+```
+
+# Running Demultiplexing
+
+```{r}
+rwbm <- HTODemux(rwbm, assay = 'HTO', positive.quantile = .85)
+
+# Why did you go with .85
+```
+
+```{r}
+table(rwbm$HTO_classification)
+```
+
+```{r}
+table(rwbm$HTO_classification.global)
+```
+
+```{r}
+table(rwbm$HTO_maxID)
+```
+
+```{r}
+table(rwbm$HTO_secondID)
+```
+
+```{r}
+table(rwbm$HTO_maxID, rwbm$HTO_secondID)
+```
+
+```{r}
+vars.of.interest <- paste0('hto_',unique(rwbm$HTO_maxID))
+?FetchData
+
+final.htos <- read.csv('./data/HTOs.csv', row.names = 1)
+
+jun.data <- FetchData(rwbm, vars.of.interest)
+
+summary(rownames(final.htos) %in% rownames(jun.data))
+
+jun.data <- merge(jun.data,final.htos, by = 0)
+
+write.table(jun.data, './data/htos.for.jun.txt', sep = '\t', row.names = T, quote = F)
+
+x <- read.table('./data/htos.for.jun.txt', sep = '\t', row.names = 1)
+```
+
+```{r}
+rownames(x) <- x$Row.names
+
+x <- x[,-1]
+
+```
+
+# Plots
+
+```{r}
+ggplot(x, aes(x = hto_HTO.1, y = hto_HTO.2, colour = HTOs)) + geom_point() +
+        theme_bw()
+```
+
+```{r}
+ggplot(x, aes(x = hto_HTO.1, y = hto_HTO.3, colour = HTOs)) + geom_point() +
+        theme_bw()
+```
+
+```{r}
+ggplot(x, aes(x = hto_HTO.1, y = hto_HTO.4, colour = HTOs)) + geom_point() +
+        theme_bw()
+```
+
+```{r}
+ggplot(x, aes(x = hto_HTO.2, y = hto_HTO.3, colour = HTOs)) + geom_point() +
+        theme_bw()
+```
+
+```{r}
+ggplot(x, aes(x = hto_HTO.2, y = hto_HTO.4, colour = HTOs)) + geom_point() +
+        theme_bw()
+```
+
+```{r}
+ggplot(x, aes(x = hto_HTO.3, y = hto_HTO.4, colour = HTOs)) + geom_point() +
+        theme_bw()
+```
+
+
+
+# Using LogNormalized
+
+
+```{r}
+rwbm <- NormalizeData(rwbm, assay = 'HTO', normalization.method = 'LogNormalize')
+
+rwbm <- HTODemux(rwbm, assay = 'HTO', positive.quantile = .85)
+
+jun.data <- FetchData(rwbm, vars.of.interest)
+
+jun.data <- merge(jun.data,final.htos, by = 0)
+```
+
+```{r}
+colnames(jun.data) <- gsub('-','.', colnames(jun.data))
+ggplot(jun.data, aes_string(x = 'hto_HTO.1', y = 'hto_HTO.2', colour = 'HTOs')) + geom_point() +
+        theme_bw()
+```
+

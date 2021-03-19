@@ -1,0 +1,468 @@
+---
+title: "v3.WriteUp.Extras"
+author: "D. Ford Hannum Jr."
+date: "12/17/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(scRNAseq)
+library(ggpubr)
+library(xlsx)
+```
+
+
+```{r}
+wbm <- readRDS('./data/v3/mpl.migr1.121420-2.rds')
+```
+
+To Do:
+
+* Cell Cycle Analysis
+* Profibrotic Score
+* Compare to ET and PV to PMF DE list
+* Trajectory
+
+# Cell Cycle Analysis
+
+```{r}
+ccg <- read.table('/Users/dfhannum/Desktop/CZI_Ovary/data/CellCycleGeneList_1134.txt', header = T, row.names = 1, sep = '\t')
+
+id <- read.table('/Users/dfhannum/Desktop/CZI_Ovary/data/genesymbol.all.list', header = F, sep = '\t')
+
+ccg$gene_name <- tstrsplit(ccg$NAME, ' ', keep =1)[[1]]
+
+# summary(id$V1 %in% ccg$gene_name)
+
+ccg$V2 <- rownames(ccg)
+
+data <- merge(ccg, id, by = 'V2')
+
+data$gene <- NA
+
+wbm.genes <- toupper(rownames(wbm))
+
+data$gene <- ifelse(data$V1 %in% wbm.genes, data$V1,
+                    ifelse(data$gene_name %in% wbm.genes,
+                           data$gene_name, NA))
+
+data <- data[!is.na(data$gene),]
+
+cnts <- wbm@assays$RNA
+
+len <- length(colnames(wbm))
+
+x <- data.frame(row.names = colnames(wbm),
+           cell.count.sum = numeric(len),
+           g1.s.raw.score = numeric(len),
+           g2.raw.score = numeric(len),
+           g2.m.raw.score = numeric(len),
+           s.raw.score = numeric(len),
+           m.g1.raw.score = numeric(len),
+           g1.s.norm.score = numeric(len),
+           g2.norm.score = numeric(len),
+           g2.m.norm.score = numeric(len),
+           s.norm.score = numeric(len),
+           m.g1.norm.score = numeric(len)
+           )
+
+cnt <- 2
+
+
+data$gene2 <- NA
+for (i in 1:dim(data)[1]){
+        temp.gene <- data$gene[i]
+        temp.row <- rownames(cnts)[grep(temp.gene, rownames(cnts), ignore.case = T)]
+        data$gene2[i] <- temp.row[1]
+        # print(paste(temp.gene, temp.row))
+}
+
+for (i in unique(data$PHASE)[1:5]){
+  # print(i)
+  # print(colnames(x)[cnt])
+  
+  phase.genes <- data[data$PHASE == i,]$gene2
+  # print(phase.genes)
+  temp <- cnts[rownames(cnts) %in% phase.genes,]
+  temp.sums <- colSums(temp)
+  x[,cnt] <- temp.sums
+  cnt <- cnt + 1
+}
+
+x$cell.count.sum <- colSums(cnts)
+head(x)
+
+for (i in 2:6){
+  # print(colnames(x)[i])
+  # print(colnames(x)[i+5])
+  
+  temp_mean <- mean(x[,i])
+  temp_sd <- sd(x[,i])
+  x[,i+5] <- (x[,i] - temp_mean) / temp_sd
+}
+
+x$max_score <- colnames(x[,7:11])[apply(x[,7:11],1,which.max)]
+```
+
+```{r}
+x$idents <- wbm$v6.labels
+
+x$max <- ifelse(x$max_score == 'g1.s.norm.score', 'G1/S',
+                ifelse(x$max_score == 'g2.m.norm.score', 'G2/M',
+                       ifelse(x$max_score == 'g2.norm.score', 'G2',
+                              ifelse(x$max_score == 'm.g1.norm.score', 'M/G1', 'S'))))
+
+wbm$cell.cycle.phase <- x$max
+
+df <- as.data.frame(table(x$max, x$idents))
+df$cluster_count <- NA
+
+for(i in df$Var2){
+  df[df$Var2 == i,]$cluster_count <- sum(df[df$Var2 == i, 'Freq'])
+}
+
+df$perc <- df$Freq / df$cluster_count
+
+ggplot(df, aes (x = Var1, y = Var2, fill = perc)) + geom_tile() +
+  theme_bw() +
+  geom_text(aes(label = Freq)) + xlab('Cell Cycle') + ylab ('Cluster') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2)
+```
+
+```{r}
+DimPlot(wbm, group.by = 'cell.cycle.phase')
+DimPlot(wbm, group.by = 'v6.labels', label = T)
+```
+
+# Profibrotic score
+
+## First Gene Set
+
+A list of 43 genes provided by Priya
+
+```{r}
+fib.genes <- read.table('./data/profibrotic_factors.txt')
+fib.genes <- fib.genes$V1[-1]
+
+summary(fib.genes %in% rownames(wbm))
+```
+
+35 of the 43 fibrotic genes are contained in our data.
+
+```{r}
+cnts <- wbm@assays$RNA
+
+cell.total.score <- colSums(cnts)
+
+cnts <- cnts[rownames(cnts) %in% fib.genes,]
+
+cell.raw.score <- colSums(cnts)
+
+fib.df <- data.frame(cell = colnames(cnts),
+                     cell.total.score = cell.total.score,
+                     fib.total.score = cell.raw.score)
+
+fib.df$weighted.score <- fib.df$fib.total.score / fib.df$cell.total.score
+
+ggplot(fib.df, aes (x = weighted.score)) + geom_density()
+
+fib.df$scaled.score <- (fib.df$weighted.score - mean(fib.df$weighted.score)) /
+  sd(fib.df$weighted.score)
+
+wbm$fibrosis.score <- fib.df$scaled.score
+wbm$fibrosis.score.unstandardized <- fib.df$weighted.score
+
+FeaturePlot(wbm, features = 'fibrosis.score', cols = c('lightgrey','red'))
+FeaturePlot(wbm, features = 'fibrosis.score.unstandardized')
+```
+
+### Looking at each large/generic cluster as a whole
+
+```{r}
+fib.data <- wbm@meta.data[,c('Condition2','v6.labels','v7.labels','fibrosis.score')]
+
+# head(fib.data)
+
+fib.df2 <- data.frame(cluster = character(),
+                      mean = numeric(),
+                      sd = numeric())
+
+cnt <- 1
+for (i in unique(fib.data$v7.labels)){
+  # print(i)
+  
+  temp.df <- fib.data[fib.data$v7.labels == i,]
+  
+  fib.df2[i,] <- c(i,mean(temp.df$fibrosis.score), sd(temp.df$fibrosis.score))
+  
+  cnt <- cnt + 1
+}
+
+fib.df2
+```
+
+### Looking at each large/generic cluster splitting by Experiment
+
+#### Only whole bone marrow
+
+Looking at just the whole bone marrow samples for Mpl Migr1
+
+One-sided test to see if Mpl is higher
+
+```{r}
+fib.data$Exp <- ifelse(fib.data$Condition2 %in% c('Migr1','enrMigr1'), 'Migr1','Mpl')
+
+fib.df2 <- data.frame(mean.Migr1 = numeric(),
+                      mean.Mpl = numeric(),
+                      t.stat = numeric(),
+                      pval = numeric(),
+                      BH.pval = numeric())
+
+for (i in unique(fib.data$v7.labels)){
+  # print(i)
+  
+  list1 <- fib.data[fib.data$v7.labels == i & fib.data$Condition2 == 'Migr1',]$fibrosis.score
+  list2 <- fib.data[fib.data$v7.labels == i & fib.data$Condition2 == 'Mpl',]$fibrosis.score
+
+  ttest <- t.test(list1,list2, alternative = 'less')
+  
+  fib.df2[i,] <- c(ttest$estimate[1],ttest$estimate[2],
+               ttest$statistic, ttest$p.value, NA)
+}
+
+fib.df2$BH.pval <- p.adjust(fib.df2$pval,'BH')
+
+fib.df2
+```
+
+#### Only whole bone marrow (Two-Sided)
+
+Looking at just the whole bone marrow samples for Mpl Migr1
+
+One-sided test to see if Mpl is higher
+
+```{r}
+fib.data$Exp <- ifelse(fib.data$Condition2 %in% c('Migr1','enrMigr1'), 'Migr1','Mpl')
+
+fib.df2 <- data.frame(mean.Migr1 = numeric(),
+                      mean.Mpl = numeric(),
+                      t.stat = numeric(),
+                      pval = numeric(),
+                      BH.pval = numeric())
+
+for (i in unique(fib.data$v7.labels)){
+  # print(i)
+  
+  list1 <- fib.data[fib.data$v7.labels == i & fib.data$Condition2 == 'Migr1',]$fibrosis.score
+  list2 <- fib.data[fib.data$v7.labels == i & fib.data$Condition2 == 'Mpl',]$fibrosis.score
+
+  ttest <- t.test(list1,list2)
+  
+  fib.df2[i,] <- c(ttest$estimate[1],ttest$estimate[2],
+               ttest$statistic, ttest$p.value, NA)
+}
+
+fib.df2$BH.pval <- p.adjust(fib.df2$pval,'BH')
+
+temp.subset1 <- subset(wbm, Condition2 %in% c('Migr1','Mpl'))
+
+VlnPlot(temp.subset1, 'fibrosis.score', pt.size = 0,
+        group.by = 'v7.labels', split.by = 'Condition2')
+
+fib.df2
+```
+
+#### Enriched and Non-enriched combined
+
+One-sided test to see if Mpl score is greater
+
+```{r}
+fib.df2 <- data.frame(mean.Migr1 = numeric(),
+                      mean.Mpl = numeric(),
+                      t.stat = numeric(),
+                      pval = numeric(),
+                      BH.pval = numeric())
+
+for (i in unique(fib.data$v7.labels)){
+  # print(i)
+  
+  list1 <- fib.data[fib.data$v7.labels == i & fib.data$Exp == 'Migr1',]$fibrosis.score
+  list2 <- fib.data[fib.data$v7.labels == i & fib.data$Exp == 'Mpl',]$fibrosis.score
+
+  ttest <- t.test(list1,list2, alternative = 'less')
+  
+  fib.df2[i,] <- c(ttest$estimate[1],ttest$estimate[2],
+               ttest$statistic, ttest$p.value, NA)
+}
+
+fib.df2$BH.pval <- p.adjust(fib.df2$pval,'BH')
+
+fib.df2
+```
+
+### Looking at each large/generic cluster enriched vs non-enriched
+
+#### Migr1
+
+Two-sided test
+
+```{r}
+fib.df2 <- data.frame(mean.Migr1 = numeric(),
+                      mean.enrMigr1 = numeric(),
+                      t.stat = numeric(),
+                      pval = numeric(),
+                      BH.pval = numeric())
+
+for (i in unique(fib.data$v7.labels)){
+  # print(i)
+  
+  list1 <- fib.data[fib.data$v7.labels == i & fib.data$Condition2 == 'Migr1',]$fibrosis.score
+  list2 <- fib.data[fib.data$v7.labels == i & fib.data$Condition2 == 'enrMigr1',]$fibrosis.score
+
+  ttest <- t.test(list1,list2)
+  
+  fib.df2[i,] <- c(ttest$estimate[1],ttest$estimate[2],
+               ttest$statistic, ttest$p.value, NA)
+}
+
+fib.df2$BH.pval <- p.adjust(fib.df2$pval,'BH')
+
+fib.df2
+```
+
+Both Mono/Macro and MEP/ERP show up as significant
+
+#### Mpl
+
+Two-sided test
+
+```{r}
+fib.df2 <- data.frame(mean.Mpl = numeric(),
+                      mean.enrMipl = numeric(),
+                      t.stat = numeric(),
+                      pval = numeric(),
+                      BH.pval = numeric())
+
+labels.with.enough.cells <- unique(fib.data$v7.labels)[-c(2,8)]
+
+for (i in labels.with.enough.cells){
+  # print(i)
+  
+  list1 <- fib.data[fib.data$v7.labels == i & fib.data$Condition2 == 'Mpl',]$fibrosis.score
+  list2 <- fib.data[fib.data$v7.labels == i & fib.data$Condition2 == 'enrMpl',]$fibrosis.score
+
+  ttest <- t.test(list1,list2)
+  
+  fib.df2[i,] <- c(ttest$estimate[1],ttest$estimate[2],
+               ttest$statistic, ttest$p.value, NA)
+}
+
+fib.df2$BH.pval <- p.adjust(fib.df2$pval,'BH')
+
+fib.df2
+```
+
+Granulocyte, Mono/Macro, Erythroid and MEP/ERP all have different distrubtions of fibrosis scores between Mpl and enrMpl
+
+## Second Gene Set
+
+From Supp Table 5 from the Oxford (paper)[https://www.cell.com/molecular-cell/fulltext/S1097-2765(20)30234-3?_returnURL=https%3A%2F%2Flinkinghub.elsevier.com%2Fretrieve%2Fpii%2FS1097276520302343%3Fshowall%3Dtrue#supplementaryMaterial]
+
+
+```{r}
+fib.genes2 <- c('Tgfb1','Il12a','Il15','Il15','Il1b','Actr5','Rab37','C20orf194',
+                'Tollip','Gosr2')
+
+fib.genes2 %in% rownames(wbm)
+
+# rownames(wbm)[grep('C20', rownames(wbm), ignore.case = T)]
+
+fib.genes2 <- fib.genes2[fib.genes2 %in% rownames(wbm)]
+```
+
+
+```{r}
+
+cell.total.score <- colSums(cnts)
+
+cnts <- cnts[rownames(cnts) %in% fib.genes2,]
+
+cell.raw.score <- colSums(cnts)
+
+fib.df <- data.frame(cell = colnames(cnts),
+                     cell.total.score = cell.total.score,
+                     fib.total.score = cell.raw.score)
+
+fib.df$weighted.score <- fib.df$fib.total.score / fib.df$cell.total.score
+
+ggplot(fib.df, aes (x = weighted.score)) + geom_density()
+
+fib.df$scaled.score <- (fib.df$weighted.score - mean(fib.df$weighted.score)) /
+  sd(fib.df$weighted.score)
+
+wbm$fibrosis.score <- fib.df$scaled.score
+wbm$fibrosis.score.unstandardized <- fib.df$weighted.score
+
+FeaturePlot(wbm, features = 'fibrosis.score', cols = c('lightgrey','red'))
+FeaturePlot(wbm, features = 'fibrosis.score.unstandardized')
+```
+
+## Tyapas Lab List
+
+```{r}
+l1 <- read.csv('./data/tapas_lab/rs.CD34.MF_v_others_edgeR_allGenes (1).csv', 
+               header = T)
+
+head(l1)
+
+cd34 <- l1[l1$FDR < 0.05,]
+
+cd34.up.genes <- cd34[cd34$logFC > 0,]$gene.symbol
+cd34.down.genes <- cd34[cd34$logFC < 0,]$gene.symbol
+
+pbmc <- read.csv('./data/tapas_lab/rs.PBMC.BMMC.MF_v_others_edgeR_allGenes (1).csv',
+                 header = T)
+pbmc <- pbmc[pbmc$FDR < 0.05,]
+pbmc.up.genes <- pbmc[pbmc$logFC > 0,]$gene.symbol
+pbmc.down.genes <- pbmc[pbmc$logFC < 0,]$gene.symbol
+
+de.genes <- read.xlsx('./data/v3/within.cluster.DEGs.Migr1.vs.Mpl.LARGE.GENERIC.CLUSTERS.xlsx',
+                      sheetName = 'All-Clusters')
+table(de.genes$cluster)
+
+
+mep.de.genes <- de.genes[de.genes$cluster == 'MEP/MCP',]$gene
+
+summary(toupper(mep.de.genes) %in% pbmc$gene.symbol)
+summary(toupper(mep.de.genes) %in% cd34$gene.symbol)
+```
+
+
+
+
+```{r}
+Idents(wbm) <- wbm$v7.labels
+VlnPlot(wbm, 'Itga2b')
+```
+
+# Trajectory
+
+```{r}
+
+```
+

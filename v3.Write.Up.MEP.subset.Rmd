@@ -1,0 +1,753 @@
+---
+title: "v3.WriteUp.Subsets"
+author: "D. Ford Hannum Jr."
+date: "12/17/2020"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(scRNAseq)
+library(ggpubr)
+library(xlsx)
+```
+
+
+```{r}
+wbm <- readRDS('./data/v3/mpl.migr1.121420-2.rds')
+
+color_pal <- c("#0072B2", "#CC79A7", "#009E73", "#56B4E9","#D55E00",
+               "#E69F00","#999999", 'violet',"red", 'black')
+
+DimPlot(wbm, label = T, repel = T, group.by = 'v7.labels',
+        cols = color_pal)
+```
+
+# Further Analysis Subsetting
+
+For further analysis we are going to exclude the Granulocyte and Lympthocyte Clusters, becuase they area driving the clustering and UMAP projection.
+
+Would it even make a difference??????
+
+```{r}
+
+wo.GranBcell <- subset(wbm, v7.labels %in% c('MEP/MCP','Erythroid','MEP/ERP','MK'))
+
+wo.GranBcell <- NormalizeData(wo.GranBcell, normalization.method = 'LogNormalize', scale.factor = 10000)
+
+wo.GranBcell <- FindVariableFeatures(wo.GranBcell, selection.method = 'vst', nfeatures = 2000)
+
+wo.GranBcell <- ScaleData(wo.GranBcell, features = rownames(wo.GranBcell))
+
+wo.GranBcell <- RunPCA(wo.GranBcell, features = VariableFeatures(wo.GranBcell), verbose =  F)
+
+ElbowPlot(wo.GranBcell)
+
+DimHeatmap(wo.GranBcell, dims = 1, cells = 100, balanced = T)
+
+DimPlot(wo.GranBcell, reduction = 'pca', dims = 1:2)
+
+# Going with 8
+
+wo.GranBcell <- FindNeighbors(wo.GranBcell, dims = 1:10)
+
+for (i in seq(0,1,by = .1)){
+  wo.GranBcell <- FindClusters(wo.GranBcell, resolution = i, verbose = F)
+}
+
+wo.GranBcell <- RunUMAP(wo.GranBcell, dims = 1:10)
+
+wo.GranBcell <- RunTSNE(wo.GranBcell, dims = 1:10)
+
+rna.col.names <- colnames(wo.GranBcell@meta.data)[grepl('RNA_snn', 
+                                                        colnames(wo.GranBcell@meta.data), ignore.case = T)]
+# rna.col.names
+
+# for (i in rna.col.names){
+#   print(DimPlot(wo.GranBcell, group.by = i, label = T, repel = T) + ggtitle(i))
+# }
+
+Idents(wo.GranBcell) <- wo.GranBcell$RNA_snn_res.0.5
+
+DimPlot(wo.GranBcell, repel = T, label = T)
+
+DimPlot(wo.GranBcell, repel = T, label = T, split.by = 'v7.labels', ncol = 2)
+```
+
+```{r}
+
+temp.subset <- subset(wbm, v7.labels %in% c('MEP/MCP','Erythroid','MEP/ERP','MK'))
+
+DimPlot(temp.subset, repel = T, label = T) + ggtitle('How these cells looked in the original projection')
+
+DimPlot(wo.GranBcell, label = T, repel = T, group.by = 'v6.labels')
+```
+
+
+## Cross-Tabulation
+
+```{r}
+old.clusters <- Idents(temp.subset)
+new.clusters <- Idents(wo.GranBcell)
+
+
+ct <- data.frame(old.clusters = old.clusters,
+                 new.clusters = new.clusters)
+
+temp.df <- as.data.frame(table(ct$old.clusters, ct$new.clusters))
+
+temp.df$Var1.total <- NA
+for (i in unique(temp.df$Var1)){
+  temp.df[temp.df$Var1 == i,]$Var1.total <- sum(temp.df[temp.df$Var1 == i,]$Freq)
+}
+temp.df$Var1.perc <- temp.df$Freq /temp.df$Var1.total
+
+temp.df$Var2.total <- NA
+for (i in unique(temp.df$Var2)){
+  temp.df[temp.df$Var2 == i,]$Var2.total <- sum(temp.df[temp.df$Var2 == i,]$Freq)
+}
+temp.df$Var2.perc <- temp.df$Freq /temp.df$Var2.total
+
+ggplot(temp.df, aes(x = Var1, y = Var2, fill = Var1.perc)) + geom_tile() +
+  geom_text(aes(label = Freq)) + xlab('Original Clusters') +
+  ylab('New Clusters') +
+  ggtitle('Filled by Column Percentages') + theme_bw() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
+
+ggplot(temp.df, aes(x = Var1, y = Var2, fill = Var2.perc)) + geom_tile() +
+  geom_text(aes(label = Freq)) + xlab('Original Clusters') +
+  ylab('New Clusters') +
+  ggtitle('Filled by Row Percentages') + theme_bw() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
+```
+
+Seems to be a lot of overlap with Eryth and MK cells
+
+```{r}
+FeaturePlot(wo.GranBcell, features = c('Vwf','Itga2b'))
+```
+
+Looks like MKs are part of that branch in the cluster shared with Erythrocytes, may want to trim that one off :)
+
+# Looking at the Flowy Markers Priya Used
+
+```{r}
+FeaturePlot(wo.GranBcell, features = 'Kit')
+
+# matrix(wo.GranBcell@assays$RNA['Kit',])[,1] > 0
+
+wo.GranBcell$kit.expression <- ifelse(matrix(wo.GranBcell@assays$RNA['Kit',])[,1] > 0,
+                                      1,0)
+wo.GranBcell$cd34.expression <- ifelse(matrix(wo.GranBcell@assays$RNA['Cd34',])[,1] > 0,
+                                      1,0)
+wo.GranBcell$itga2b.expression <- ifelse(matrix(wo.GranBcell@assays$RNA['Itga2b',])[,1] > 0,
+                                      1,0)
+
+wo.GranBcell$cd16.expression <- ifelse(matrix(wo.GranBcell@assays$RNA['Fcgr3',])[,1] > 0,
+                                      1,0)
+
+wo.GranBcell$cd32.expression <- ifelse(matrix(wo.GranBcell@assays$RNA['Fcgr2b',])[,1] > 0,
+                                      1,0)
+```
+
+
+```{r}
+wo <- wo.GranBcell
+
+FeaturePlot(wo, features = 'kit.expression')
+
+VlnPlot(wo, features = 'Kit')
+
+FeaturePlot(wo, features = c("Fcgr3"))
+
+FeaturePlot(wo, features = c("Fcgr2b"))
+
+FeaturePlot(wo, features = 'Itga2b')
+
+FeaturePlot(wo, features = 'Cd34')
+# FeaturePlot(wbm, features = 'Cd34')
+
+FeaturePlot(wo, features = 'Ly6a')
+```
+
+## Using Cd41, Cd16, and Cd32
+
+```{r}
+
+wo$cd41.pos.mep <- ifelse(wo$itga2b.expression == 1 & wo$cd16.expression == 0 & wo$cd32.expression == 0, 1,0)
+
+wo$cd41.neg.mep <- ifelse(wo$itga2b.expression == 0 & wo$cd16.expression == 0 & wo$cd32.expression == 0, 1,0)
+
+wo$mkp <- ifelse(wo$itga2b.expression == 1 & wo$cd16.expression == 1 & wo$cd32.expression == 1, 1,0)
+
+wo$mep.mkp.type <- ifelse(wo$cd41.pos.mep == 1, 'Cd41.pos.MEP',
+                          ifelse(wo$cd41.neg.mep == 1, 'Cd41.neg.MEP',
+                                 ifelse(wo$mkp == 1, 'MKP','Other')))
+
+summary(as.factor(wo$mep.mkp.type))
+
+DimPlot(wo, split.by = 'mep.mkp.type', ncol = 2, label = T, repel = T)
+
+
+```
+
+### CrossTab
+
+```{r}
+table(wo$mep.mkp.type, wo$seurat_clusters)
+
+temp.df <- as.data.frame(table(wo$mep.mkp.type, wo$seurat_clusters))
+
+temp.df$Var1.total <- NA
+for (i in unique(temp.df$Var1)){
+  temp.df[temp.df$Var1 == i,]$Var1.total <- sum(temp.df[temp.df$Var1 == i,]$Freq)
+}
+temp.df$Var1.perc <- temp.df$Freq /temp.df$Var1.total
+
+temp.df$Var2.total <- NA
+for (i in unique(temp.df$Var2)){
+  temp.df[temp.df$Var2 == i,]$Var2.total <- sum(temp.df[temp.df$Var2 == i,]$Freq)
+}
+temp.df$Var2.perc <- temp.df$Freq /temp.df$Var2.total
+
+ggplot(temp.df, aes(x = Var1, y = Var2, fill = Var1.perc)) + geom_tile() +
+  geom_text(aes(label = Freq)) + xlab('Cell Surface Marker ID') +
+  ylab('New Clusters') +
+  ggtitle('Filled by Column Percentages') + theme_bw() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
+
+ggplot(temp.df, aes(x = Var1, y = Var2, fill = Var2.perc)) + geom_tile() +
+  geom_text(aes(label = Freq)) + xlab('Cell Surface Marker ID') +
+  ylab('New Clusters') +
+  ggtitle('Filled by Row Percentages') + theme_bw() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
+```
+
+### Comparing from Mpl to Migr1
+
+```{r}
+wo$Experiment <- ifelse(wo$Condition2 %in% c('Migr1','enrMigr1'), 'Migr1','Mpl')
+table(wo$mep.mkp.type, wo$Experiment)
+
+temp.df <- as.data.frame(table(wo$mep.mkp.type, wo$Experiment))
+
+temp.df$Var1.total <- NA
+for (i in unique(temp.df$Var1)){
+  temp.df[temp.df$Var1 == i,]$Var1.total <- sum(temp.df[temp.df$Var1 == i,]$Freq)
+}
+temp.df$Var1.perc <- temp.df$Freq /temp.df$Var1.total
+
+temp.df$Var2.total <- NA
+for (i in unique(temp.df$Var2)){
+  temp.df[temp.df$Var2 == i,]$Var2.total <- sum(temp.df[temp.df$Var2 == i,]$Freq)
+}
+temp.df$Var2.perc <- temp.df$Freq /temp.df$Var2.total
+
+ggplot(temp.df, aes(x = Var1, y = Var2, fill = Var1.perc)) + geom_tile() +
+  geom_text(aes(label = Freq)) + xlab('Cell Surface Marker ID') +
+  ylab('Experiment') +
+  ggtitle('Filled by Column Percentages') + theme_bw() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
+
+ggplot(temp.df, aes(x = Var1, y = Var2, fill = Var2.perc)) + geom_tile() +
+  geom_text(aes(label = Freq)) + xlab('Cell Surface Marker ID') +
+  ylab('Experimen') +
+  ggtitle('Filled by Row Percentages') + theme_bw() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
+```
+
+This is still really raw with many cells being labeled as others. Perhaps if we identify clusters then we would have a better idea about labels and then we look at this same figure again, but instead with the named clusters.
+
+
+## Using Cd41, Cd16, Cd32 and Cd34
+
+Adding the marker of Cd34^+^ for MkPs. This may not work great because we are seeing very few cells expressing Cd34 in the global data.
+
+```{r}
+FeaturePlot(wbm, features = 'Cd34')
+
+summary(matrix(wbm@assays$RNA['Cd34',])[,1] > 0)
+summary(as.factor(wo$cd34.expression))
+```
+
+We are only seeing 86 cells in the entire experiment with any expression of Cd34, and 23 of these are within this subsample. 
+
+```{r}
+
+wo$cd41.pos.mep <- ifelse(wo$itga2b.expression == 1 & wo$cd16.expression == 0 & 
+                            wo$cd32.expression == 0 & wo$cd34.expression == 0, 1,0)
+
+wo$cd41.neg.mep <- ifelse(wo$itga2b.expression == 0 & wo$cd16.expression == 0 & 
+                            wo$cd32.expression == 0 & wo$cd34.expression == 0, 1,0)
+
+wo$mkp <- ifelse(wo$itga2b.expression == 1 & wo$cd16.expression == 1 & 
+                   wo$cd32.expression == 1 & wo$cd34.expression == 1, 1,0)
+
+wo$mep.mkp.type <- ifelse(wo$cd41.pos.mep == 1, 'Cd41.pos.MEP',
+                          ifelse(wo$cd41.neg.mep == 1, 'Cd41.neg.MEP',
+                                 ifelse(wo$mkp == 1, 'MKP','Other')))
+
+summary(as.factor(wo$mep.mkp.type))
+
+DimPlot(wo, split.by = 'mep.mkp.type', ncol = 2, label = T, repel = T)
+
+
+```
+
+### CrossTab
+
+```{r}
+table(wo$mep.mkp.type, wo$seurat_clusters)
+
+temp.df <- as.data.frame(table(wo$mep.mkp.type, wo$seurat_clusters))
+
+temp.df$Var1.total <- NA
+for (i in unique(temp.df$Var1)){
+  temp.df[temp.df$Var1 == i,]$Var1.total <- sum(temp.df[temp.df$Var1 == i,]$Freq)
+}
+temp.df$Var1.perc <- temp.df$Freq /temp.df$Var1.total
+
+temp.df$Var2.total <- NA
+for (i in unique(temp.df$Var2)){
+  temp.df[temp.df$Var2 == i,]$Var2.total <- sum(temp.df[temp.df$Var2 == i,]$Freq)
+}
+temp.df$Var2.perc <- temp.df$Freq /temp.df$Var2.total
+
+ggplot(temp.df, aes(x = Var1, y = Var2, fill = Var1.perc)) + geom_tile() +
+  geom_text(aes(label = Freq)) + xlab('Cell Surface Marker ID') +
+  ylab('New Clusters') +
+  ggtitle('Filled by Column Percentages') + theme_bw() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
+
+ggplot(temp.df, aes(x = Var1, y = Var2, fill = Var2.perc)) + geom_tile() +
+  geom_text(aes(label = Freq)) + xlab('Cell Surface Marker ID') +
+  ylab('New Clusters') +
+  ggtitle('Filled by Row Percentages') + theme_bw() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
+```
+
+### Comparing from Mpl to Migr1
+
+```{r}
+wo$Experiment <- ifelse(wo$Condition2 %in% c('Migr1','enrMigr1'), 'Migr1','Mpl')
+table(wo$mep.mkp.type, wo$Experiment)
+
+temp.df <- as.data.frame(table(wo$mep.mkp.type, wo$Experiment))
+
+temp.df$Var1.total <- NA
+for (i in unique(temp.df$Var1)){
+  temp.df[temp.df$Var1 == i,]$Var1.total <- sum(temp.df[temp.df$Var1 == i,]$Freq)
+}
+temp.df$Var1.perc <- temp.df$Freq /temp.df$Var1.total
+
+temp.df$Var2.total <- NA
+for (i in unique(temp.df$Var2)){
+  temp.df[temp.df$Var2 == i,]$Var2.total <- sum(temp.df[temp.df$Var2 == i,]$Freq)
+}
+temp.df$Var2.perc <- temp.df$Freq /temp.df$Var2.total
+
+ggplot(temp.df, aes(x = Var1, y = Var2, fill = Var1.perc)) + geom_tile() +
+  geom_text(aes(label = Freq)) + xlab('Cell Surface Marker ID') +
+  ylab('Experiment') +
+  ggtitle('Filled by Column Percentages') + theme_bw() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
+
+ggplot(temp.df, aes(x = Var1, y = Var2, fill = Var2.perc)) + geom_tile() +
+  geom_text(aes(label = Freq)) + xlab('Cell Surface Marker ID') +
+  ylab('Experimen') +
+  ggtitle('Filled by Row Percentages') + theme_bw() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
+```
+
+
+
+# Cell Cycle Work
+
+```{r}
+ccg <- read.table('/Users/dfhannum/Desktop/CZI_Ovary/data/CellCycleGeneList_1134.txt', header = T, row.names = 1, sep = '\t')
+
+id <- read.table('/Users/dfhannum/Desktop/CZI_Ovary/data/genesymbol.all.list', header = F, sep = '\t')
+
+ccg$gene_name <- tstrsplit(ccg$NAME, ' ', keep =1)[[1]]
+
+# summary(id$V1 %in% ccg$gene_name)
+
+ccg$V2 <- rownames(ccg)
+
+data <- merge(ccg, id, by = 'V2')
+
+data$gene <- NA
+
+wo.genes <- toupper(rownames(wo))
+
+data$gene <- ifelse(data$V1 %in% wo.genes, data$V1,
+                    ifelse(data$gene_name %in% wo.genes,
+                           data$gene_name, NA))
+
+data <- data[!is.na(data$gene),]
+
+cnts <- wo@assays$RNA
+
+len <- length(colnames(wo))
+
+x <- data.frame(row.names = colnames(wo),
+           cell.count.sum = numeric(len),
+           g1.s.raw.score = numeric(len),
+           g2.raw.score = numeric(len),
+           g2.m.raw.score = numeric(len),
+           s.raw.score = numeric(len),
+           m.g1.raw.score = numeric(len),
+           g1.s.norm.score = numeric(len),
+           g2.norm.score = numeric(len),
+           g2.m.norm.score = numeric(len),
+           s.norm.score = numeric(len),
+           m.g1.norm.score = numeric(len)
+           )
+
+cnt <- 2
+
+
+data$gene2 <- NA
+for (i in 1:dim(data)[1]){
+        temp.gene <- data$gene[i]
+        temp.row <- rownames(cnts)[grep(temp.gene, rownames(cnts), ignore.case = T)]
+        data$gene2[i] <- temp.row[1]
+        # print(paste(temp.gene, temp.row))
+}
+
+for (i in unique(data$PHASE)[1:5]){
+  # print(i)
+  # print(colnames(x)[cnt])
+  
+  phase.genes <- data[data$PHASE == i,]$gene2
+  # print(phase.genes)
+  temp <- cnts[rownames(cnts) %in% phase.genes,]
+  temp.sums <- colSums(temp)
+  x[,cnt] <- temp.sums
+  cnt <- cnt + 1
+}
+
+x$cell.count.sum <- colSums(cnts)
+head(x)
+
+for (i in 2:6){
+  # print(colnames(x)[i])
+  # print(colnames(x)[i+5])
+  
+  temp_mean <- mean(x[,i])
+  temp_sd <- sd(x[,i])
+  x[,i+5] <- (x[,i] - temp_mean) / temp_sd
+}
+
+x$max_score <- colnames(x[,7:11])[apply(x[,7:11],1,which.max)]
+```
+
+```{r}
+x$idents <- wo$seurat_clusters
+
+x$max <- ifelse(x$max_score == 'g1.s.norm.score', 'G1/S',
+                ifelse(x$max_score == 'g2.m.norm.score', 'G2/M',
+                       ifelse(x$max_score == 'g2.norm.score', 'G2',
+                              ifelse(x$max_score == 'm.g1.norm.score', 'M/G1', 'S'))))
+
+wo$cell.cycle.phase <- x$max
+
+df <- as.data.frame(table(x$max, x$idents))
+df$cluster_count <- NA
+
+for(i in df$Var2){
+  df[df$Var2 == i,]$cluster_count <- sum(df[df$Var2 == i, 'Freq'])
+}
+
+df$perc <- df$Freq / df$cluster_count
+
+ggplot(df, aes (x = Var1, y = Var2, fill = perc)) + geom_tile() +
+  geom_text(aes(label = Freq)) + xlab('Cell Cycle') + ylab ('Cluster') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2)
+```
+
+# Fibrotic Scores
+
+```{r}
+wo <- readRDS('./data/v3/woGranBcell.rds')
+```
+
+
+```{r}
+fib.genes <- read.table('./data/profibrotic_factors.txt')
+fib.genes <- fib.genes$V1[-1]
+
+summary(fib.genes %in% rownames(wo))
+```
+
+35 of the 43 fibrotic genes are contained in our data.
+
+```{r}
+cnts <- wo@assays$RNA
+
+cell.total.score <- colSums(cnts)
+
+cnts <- cnts[rownames(cnts) %in% fib.genes,]
+
+cell.raw.score <- colSums(cnts)
+
+fib.df <- data.frame(cell = colnames(cnts),
+                     cell.total.score = cell.total.score,
+                     fib.total.score = cell.raw.score)
+
+fib.df$weighted.score <- fib.df$fib.total.score / fib.df$cell.total.score
+
+fib.df$scaled.score <- (fib.df$weighted.score - mean(fib.df$weighted.score)) /
+  sd(fib.df$weighted.score)
+
+wo$fibrosis.score <- fib.df$scaled.score
+
+FeaturePlot(wo, features = 'fibrosis.score')
+```
+
+
+
+```{r}
+# saveRDS(wo.GranBcell,'./data/v3/woGranBcell.rds')
+```
+
+
+# Looking at interesting islands
+
+```{r}
+wo <- readRDS('./data/v3/woGranBcell.rds')
+
+DimPlot(wo, label = T, repel = T)
+```
+
+```{r}
+nine.markers <- FindMarkers(wo,
+                             ident.1 = 9,
+                             test.use = 'MAST',
+                             logfc.threshold = log(2))
+eight.markers <- FindMarkers(wo,
+                             ident.1 = 8,
+                             test.use = 'MAST',
+                             logfc.threshold = log(2))
+
+
+nine.markers <- nine.markers[nine.markers$p_val_adj < 0.05,]
+eight.markers <- eight.markers[eight.markers$p_val_adj < 0.05,]
+
+nine.markers <- nine.markers[order(nine.markers$avg_logFC, decreasing = T),]
+eight.markers <- eight.markers[order(eight.markers$avg_logFC, decreasing = T),]
+
+head(nine.markers)
+
+```
+
+*Cma1*: mast cell marker
+*Tpsb2*: mast cell marker
+*Cpa3*: mast cell gene
+*Gzmb*: expressed by t-cell and NK cells
+*Kit*: proliferation marker
+
+```{r}
+head(eight.markers)
+```
+
+*Igkc*: produced by b-cells
+*Ighm*: b-cells
+*Ly6d*: may be a specification marker between b-cells and t-cell development. marks the earliest stage of b-cell specification.
+
+## Full DE
+
+```{r}
+de.genes <- data.frame(p_val = numeric(),
+                       avg_logFC = numeric(),
+                       pct.1 = numeric(),
+                       pct.2 = numeric(),
+                       p_val_adj = numeric(),
+                       cluster = character(),
+                       gene = character())
+
+for (i in 0:9){
+  print(i)
+  x <- FindMarkers(wo,
+                   ident.1 = i,
+                   test.use = 'MAST',
+                   logfc.threshold = log(2),
+                   only.pos = F)
+  x$cluster <- i
+  x$gene <- rownames(x)
+  x <- x[x$p_val_adj < 0.05,]
+  x <- x[abs(x$avg_logFC) > log(2),]
+  de.genes <- rbind(de.genes,x)
+}
+
+summary(as.factor(de.genes$cluster))
+# table(rownames(de.genes))
+
+out <- split(de.genes, f = de.genes$cluster)
+
+library(xlsx)
+
+for (i in 1:length(out)){
+  print(i)
+  print(unique(out[[i]]$cluster))
+}
+
+
+
+for (i in 1:length(out)){
+  print(i)
+  temp.name <- unique(out[[i]]$cluster)
+  temp.name <- gsub('/','_',temp.name)
+  print(temp.name)
+  write.xlsx(x = out[[i]], file = "data/v3/MEP.subset.between.cluster.markers.xlsx",
+             sheetName=temp.name, append = T)
+}
+write.xlsx(x = de.genes, file = "data/v3/MEP.subset.between.cluster.markers.xlsx",
+           sheetName='All-Clusters', append = T)
+
+
+```
+
+
+
+# Figures
+
+```{r}
+wo <-readRDS('./data/v3/woGranBcell.rds')
+
+wo$Experiment <- ifelse(wo$Condition2 %in% c('Migr1','enrMigr1'),
+                        'MigR1','MPLW515L')
+
+wo$figure.labels <- ifelse(wo$v7.labels == 'MEP/ERP', 'MEP-2',
+                           ifelse(wo$v7.labels == 'MEP/MCP', 'MEP-1',
+                                  ifelse(wo$v7.labels == 'MK','MK', "Ery")))
+
+```
+
+## a-c) UMAPs
+
+
+
+```{r}
+DimPlot(wo, label = T, repel = T, pt.size = 0.01) +
+  theme_bw() +
+  theme(text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/version7.for.v3/2a.umap.pdf', device = 'pdf',
+       height = 2.5, width = 3, units = 'in', dpi = 600)
+```
+
+```{r}
+
+
+DimPlot(wo, pt.size = 0.01, split.by = 'Experiment') +
+  theme_bw() + NoLegend() +
+  theme(text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/version7.for.v3/2b.umap.split.by.exp.pdf', device = 'pdf',
+       height = 2.5, width = 4, units = 'in', dpi = 600)
+```
+
+```{r}
+DimPlot(wo, pt.size = 0.01, split.by = 'figure.labels') +
+  theme_bw() + NoLegend() +
+  theme(text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/version7.for.v3/2c.umap.split.by.labels.pdf', device = 'pdf',
+       height = 2.5, width = 7, units = 'in', dpi = 600)
+```
+
+## d) MK subclusters full UMAP
+
+```{r}
+wbm$mk.ident <- ifelse(wbm$figure.labels == 'MK',1,0)
+
+FeaturePlot(wbm, features = 'mk.ident')
+
+DimPlot(wbm, label = T, repel = T,
+        group.by = 'figure.labels', 
+        cols = c(rep('grey',7),'red','grey','grey'), pt.size = 0.01) +
+  theme_bw() + ggtitle('') + NoLegend() +
+  theme(text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/version7.for.v3/2d.full.UMAP.highlight.MKs.pdf', device = 'pdf',
+       height = 2.5, width = 3, units = 'in', dpi = 600)
+```
+
+
+# Comparing two MK populations
+
+```{r}
+temp.subset <- subset(wo, figure.labels == 'MK')
+
+
+mk.different.markers <- FindMarkers(temp.subset,
+            ident.1 = 5,
+            ident.2 = 1,
+            test.use = 'MAST',
+            logfc.threshold = log(2))
+
+mk.different.markers <- mk.different.markers[mk.different.markers$p_val_adj < 0.05,]
+
+mk.different.markers <- mk.different.markers[order(mk.different.markers$avg_logFC, decreasing = T),]
+dim(mk.different.markers)
+head(mk.different.markers)
+```
+
+```{r}
+tail(mk.different.markers)
+```
+
+```{r}
+DimPlot(temp.subset, label = T, repel = T)
+```
+
+```{r}
+table(Idents(temp.subset), temp.subset$Condition2)
+VlnPlot(temp.subset, features = c('Itga2b','Pf4','Vwf', 'Gp6'), 
+        ncol = 2, pt.size = 0)
+VlnPlot(temp.subset, features = c('Gp9'), pt.size = 0)
+```
+```{r}
+temp.subset$var2 <- Idents(temp.subset)
+
+temp.subset2 <- subset(temp.subset, var2 == 5)
+
+dim(temp.subset2)
+
+subcluster.5.MK.cells <- colnames(temp.subset2)
+
+subcluster.5.MK.cells
+
+DimPlot(wbm, cells = subcluster.5.MK.cells)
+
+wbm$subcluster.5.MK.cells <- ifelse(colnames(wbm) %in% subcluster.5.MK.cells, 1, 0)
+
+FeaturePlot(wbm, features = 'subcluster.5.MK.cells')
+```
+
+
+## Are they doublets?
+
+```{r}
+VlnPlot(wo, features = 'nFeature_RNA')
+VlnPlot(wo, features = 'nCount_RNA')
+
+VlnPlot(wo, features = 'nFeature_RNA', split.by = 'figure.labels')
+VlnPlot(wo, features = 'nCount_RNA', split.by = 'figure.labels')
+```
+

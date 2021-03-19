@@ -3,7 +3,7 @@
 library(Seurat)
 library(dplyr)
 library(patchwork)
-library(ggplot)
+library(ggplot2)
 
 exp2 <- Read10X(data.dir= 'data/Experiment2/filtered_feature_bc_matrix/')
 
@@ -84,3 +84,9 @@ ggsave('./figures/EXP2_umap_projection.png', device = 'png',
        units = 'in', height = 5, width = 5, dpi = 400)
 
 saveRDS(exp2, file = './data/EXP2_clustered_filtered.rds')
+
+#________Showing Projection for Sang
+
+wbm2 <- readRDS('./data/EXP2_clustered_filtered_SingleR_labels.rds')
+
+DimPlot(wbm2, reduction = 'umap')

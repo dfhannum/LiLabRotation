@@ -1,6 +1,10 @@
-
+library(Seurat)
 
 wbm.int <- readRDS('./data/wbm.integrated.RDS')
+
+DimPlot(wbm.int, reduction = 'umap', split.by = 'orig.ident', label = T,
+        repel = T) + NoLegend()
+
 
 head(wbm.int@meta.data)
 
@@ -34,7 +38,7 @@ for (i in lst_){
 plot(resul)
 lst_[15]
 
-iMK <- FindClusters(iMK, resolution = 0.45)
+iMK <- FindClusters(iMK, resolution = 0.9)
 iMK <- RunUMAP(iMK, dims = 1:20)
 
 DimPlot(iMK, reduction = 'umap', label = T) + NoLegend()

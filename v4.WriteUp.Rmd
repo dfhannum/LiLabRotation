@@ -1,0 +1,3703 @@
+---
+title: "v4.Write.Up"
+author: "D. Ford Hannum Jr."
+date: "1/9/2021"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(scRNAseq)
+library(ggpubr)
+library(xlsx)
+```
+
+```{r}
+wbm <- readRDS('./data/v3/mpl.migr1.121420-2.rds')
+table(wbm$Condition2)
+
+wbm$figure.labels <- ifelse(wbm$v7.labels %in% c('MEP/MCP','MEP/ERP'),
+                            ifelse(wbm$v7.labels == 'MEP/MCP', 'MkP','MEP'),
+                            as.character(wbm$v7.labels))
+
+wbm$figure.labels <- ifelse(wbm$figure.labels == 'Tcell', 'T-cell',
+                            ifelse(wbm$figure.labels == 'Bcell','B-cell',
+                                   ifelse(wbm$figure.labels == 'Bcell-Prog',
+                                          'B-cell Prog.', wbm$figure.labels)))
+wbm$UMAP1 <- wbm@reductions$umap@cell.embeddings[,1]
+wbm$UMAP2 <- wbm@reductions$umap@cell.embeddings[,2]
+
+wbm$figure.labels2 <- ifelse(wbm$figure.labels != 'MK',
+                             as.character(wbm$figure.labels),
+                            ifelse(wbm$UMAP1 < 0, 'MK-1','MK-2'))
+
+wbm$figure.labels2 <- ifelse(wbm$figure.labels != 'Mono/Macro', 
+                         as.character(wbm$figure.labels2),
+                         ifelse(wbm$UMAP1 < -5, 'Mono/Macro-1','Mono/Macro-2'))
+
+DimPlot(wbm, group.by = 'figure.labels')
+
+wbm$figure.labels <- factor(wbm$figure.labels,
+                            levels = levels(as.factor(wbm$figure.labels))[c(5,3,1,2,10,9,4,6,8,7)])
+
+Idents(wbm) <- wbm$figure.labels
+
+table(Idents(wbm))
+
+mk1.cells <- rownames(wbm@meta.data[wbm$figure.labels == 'MK-1',])
+mep1.cells <- rownames(wbm@meta.data[wbm$figure.labels == 'MkP',])
+```
+
+
+# Figures 
+
+## a) UMAP Projection
+
+```{r}
+color_pal <- c("#0072B2", "#CC79A7", "#009E73",'black',"#999999",
+               "#E69F00", "#56B4E9","#D55E00", 'limegreen', 'violet')
+
+DimPlot(wbm, label = T, repel = T, cols = color_pal,
+        pt.size = .001) +
+  theme_bw() + NoLegend() +
+  theme(text = element_text(size = 6, family = 'sans'))
+
+# ggsave('./figures/v8/1a.umap.pdf', device = 'pdf',
+#        height = 3, width = 5, units = 'in', dpi = 600)
+```
+
+## b) Split by experiment
+
+```{r}
+wbm$Condition3 <- ifelse(wbm$Condition2 == 'Migr1', 'MigR1',
+                         ifelse(wbm$Condition2 == 'enrMigr1', 'CD41+ enr. MigR1',
+                                ifelse(wbm$Condition2 == 'Mpl', 'MPLW515L', 'CD41+ enr. MPLW515L')))
+
+wbm$Condition3 <- factor(wbm$Condition3,
+                         levels = levels(as.factor(wbm$Condition3))[c(3,4,1,2)])
+
+DimPlot(wbm, cols = color_pal, 
+        split.by = 'Condition3', ncol =2, pt.size =  0.05) +
+  theme_bw() +
+  theme(text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/1b.split.umap.pdf', device = 'pdf',
+       height = 4, width = 4.75, units = 'in', dpi = 600)
+
+# for (i in unique(wbm$Condition3)){
+#   print(i)
+#   
+#   temp.subset <- subset(wbm, Condition3 == i)
+#   
+#   print(DimPlot(temp.subset, cols = color_pal, group.by = 'figure.labels',
+#           pt.size = 0.05) + ggtitle(i) +
+#           theme_bw() + NoLegend() +
+#           theme(text = element_text(size = 6, family = 'sans')))
+#   ggsave(paste0('./figures/v8/1b.split.umap.',i,'.pdf'), device = 'pdf',
+#          height = 3, width = 5, units = 'in', dpi = 600)
+#     
+# }
+```
+
+
+### Only MigR1 and MPL
+
+```{r}
+temp.subset <- subset(wbm, Condition3 %in% c('MigR1','MPLW515L'))
+
+DimPlot(temp.subset, cols = color_pal, 
+        split.by = 'Condition3', ncol =2, pt.size =  0.05) +
+  theme_bw() +  
+  theme(text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/1b.split.umap.NON.ENRICHED.pdf', device = 'pdf',
+       height = 3.5, width = 5, units = 'in', dpi = 600)
+
+```
+
+
+## c) Marker Genes
+
+```{r}
+markers <- c('Ngp','Kit','Ighd','Flt3','Ccl5','Apoe','Alas2','Pf4','Itga2b','Gata2','Klf1')
+
+# wbm$marker.gene.label.orders <- factor(wbm$v7.labels,
+#                                        levels = levels(as.factor(wbm$v7.labels))[c(1,5,2,10,4,7,9,6,3,8)])
+DotPlot(wbm, features = markers, group.by = 'figure.labels') +
+  ylab('Clusters') + xlab ('Genes') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6, family = 'sans'),
+        axis.text.y = element_text(size = 6, family = 'sans'),
+        text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/1c.dot.plot.markers.pdf', device = 'pdf',
+       height = 3, width = 4, units = 'in', dpi = 600)
+
+temp.subset <- subset(wbm, Condition == 'Migr1')
+
+DotPlot(temp.subset, features = markers, group.by = 'figure.labels') +
+  ylab('Clusters') + xlab ('Genes') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6, family = 'sans'),
+        axis.text.y = element_text(size = 6, family = 'sans'),
+        text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/1c.dot.plot.markers.MigR1.ONLY.pdf', device = 'pdf',
+       height = 3, width = 4, units = 'in', dpi = 600)
+```
+
+## d) Quantification of Normal Conditions
+
+```{r}
+table(wbm$Condition3, wbm$figure.labels)
+
+temp.obj <- subset(wbm, Condition3 %in% c('MigR1','MPLW515L'))
+temp.table <- as.data.frame(table(as.character(temp.obj$Condition3), temp.obj$figure.labels))
+
+colnames(temp.table) <- c('State','Cell Type', 'Count')
+
+temp.table$State_count <- NA
+
+for (i in levels(temp.table$State)){
+  temp.table[temp.table$State == i,]$State_count <- sum(temp.table[temp.table$State == i,]$Count)
+}
+
+temp.table$Percentage <- temp.table$Count / temp.table$State_count
+temp.table
+
+ggplot(temp.table, aes(x = State, y = Percentage, fill = `Cell Type`)) +
+        geom_bar(stat = 'identity') +
+        ylim(0,100) +
+        scale_fill_manual(values = color_pal) +
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('Sample') +
+        # ggtitle("Cell Quantification by Sample") +
+        scale_y_continuous(position = 'right') + NoLegend() +
+        theme(text = element_text(size = 8, family = 'sans'))
+
+ggsave('./figures/v8/1d.non.enriched.quant.pdf', device = 'pdf',
+       height = 3.5, width = 2, units = 'in', dpi = 600)
+        
+```
+
+### All Experiments Raw Number Table
+
+```{r}
+temp.table <- as.data.frame(table(wbm$Condition3, wbm$figure.labels))
+
+colnames(temp.table) <- c('State','Cell Type', 'Count')
+
+temp.table$State_count <- NA
+
+for (i in levels(temp.table$State)){
+  temp.table[temp.table$State == i,]$State_count <- sum(temp.table[temp.table$State == i,]$Count)
+}
+
+temp.table$Percentage <- temp.table$Count / temp.table$State_count
+temp.table
+
+temp.table$`Cell Type2` <- factor(temp.table$`Cell Type`,
+                                  levels = rev(levels(as.factor(temp.table$`Cell Type`))))
+
+# temp.table$State2 <- ifelse(temp.table$State == 'Migr1','MigR1',
+#                            ifelse(temp.table$State == 'enrMigr1','enrMigR1',
+#                                   ifelse(temp.table$State == 'Mpl','MPLW515L', 'enrMPLW515L')))
+
+temp.table$State2 <- factor(temp.table$State,
+                           levels = c('MigR1','MPLW515L','CD41+ enr. MigR1','CD41+ enr. MPLW515L'))
+
+ggplot(data = temp.table, aes(x = State2, y = `Cell Type2`, fill = Percentage, label = Count)) +
+  geom_tile() +
+  theme_bw() +
+  geom_text(size = 2) + ylab('Cluster') + xlab('State') +
+  scale_fill_gradient2(low = 'blue', high = 'red', mid = 'white', midpoint = .2) +
+  theme(text = element_text(size = 8))
+
+
+ggsave('./figures/v8/supp.all.quant.table.pdf', device = 'pdf',
+       height = 3, width = 5.5, units = 'in', dpi = 600)
+
+ggplot(data = temp.table, aes(x = State2, y = `Cell Type2`, 
+                              fill = Percentage, 
+                              label = round(Percentage,4)*100)) +
+  geom_tile() +
+  theme_bw() +
+  geom_text(size = 2) + ylab('Cluster') + xlab('State') +
+  scale_fill_gradient2(low = 'blue', high = 'red', 
+                       mid = 'white', midpoint = .2) +
+  theme(text = element_text(size = 8))
+
+
+ggsave('./figures/v8/supp.all.quant.PERC.table.pdf', device = 'pdf',
+       height = 3, width = 5.5, units = 'in', dpi = 600)
+```
+
+### All Quant Bar Graph
+
+
+```{r}
+table(wbm$Condition3, wbm$figure.labels)
+
+
+temp.table <- as.data.frame(table(as.character(wbm$Condition3), wbm$figure.labels))
+
+colnames(temp.table) <- c('State','Cell Type', 'Count')
+
+temp.table$State_count <- NA
+
+for (i in levels(temp.table$State)){
+  temp.table[temp.table$State == i,]$State_count <- sum(temp.table[temp.table$State == i,]$Count)
+}
+
+temp.table$Percentage <- temp.table$Count / temp.table$State_count
+temp.table$State2 <- factor(temp.table$State,
+                            levels = levels(factor(temp.table$State))[c(3,4,1,2)])
+temp.table$`Cell Type` <- factor(temp.table$`Cell Type`,
+                                 levels = levels(temp.table$`Cell Type`)[c(5,3,1,2,10,9,4,6,8,7)])
+ggplot(temp.table, aes(x = State2, y = Percentage, fill = `Cell Type`)) +
+        geom_bar(stat = 'identity') +
+        ylim(0,100) +
+        scale_fill_manual(values = color_pal) +
+        theme_bw() +
+        ylab('Percentage of Cells') + xlab('') +
+        # ggtitle("Cell Quantification by Sample") +
+        scale_y_continuous(position = 'right') + 
+        NoLegend() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1),
+              text = element_text(size = 8, family = 'sans'))
+
+ggsave('./figures/v8/supp.bar.graph.quant.all.pdf', device = 'pdf',
+       height = 4.5, width = 2.25, units = 'in', dpi = 600)
+        
+```
+
+## ?) MK/MEP/MkP Breakdown
+
+```{r}
+wbm$mep <- ifelse(wbm$figure.labels2 %in% c('MK-1','MK-2','MkP','MEP'),
+                         as.character(wbm$figure.labels2),' ')
+
+temp.subset <- subset(wbm, Condition2 %in% c('Mpl','Migr1'))
+
+DimPlot(temp.subset, group.by = 'mep', label = T, pt.size = 0.001,
+        cols = c('lightgrey', "#D55E00",'red','purple',"limegreen")) +
+  theme_bw() + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
+        title = element_blank()) +
+  NoLegend()
+
+ggsave('./figures/v8/4ce.MEP.MK.MkP.umap.pdf', device = 'pdf',
+       height = 2.5, width = 2.5, units = 'in', dpi = 600)
+```
+
+
+```{r}
+tmp.table <- as.data.frame(table(wbm$figure.labels2, wbm$Condition3))
+tmp.table$State_totals <- NA
+
+
+for (i in unique(tmp.table$Var2)){
+  print(i)
+  tmp.table[tmp.table$Var2 == i,]$State_totals <- sum(tmp.table[tmp.table$Var2 == i,]$Freq)
+}
+
+tmp.table$Perc <- tmp.table$Freq / tmp.table$State_totals
+
+tmp.cnts <- tmp.table[tmp.table$Var1 %in% c('MK-1','MK-2', 'MkP','MEP') & 
+                        tmp.table$Var2 %in% c('MigR1','MPLW515L'),]
+
+colnames(tmp.cnts)[1:2] <- c('Cluster','State')
+
+ggplot(tmp.cnts, aes(x = Cluster, y = Perc, fill = State, label = Freq)) +
+  geom_bar(position = 'dodge', stat = 'identity') +
+  scale_fill_manual(values = c('blue','red')) +
+  theme_bw() + xlab('') + ylim(0, 0.032) +
+  ylab('Percentage of Cells per Sample') +
+  geom_text(position = position_dodge(width = .9), vjust = -.25, size = 3) +
+  theme(text = element_text(size = 8, family = 'sans'))
+
+
+ggsave('./figures/v8/4d.non.enriched.MK.MEP.MkP.quant.pdf', device = 'pdf',
+       height = 2.5, width = 4.5, units = 'in', dpi = 600)
+
+tmp.cnts
+```
+
+#### Mpl to enrMpl
+
+```{r}
+temp.obj <- subset(wbm, Condition3 %in% c('MPLW515L','CD41+ enr. MPLW515L'))
+temp.table <- as.data.frame(table(temp.obj$Condition, temp.obj$figure.labels))
+
+colnames(temp.table) <- c('State','Cell Type', 'Count')
+
+temp.table$State_count <- NA
+
+for (i in levels(temp.table$State)){
+  temp.table[temp.table$State == i,]$State_count <- sum(temp.table[temp.table$State == i,]$Count)
+}
+
+temp.table$Percentage <- temp.table$Count / temp.table$State_count
+
+temp.table$State <- factor(temp.table$State,
+                                 levels = levels(as.factor(temp.table$State))[c(2,1)])
+
+temp.table$State <- ifelse(temp.table$State == 'Mpl', 'MPLW515L','CD41+ enr. MPLW515L')
+
+temp.table$State <- factor(temp.table$State,
+                           levels = c('MPLW515L','CD41+ enr. MPLW515L'))
+
+temp.table[19,5] <- 0.0000000000001
+ggplot(temp.table, aes(x = `Cell Type`, y = Percentage, fill = State, label = Count)) +
+  geom_bar(position = 'dodge',stat = 'identity') + 
+  scale_fill_manual(values = c('grey','red')) +
+  theme_bw() + ggtitle ('MPLW515L') + NoLegend() +
+  ylim(0,.85) +
+  ylab('') +
+  # geom_text(position = position_dodge(width = .9), vjust = -.25, size = 3) +
+  theme(text = element_text(size = 8, family = 'sans'),
+        axis.text.x = element_text(angle = 45, hjust =1 ))
+
+
+ggsave('./figures/v8/1sup.mpl.enriched.quant.pdf', device = 'pdf',
+       height = 3, width = 3, units = 'in', dpi = 600)
+
+```
+
+### MigR1 to enrMigR1
+
+```{r}
+temp.obj <- subset(wbm, Condition3 %in% c('MigR1','CD41+ enr. MigR1'))
+temp.table <- as.data.frame(table(temp.obj$Condition, temp.obj$figure.labels))
+
+colnames(temp.table) <- c('State','Cell Type', 'Count')
+
+temp.table$State_count <- NA
+
+for (i in levels(temp.table$State)){
+  temp.table[temp.table$State == i,]$State_count <- sum(temp.table[temp.table$State == i,]$Count)
+}
+
+temp.table$Percentage <- temp.table$Count / temp.table$State_count
+
+temp.table$State2 <- factor(temp.table$State,
+                                 levels = levels(as.factor(temp.table$State))[c(2,1)])
+
+temp.table$State2 <- ifelse(temp.table$State2 == 'Migr1', 'MigR1','CD41+ enr. MigR1')
+
+temp.table$State2 <- factor(temp.table$State2,
+                           levels = c('MigR1','CD41+ enr. MigR1'))
+
+temp.table[19,5] <- 0.0000000000001
+ggplot(temp.table, aes(x = `Cell Type`, y = Percentage, fill = State2, label = Count)) +
+  geom_bar(position = 'dodge',stat = 'identity') + 
+  scale_fill_manual(values = c('grey','red')) +
+  theme_bw() + ggtitle ('MigR1') + NoLegend() +
+  ylim(0,.4) +
+  ylab('') +
+  # geom_text(position = position_dodge(width = .9), vjust = -.25, size = 3) +
+  theme(text = element_text(size = 8, family = 'sans'),
+        axis.text.x = element_text(angle = 45, hjust =1 ))
+
+
+ggsave('./figures/v8/1sup.migr1.enriched.quant.pdf', device = 'pdf',
+       height = 3, width = 3, units = 'in', dpi = 600)
+
+```
+
+
+## f) Heatmap of MEP/MCP DE Genes
+
+```{r}
+de.genes <- read.xlsx('./data/v3/within.cluster.DEGs.Migr1.vs.Mpl.LARGE.GENERIC.CLUSTERS.xlsx', 
+                      sheetName = 'All-Clusters')
+
+temp.subset <- subset(wbm, v7.labels == 'MEP/MCP')
+
+de.genes <- de.genes[de.genes$cluster == 'MEP/MCP',]
+
+de.genes <- de.genes[order(de.genes$avg_logFC, decreasing = T),]
+
+temp.subset$Experiment <- ifelse(temp.subset$Condition2 %in% c('enrMpl','Mpl'),
+                                 'MPLW515L','MigR1')
+
+DoHeatmap(temp.subset, features = de.genes$gene, group.by = 'Experiment') +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        text = element_text(size = 8, family = 'sans'))
+
+ggsave('./figures/v8/1e.mep.1.heatmap.pdf', device = 'pdf',
+       height = 3, width = 4, units = 'in', dpi = 600)
+```
+
+### GO Term
+
+```{r}
+up.process <- c('inflammatory response','cell death', 'cell-cell adhesion',
+                'regulation of catalytic activity', 
+                'regulation of leukocyte activation', 'signal transduction',
+                'leukocyte migration', 'cytokine production')
+up.correct_pvalue <- c(.0003903, .0007689, 2.42e-05,.0001373, .0004343,
+                       0.00640723, 0.00016654,0.006542309)
+
+
+go <- data.frame(process = up.process,
+                 correct_pvalue = up.correct_pvalue)
+
+go$correct_pvalue.log <- -log10(go$correct_pvalue)
+
+go <- go[order(go$correct_pvalue.log, decreasing = T),]
+go$process <- factor(go$process, levels = rev(go$process))
+ggplot(go, aes(y = correct_pvalue.log, x = process)) +
+  geom_bar(stat = 'identity') + coord_flip() +
+  ylab('-log10 Corrected P-Value') + xlab ('') +
+  geom_hline(yintercept = c(-log10(0.05)), linetype = 2,
+             color = 'black', show.legend = T, size = .5) +
+  theme_bw() + NoLegend() +
+  theme(text=element_text(size = 8, family = 'sans'),
+         axis.text = element_text(size = 6.5)) 
+
+ggsave('./figures/v8/mkp.mpl.vs.migr1.goterm.pdf', device = 'pdf',
+       height = 1.75, width = 3, units = 'in', dpi = 600)
+```
+
+
+
+## Supplement
+
+```{r}
+DimPlot(wbm, label = T, repel = T, group.by = 'seurat_clusters', pt.size = .001) +
+  theme_bw() + ggtitle('') + NoLegend() +
+  theme(text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/supp.umap.with.all.clusters.pdf', device = 'pdf',
+       height = 3, width = 5, units = 'in', dpi = 600)
+```
+
+
+
+### Comparison to ImmGen and MouseRNA Generic
+
+So above we had seurat clusteres which we then identified and those numbered clusters were compared to the reference data. Here we are going to create those same heatmaps but using the generic cluster names that we identify later on and merge (ie from Gran-1 and Gran-2 to just one large Granulocyte cluster)
+
+#### ImmGen
+
+```{r refernce dataset correlation immgen}
+# Generate the average expression for our clusters
+
+Idents(wbm) <- wbm$figure.labels
+
+av_wbm <- AverageExpression(wbm)$RNA
+
+m.ref.immgen <- ImmGenData()
+
+# m.ref.immgen$label.main
+
+m.ref.counts <- as.data.frame(assays(m.ref.immgen)$logcounts)
+
+m.ref.counts <- m.ref.counts[rownames(m.ref.counts) %in% rownames(av_wbm),]
+
+av_wbm <- av_wbm[rownames(av_wbm) %in% rownames(m.ref.counts),]
+
+m.ref.counts$gene <- rownames(m.ref.counts)
+
+av_wbm$gene <- rownames(av_wbm)
+
+mg <- merge(av_wbm, m.ref.counts, by = 'gene')
+
+rownames(mg) <- mg[,1]
+mg <- mg[,-1]
+
+# Restricting it to highly variable genes
+hv.genes <- VariableFeatures(wbm)
+
+summary(rownames(mg) %in% hv.genes)
+
+hv.mg <- mg[rownames(mg) %in% hv.genes,]
+
+temp.cor <- cor(hv.mg)
+
+key.columns <- colnames(temp.cor)[1:10]
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+temp.cor$Cluster1 <- rep(m.ref.immgen$label.fine, each = 10)
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2,
+#                             levels = 0:15)
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:10,]
+  temp <- temp[!duplicated(temp$Cluster1),][1,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+top3.hits <- top3.hits[-1,c(3,1,2)]
+
+colnames(top3.hits) <- c('Our Clusters','ImmGen Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`ImmGen Cluster`,]
+
+temp.cor$`ImmGen Clusters` <- factor(temp.cor$Cluster1, levels = unique(top3.hits$`ImmGen Cluster`))
+###
+temp.cor$cor.label <- ''
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$immgen.cluster2 <- gsub("\\s*\\([^\\)]+\\)\\s*$","",temp.cor$`ImmGen Clusters`)
+
+ggplot(temp.cor, aes(x = `ImmGen Clusters`, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  xlab('ImmGen Cluster Centroids') + ylab('Our Cluster Centroids') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('ImmGen comparison using highly variable genes') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+  
+ggsave('figures/v8/1sup.immgen.cluster.centroid.top.hit.pdf', device = 'pdf',
+       units = 'in', width = 6, height = 3, dpi = 600)
+
+immgen.cor <- temp.cor
+```
+
+#### Mouse RNA Comparison for supplement
+
+```{r refernce dataset correlation mus}
+# Generate the average expression for our clusters
+
+av_wbm <- AverageExpression(wbm)$RNA
+
+m.ref.immgen <- MouseRNAseqData()
+
+m.ref.counts <- as.data.frame(assays(m.ref.immgen)$logcounts)
+
+m.ref.counts <- m.ref.counts[rownames(m.ref.counts) %in% rownames(av_wbm),]
+
+av_wbm <- av_wbm[rownames(av_wbm) %in% rownames(m.ref.counts),]
+
+dim(av_wbm)
+
+m.ref.counts$gene <- rownames(m.ref.counts)
+
+av_wbm$gene <- rownames(av_wbm)
+
+mg <- merge(av_wbm, m.ref.counts, by = 'gene')
+
+rownames(mg) <- mg[,1]
+mg <- mg[,-1]
+
+# Restricting it to highly variable genes
+hv.genes <- VariableFeatures(wbm)
+
+summary(rownames(mg) %in% hv.genes)
+
+hv.mg <- mg[rownames(mg) %in% hv.genes,]
+
+temp.cor <- cor(hv.mg)
+
+key.columns <- colnames(temp.cor)[1:10]
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+temp.cor$Cluster1 <- rep(m.ref.immgen$label.fine, each = 10)
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2,
+#                             levels = 0:15)
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:11,]
+  temp <- temp[!duplicated(temp$Cluster1),][1,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+top3.hits <- top3.hits[-1,c(3,1,2)]
+
+colnames(top3.hits) <- c('Our Clusters','ImmGen Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`ImmGen Cluster`,]
+
+temp.cor$`ImmGen Clusters` <- factor(temp.cor$Cluster1, levels = unique(top3.hits$`ImmGen Cluster`))
+###
+temp.cor$cor.label <- ''
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$exp <- rep(1:67, each = 10)
+
+temp.cor$cluster1.plus.number <- paste0(temp.cor$Cluster1, '_', temp.cor$exp)
+
+temp.cor$keep <- 0
+
+for (i in temp.cor$cluster1.plus.number){
+  temp.df <- temp.cor[temp.cor$cluster1.plus.number == i,]
+  if (sum(temp.df$cor.label != '') != 0){
+    temp.cor[temp.cor$cluster1.plus.number == i,]$keep <- 1
+  }
+}
+
+temp.cor2 <- temp.cor[temp.cor$keep == 1,]
+
+m.samp.levels <- c('B cells_64','B cells_60','Macrophages_19','Granulocytes_8',
+                   'Granulocytes_10','Erythrocytes_3',
+                   'Granulocytes_16','Macrophages_31','T cells_50')
+
+temp.cor2$cluster1.plus.number2 <- factor(temp.cor2$cluster1.plus.number,
+                                          levels = m.samp.levels)
+
+ggplot(temp.cor2, aes(x = cluster1.plus.number2, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  xlab('MouseRNA Cluster Centroids') + ylab('Our Cluster Centroids') + 
+  ggtitle('MouseRNA comparison using highly variable genes') +
+  geom_text(aes(label = cor.label), size = 3) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+ggsave('figures/v8/1sup.mouseRNA.cluster.centroid.top.hit.pdf', device = 'pdf',
+       units = 'in', width = 5, height = 3, dpi = 600)
+
+mref.cor <- temp.cor2
+```
+
+#### Combined
+
+```{r}
+dim(immgen.cor)
+dim(mref.cor)
+
+m2 <- mref.cor[,c(9,3,2,5)]
+
+i2 <- immgen.cor[,c(4,3,2,5)]
+
+colnames(m2) <- c('ref.cluster', 'cluster','Correlation','label')
+colnames(i2) <- c('ref.cluster', 'cluster','Correlation','label')
+
+tc <- rbind(i2,m2)
+
+ggplot(tc, aes(x = ref.cluster, y = cluster, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  xlab('ImmGen Ref. MouseRNA Ref.') + ylab('Cluster Centroids') + 
+  geom_text(aes(label = label), size = 3) +
+  ggtitle('ImmGen comparison using highly variable genes') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+ggsave('figures/v8/1sup.both.ref.cluster.centroid.corr.pdf', device = 'pdf',
+       units = 'in', width = 6, height = 5, dpi = 600)
+
+```
+
+```{r}
+head(i2)
+```
+
+### Marker Genes
+
+#### MEP
+
+```{r}
+mep.genes <- c('Gata2','Gata1','Klf1','Casp3','Rhag')
+
+DotPlot(wbm, features = mep.genes) +
+  ggtitle('MEP Markers') +
+  ylab('Clusters') + xlab ('Genes') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, 
+                                   size = 6, family = 'sans'),
+        axis.text.y = element_text(size = 6, family = 'sans'),
+        text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/supp4.mep.markers.pdf', device = 'pdf',
+       height = 3, width = 3.5, units = 'in', dpi = 600)
+```
+
+#### MK
+
+```{r}
+mk.genes <- c('Itga2b','Pf4','Vwf','Gp6')
+DotPlot(wbm, features = mk.genes) +
+  ggtitle('MK Markers') +
+  ylab('Clusters') + xlab ('Genes') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, 
+                                   size = 6, family = 'sans'),
+        axis.text.y = element_text(size = 6, family = 'sans'),
+        text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/supp4.mk.markers.pdf', device = 'pdf',
+       height = 3, width = 3.5, units = 'in', dpi = 600)
+```
+
+#### B-cell Prog.
+
+```{r}
+bcellprog.genes <- c('Bst2','Ly6a')
+
+DotPlot(wbm, features = bcellprog.genes)  +
+  ylab('Clusters') + xlab ('Genes') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, 
+                                   size = 6, family = 'sans'),
+        axis.text.y = element_text(size = 6, family = 'sans'),
+        text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/supp4.bcell.prog.markers.pdf', device = 'pdf',
+       height = 2.5, width = 3, units = 'in', dpi = 600)
+
+```
+
+#### Monocyte/Macrophage
+
+(Article)[https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&cad=rja&uact=8&ved=2ahUKEwiDurj3tpTuAhXRXc0KHRj8BtAQFjAAegQIBRAC&url=https%3A%2F%2Fwww.ncbi.nlm.nih.gov%2Fpmc%2Farticles%2FPMC5354348%2F&usg=AOvVaw2WayCnvzrioH3q8lWHtkyO] showing Psap and Ctss being high. Apoe is also highly expressed in Mono/Macrophages
+
+```{r}
+mono.macro.genes <- c('Apoe','Cd68','Cd11b')
+
+DotPlot(wbm, features = mono.macro.genes) +
+  ylab('Clusters') + xlab ('Genes') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, 
+                                   size = 6, family = 'sans'),
+        axis.text.y = element_text(size = 6, family = 'sans'),
+        text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/supp4.mono.macro.markers.pdf', device = 'pdf',
+       height = 3, width = 4, units = 'in', dpi = 600)
+```
+
+```{r}
+# x <- FindMarkers(wbm, ident.1 = c(paste0('Mono/Macro-',1:2)),
+#                  only.pos = T,
+#                  logfc.threshold = log(2))
+# 
+# head(x,20)
+# 
+# DotPlot(wbm, features = rownames(x)[1:5])
+```
+
+#### Granulocytes
+
+```{r}
+gran.genes <- c('Ngp','Ltf','Retnlg')
+
+DotPlot(wbm, features = gran.genes) +
+  ylab('Clusters') + xlab ('Genes') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, 
+                                   size = 6, family = 'sans'),
+        axis.text.y = element_text(size = 6, family = 'sans'),
+        text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/supp4.gran.markers.pdf', device = 'pdf',
+       height = 3, width = 4, units = 'in', dpi = 600)
+
+```
+
+#### CMPs
+
+Kit^+^Sca1^-/low^Cd34^+^FcgR^low^
+
+```{r}
+cmp.genes <- c('Kit','Cd34','Fcgr1')
+DotPlot(wbm, features = cmp.genes) +
+  ylab('Clusters') + xlab ('Genes') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, 
+                                   size = 6, family = 'sans'),
+        axis.text.y = element_text(size = 6, family = 'sans'),
+        text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/supp4.cmp.markers.pdf', device = 'pdf',
+       height = 3, width = 4, units = 'in', dpi = 600)
+```
+
+#### Erythroid
+
+```{r}
+ery.markers <- c('Alas2','Gypa')
+DotPlot(wbm, features = ery.markers) +
+  ylab('Clusters') + xlab ('Genes') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, 
+                                   size = 6, family = 'sans'),
+        axis.text.y = element_text(size = 6, family = 'sans'),
+        text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/supp4.ery.markers.pdf', device = 'pdf',
+       height = 3, width = 4, units = 'in', dpi = 600)
+```
+
+#### B-cell
+
+```{r}
+bcell.markers <- c('Igkc','Ighm','Ly6d','Vpreb3')
+DotPlot(wbm, features = bcell.markers) +
+  ylab('Clusters') + xlab ('Genes') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, 
+                                   size = 6, family = 'sans'),
+        axis.text.y = element_text(size = 6, family = 'sans'),
+        text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/supp4.bcell.markers.pdf', device = 'pdf',
+       height = 3, width = 4, units = 'in', dpi = 600)
+```
+
+#### T-cell
+
+```{r}
+t.markers <- c('Ms4a4b','Trbc2','Il2rb')
+DotPlot(wbm, features = t.markers) +
+  ylab('Clusters') + xlab ('Genes') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, 
+                                   size = 6, family = 'sans'),
+        axis.text.y = element_text(size = 6, family = 'sans'),
+        text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/supp4.tcell.markers.pdf', device = 'pdf',
+       height = 3, width = 4, units = 'in', dpi = 600)
+```
+
+#### All
+
+```{r}
+DotPlot(wbm, features = c(gran.genes,cmp.genes,bcell.markers, bcellprog.genes ,
+                          t.markers, mono.macro.genes, ery.markers,rev(mep.genes),
+                          c('Fcgr3','Fcgr2b'), mk.genes)) +
+  ylab('Clusters') + xlab('Genes') + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, 
+                                   size = 6, family = 'sans'),
+        axis.text.y = element_text(size = 6, family = 'sans'),
+        text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/supp4.ALL.markers.pdf', device = 'pdf',
+       height = 3.5, width = 7, units = 'in', dpi = 600)
+```
+
+```{r}
+DotPlot(wbm, features = c(gran.genes,cmp.genes,bcell.markers, bcellprog.genes ,
+                          t.markers, mono.macro.genes, ery.markers,rev(mep.genes),
+                          c('Fcgr3','Fcgr2b'), mk.genes), cols = c('white','blue')) +
+  ylab('Clusters') + xlab('Genes') + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, 
+                                   size = 6, family = 'sans'),
+        axis.text.y = element_text(size = 6, family = 'sans'),
+        text = element_text(size = 6, family = 'sans'))
+```
+
+# Differential Expression
+
+## within Group: Enriched vs Non.Enriched generic labels
+
+```{r}
+wbm$Enrichment <- factor(wbm$Condition2,
+                         labels = c('Not Enriched','Not Enriched','Enriched','Enriched'))
+wbm$Experiment <- ifelse(wbm$Condition %in% c('enrMigr1','Migr1'),
+                         'Migr1','Mpl')
+
+# de.genes <- data.frame(p_val = numeric(),
+#                        avg_logFC = numeric(),
+#                        pct.1 = numeric(),
+#                        pct.2 = numeric(),
+#                        p_val_adj = numeric(),
+#                        cluster = character(),
+#                        Condition = character(),
+#                        gene = character())
+# 
+# 
+# 
+# clusters.that.have.log2fc.results <- unique(wbm$figure.labels)[!(unique(wbm$figure.labels)
+#                                                              %in% c('T-cell','MK-1',
+#                                                                     'Granulocyte',
+#                                                                     'Mono/Macro-1',
+#                                                                     'B-cell Prog.'))]
+# 
+# condition <- 'Mpl'
+# 
+# for (i in clusters.that.have.log2fc.results){
+#   print(i)
+# 
+#   temp.subset <- subset(wbm, figure.labels == i & Experiment == condition)
+# 
+#   x <- FindMarkers(temp.subset,
+#                    ident.1 = 'Enriched',
+#                    ident.2 = 'Not Enriched',
+#                    group.by = 'Enrichment',
+#                    test.use = 'MAST',
+#                    logfc.threshold = log(2),
+#                    only.pos = F)
+#   x$cluster <- i
+#   x$Condition <- condition
+#   x$gene <- rownames(x)
+#   x <- x[x$p_val_adj < 0.05,]
+#   x <- x[abs(x$avg_logFC) > log(2),]
+#   de.genes <- rbind(de.genes,x)
+# 
+# }
+# 
+# 
+# clusters.that.have.log2fc.results <- unique(wbm$figure.labels)[!(unique(wbm$figure.labels)
+#                                                              %in% c('MK-1',
+#                                                                     'Granulocyte',
+#                                                                     'B-cell Prog.'))]
+# 
+# condition <- 'Migr1'
+# 
+# for (i in clusters.that.have.log2fc.results){
+#   print(i)
+# 
+#   temp.subset <- subset(wbm, figure.labels == i & Experiment == condition)
+# 
+#   x <- FindMarkers(temp.subset,
+#                    ident.1 = 'Enriched',
+#                    ident.2 = 'Not Enriched',
+#                    group.by = 'Enrichment',
+#                    test.use = 'MAST',
+#                    logfc.threshold = log(2),
+#                    only.pos = F)
+#   x$cluster <- i
+#   x$Condition <- condition
+#   x$gene <- rownames(x)
+#   x <- x[x$p_val_adj < 0.05,]
+#   x <- x[abs(x$avg_logFC) > log(2),]
+#   de.genes <- rbind(de.genes,x)
+# 
+# }
+# 
+# 
+# dim(de.genes)
+# 
+# write.xlsx(x = de.genes,
+#            file = "data/v4/within.cluster.and.Experiment.DEGs.Enriched.vs.NotEnriched.GENERIC.LABEL.xlsx",
+#            sheetName='All-Clusters', append = T)
+
+de.genes <- read.xlsx('./data/v4/within.cluster.and.Experiment.DEGs.Enriched.vs.NotEnriched.GENERIC.LABEL.xlsx',
+                             sheetName = 'All-Clusters')
+
+table(de.genes$Condition, de.genes$cluster)
+```
+
+## with Group: Migr1 vs Mpl
+
+```{r}
+# de.genes <- data.frame(p_val = numeric(),
+#                        avg_logFC = numeric(),
+#                        pct.1 = numeric(),
+#                        pct.2 = numeric(),
+#                        p_val_adj = numeric(),
+#                        cluster = character(),
+#                        gene = character())
+# 
+# clusters.that.have.log2fc.results <- unique(wbm$figure.labels)[unique(wbm$figure.labels) != '']
+# 
+# for (i in clusters.that.have.log2fc.results){
+#   print(i)
+#   temp.subset <- subset(wbm, figure.labels == i)
+#   x <- FindMarkers(temp.subset,
+#                    ident.1 = 'Migr1',
+#                    ident.2 = 'Mpl',
+#                    group.by = 'Experiment',
+#                    test.use = 'MAST',
+#                    logfc.threshold = log(2),
+#                    only.pos = F)
+#   x$cluster <- i
+#   x$gene <- rownames(x)
+#   x <- x[x$p_val_adj < 0.05,]
+#   # x <- x[abs(x$avg_logFC) > log(2),]
+#   x <- x[order(x$avg_logFC, decreasing = T),]
+#   de.genes <- rbind(de.genes,x)
+# }
+# 
+# summary(as.factor(de.genes$cluster))
+# # table(rownames(de.genes))
+# 
+# out <- split(de.genes, f = de.genes$cluster)
+# 
+# library(xlsx)
+# 
+# for (i in 1:length(out)){
+#   print(i)
+#   print(unique(out[[i]]$cluster))
+# }
+# 
+# 
+# 
+# for (i in 1:length(out)){
+#   print(i)
+#   temp.name <- unique(out[[i]]$cluster)
+#   temp.name <- gsub('/','_',temp.name)
+#   print(temp.name)
+#   write.xlsx(x = out[[i]], file = "data/v4/within.cluster.DEGs.Migr1.vs.Mpl.LARGE.GENERIC.CLUSTERS.xlsx",
+#              sheetName=temp.name, append = T)
+# }
+# write.xlsx(x = de.genes, file = "data/v4/within.cluster.DEGs.Migr1.vs.Mpl.LARGE.GENERIC.CLUSTERS.xlsx",
+#            sheetName='All-Clusters', append = T)
+
+de.genes <- read.xlsx('./data/v4/within.cluster.DEGs.Migr1.vs.Mpl.LARGE.GENERIC.CLUSTERS.xlsx',
+                      sheetName = 'All-Clusters')
+summary(as.factor(de.genes$cluster))
+```
+
+
+
+
+# Mono/Macro Tail/Sections
+
+```{r}
+DimPlot(subset(wbm, figure.labels == 'Mono/Macro'), group.by = 'seurat_clusters')
+```
+ 
+```{r}
+temp.subset <- subset(wbm, figure.labels == 'Mono/Macro')
+
+temp.subset$mono.macro <- ifelse(temp.subset$UMAP1 > 6.5, 1,
+                                 ifelse(temp.subset$UMAP1 < -5, 2,3))
+DimPlot(temp.subset, group.by = 'mono.macro')
+
+wbm$mono.macro <- ifelse(wbm$figure.labels != 'Mono/Macro', 
+                         as.character(wbm$figure.labels),
+                         ifelse(wbm$UMAP1 < -5, 'Mono/Macro-1','Mono/Macro-2'))
+
+DimPlot(wbm, group.by = 'mono.macro')
+
+x <- FindMarkers(wbm, 
+                 ident.1 = 'Mono/Macro-1',
+                 only.pos = T,
+                 group.by = 'mono.macro',
+                 logfc.threshold = log(2))
+
+head(x,20)
+
+top.10.hits <- rownames(x)
+
+for(i in top.10.hits){
+        print(i)
+        print(VlnPlot(wbm, features = i, group.by = 'mono.macro', pt.size = 0))
+}
+
+x.to.gran <- FindMarkers(wbm,
+                         ident.1 = 'Mono/Macro-1',
+                         ident.2 = 'Granulocyte',
+                         group.by = 'mono.macro',
+                         only.pos = T,
+                         logfc.threshold = log(2))
+x.to.gran
+
+x.to.mono <- FindMarkers(wbm,
+                         ident.1 = 'Mono/Macro-1',
+                         ident.2 = 'Mono/Macro-2',
+                         group.by = 'mono.macro',
+                         only.pos = T,
+                         logfc.threshold = log(2))
+
+x.to.mono
+
+mk.to.mono  <- FindMarkers(wbm,
+                         ident.1 = 'Mono/Macro-1',
+                         ident.2 = 'MK-1',
+                         group.by = 'mono.macro',
+                         logfc.threshold = log(2))
+
+mk.to.mono <- mk.to.mono[mk.to.mono$p_val_adj < 0.05,]
+mk.to.mono
+
+mk1.to.all <- FindMarkers(wbm,
+                         ident.1 = 'MK-1',
+                         group.by = 'mono.macro',
+                         only.pos = T,
+                         logfc.threshold = log(2))
+mk1.to.all
+```
+ 
+```{r}
+# Generate the average expression for our clusters
+
+Idents(wbm) <- wbm$mono.macro
+
+av_wbm <- AverageExpression(wbm)$RNA
+
+m.ref.immgen <- ImmGenData()
+
+# m.ref.immgen$label.main
+
+m.ref.counts <- as.data.frame(assays(m.ref.immgen)$logcounts)
+
+m.ref.counts <- m.ref.counts[rownames(m.ref.counts) %in% rownames(av_wbm),]
+
+av_wbm <- av_wbm[rownames(av_wbm) %in% rownames(m.ref.counts),]
+
+m.ref.counts$gene <- rownames(m.ref.counts)
+
+av_wbm$gene <- rownames(av_wbm)
+
+mg <- merge(av_wbm, m.ref.counts, by = 'gene')
+
+rownames(mg) <- mg[,1]
+mg <- mg[,-1]
+
+# Restricting it to highly variable genes
+hv.genes <- VariableFeatures(wbm)
+
+summary(rownames(mg) %in% hv.genes)
+
+hv.mg <- mg[rownames(mg) %in% hv.genes,]
+
+temp.cor <- cor(hv.mg)
+
+key.columns <- colnames(temp.cor)[1:12]
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+temp.cor$Cluster1 <- rep(m.ref.immgen$label.fine, each = 12)
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2,
+#                             levels = 0:15)
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:12,]
+  temp <- temp[!duplicated(temp$Cluster1),][1,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+top3.hits <- top3.hits[-1,c(3,1,2)]
+
+colnames(top3.hits) <- c('Our Clusters','ImmGen Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`ImmGen Cluster`,]
+
+temp.cor$`ImmGen Clusters` <- factor(temp.cor$Cluster1, levels = unique(top3.hits$`ImmGen Cluster`))
+###
+temp.cor$cor.label <- ''
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$immgen.cluster2 <- gsub("\\s*\\([^\\)]+\\)\\s*$","",temp.cor$`ImmGen Clusters`)
+
+ggplot(temp.cor, aes(x = `ImmGen Clusters`, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  xlab('ImmGen Cluster Centroids') + ylab('Our Cluster Centroids') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('ImmGen comparison using highly variable genes') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+```
+
+# Correlation to Each Other
+
+## HV Genes
+
+```{r}
+wbm2 <- wbm
+Idents(wbm2) <- wbm2$figure.labels3
+mg <- AverageExpression(wbm2)$RNA
+
+hv.genes <- VariableFeatures(wbm)
+
+summary(rownames(mg) %in% hv.genes)
+
+hv.mg <- mg[rownames(mg) %in% hv.genes,]
+
+temp.cor <- cor(hv.mg)
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor$Cluster1 <- rownames(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster2, Correlation, factor_key = F, - Cluster1)
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2, levels = levels(temp.cor$Cluster2))
+
+ggplot(temp.cor, aes(x = Cluster1, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', 
+                       high = 'red', midpoint = .5) +
+  xlab('') + ylab('') + 
+  ggtitle('Using highly variable genes') +
+  theme_bw() +
+  geom_text(aes(label = round(Correlation,2)), size = 2) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+ggsave('./figures/v8/supp.cluster.correlation.hv.genes.pdf', 
+       device = 'pdf',
+       height = 3, width = 5, units = 'in', dpi = 600)
+```
+
+## All Genes
+
+```{r}
+hv.mg <- AverageExpression(wbm)$RNA
+
+temp.cor <- cor(hv.mg)
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor$Cluster1 <- rownames(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster2, Correlation, factor_key = F, - Cluster1)
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2, levels = levels(temp.cor$Cluster2))
+
+ggplot(temp.cor, aes(x = Cluster1, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', 
+                       high = 'red', midpoint = .5) +
+  xlab('') + ylab('') + 
+  # geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('Using all genes') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+```
+
+## HD Genes
+
+```{r}
+# de.genes <- data.frame(p_val = numeric(),
+#                        avg_logFC = numeric(),
+#                        pct.1 = numeric(),
+#                        pct.2 = numeric(),
+#                        p_val_adj = numeric(),
+#                        cluster = character(),
+#                        gene = character())
+# 
+# Idents(wbm) <- wbm$mono.macro
+# for (i in unique(wbm$mono.macro)){
+#   print(i)
+#   x <- FindMarkers(wbm,
+#                    ident.1 = i,
+#                    test.use = 'MAST',
+#                    logfc.threshold = log(2),
+#                    only.pos = F)
+#   x$cluster <- i
+#   x$gene <- rownames(x)
+#   x <- x[x$p_val_adj < 0.05,]
+#   x <- x[abs(x$avg_logFC) > log(2),]
+#   de.genes <- rbind(de.genes,x)
+# }
+# 
+# summary(as.factor(de.genes$cluster))
+# # table(rownames(de.genes))
+# 
+# out <- split(de.genes, f = de.genes$cluster)
+# 
+# for (i in 1:length(out)){
+#   print(i)
+#   temp.name <- unique(out[[i]]$cluster)
+#   temp.name <- gsub('/','_',temp.name)
+#   print(temp.name)
+#   write.xlsx(x = out[[i]], file = "data/v4/cluster.markers.xlsx",
+#              sheetName=temp.name, append = T)
+# }
+# write.xlsx(x = de.genes, file = "data/v4/cluster.markers.xlsx",
+#            sheetName='All-Clusters', append = T)
+
+hd.genes <- read.xlsx('./data/v4/cluster.markers.xlsx',
+                      sheetName = 'All-Clusters')
+
+hd.genes <- unique(hd.genes$gene)
+length(hd.genes)
+```
+
+
+```{r}
+mg <- AverageExpression(wbm)$RNA
+
+summary(rownames(mg) %in% hd.genes)
+
+hv.mg <- mg[rownames(mg) %in% hd.genes,]
+
+temp.cor <- cor(hv.mg)
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor$Cluster1 <- rownames(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster2, Correlation, factor_key = F, - Cluster1)
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2, levels = levels(temp.cor$Cluster2))
+
+ggplot(temp.cor, aes(x = Cluster1, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', 
+                       high = 'red', midpoint = .5) +
+  xlab('Cluster1') + ylab('Cluster2') + 
+  geom_text(aes(label = round(Correlation,2)), size = 2.5) +
+  ggtitle('Using highly differentiating genes') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+ggsave('./figures/v8/supp.cluster.correlation.hd.genes.pdf', 
+       device = 'pdf',
+       height = 3, width = 5, units = 'in', dpi = 600)
+
+```
+
+## HD + HV Genes
+
+```{r}
+mg <- AverageExpression(wbm)$RNA
+
+summary(rownames(mg) %in% c(hv.genes,hd.genes))
+
+hv.mg <- mg[rownames(mg) %in% c(hv.genes,hd.genes),]
+
+temp.cor <- cor(hv.mg)
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor$Cluster1 <- rownames(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster2, Correlation, factor_key = F, - Cluster1)
+
+ggplot(temp.cor, aes(x = Cluster1, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', 
+                       high = 'red', midpoint = .5) +
+  xlab('Cluster1') + ylab('Cluster2') + 
+  geom_text(aes(label = round(Correlation,3)), size = 2) +
+  ggtitle('Using HD + HV genes') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+ggsave('./figures/v8/supp.cluster.correlation.hv.hd.genes.pdf', 
+       device = 'pdf',
+       height = 3, width = 5, units = 'in', dpi = 600)
+
+```
+
+
+
+
+# Differentiation Mono/Macro, MK and MEP splits
+
+## Mono/Macro
+
+```{r}
+wbm$mono.macro <- ifelse(wbm$figure.labels %in% c(paste0('Mono/Macro-',1:2)),
+                         as.character(wbm$figure.labels),'')
+DimPlot(wbm, group.by = 'mono.macro', 
+        cols = c('lightgrey',"#E69F00", "#56B4E9"))
+```
+
+```{r}
+temp.subset <- subset(wbm, figure.labels %in% c(paste0('Mono/Macro-',1:2)))
+
+# diff.markers <- FindMarkers(temp.subset,
+#                             ident.1 = 'Mono/Macro-1',
+#                             ident.2 = 'Mono/Macro-2',
+#                             test.use = 'MAST',
+#                             logfc.threshold = log(2))
+# 
+# diff.markers <- diff.markers[diff.markers$p_val_adj < 0.05,]
+# diff.markers <- diff.markers[order(diff.markers$avg_logFC, decreasing = T),]
+# 
+# diff.markers
+# 
+# write.xlsx(x = diff.markers, 
+#            file = "data/v4/split.cluster.DEGs.xlsx",
+#              sheetName='Mono_Macro', append = T)
+```
+
+
+```{r}
+gran.genes <- c('Ngp','Ltf')
+
+VlnPlot(temp.subset, features = gran.genes) #+
+#   ylab('Clusters') + xlab ('Genes') +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1, 
+#                                    size = 6, family = 'sans'),
+#         axis.text.y = element_text(size = 6, family = 'sans'),
+#         text = element_text(size = 6, family = 'sans'))
+
+ggsave('./figures/v8/supp7.split.mono.markers.pdf', device = 'pdf',
+       height = 3, width = 4, units = 'in', dpi = 600)
+```
+
+## MK and MEP-1 in UMAP
+
+```{r}
+
+wbm$mep <- ifelse(wbm$figure.labels %in% c(paste0(c('MK-','MEP-'),c(1,1,2,2))),
+                         as.character(wbm$figure.labels),' ')
+
+temp.subset <- subset(wbm, Condition2 %in% c('Mpl','Migr1'))
+
+DimPlot(temp.subset, group.by = 'mep', label = T, pt.size = 0.001,
+        cols = c('lightgrey',"limegreen", "#D55E00",'red','purple')) +
+  theme_bw() + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
+        title = element_blank()) +
+  NoLegend()
+
+ggsave('./figures/v8/4e.MEP.MK.umap.pdf', device = 'pdf',
+       height = 2.5, width = 2.5, units = 'in', dpi = 600)
+```
+
+
+## MK
+
+```{r}
+wbm$mk <- ifelse(wbm$figure.labels %in% c(paste0('MK-',1:2)),
+                         as.character(wbm$figure.labels),' ')
+DimPlot(wbm, group.by = 'mk', label = T, pt.size = 0.001,
+        cols = c('lightgrey',"red", "purple")) +
+  theme_bw() + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
+        title = element_blank()) +
+  NoLegend()
+
+ggsave('./figures/v8/4c.MK.umap.pdf', device = 'pdf',
+       height = 2.5, width = 2.5, units = 'in', dpi = 600)
+```
+
+```{r}
+temp.subset <- subset(wbm, figure.labels %in% c(paste0('MK-',1:2)))
+
+diff.markers <- FindMarkers(temp.subset,
+                            ident.1 = 'MK-1',
+                            ident.2 = 'MK-2',
+                            test.use = 'MAST',
+                            logfc.threshold = log(2))
+
+diff.markers <- diff.markers[diff.markers$p_val_adj < 0.05,]
+diff.markers <- diff.markers[order(diff.markers$avg_logFC, decreasing = T),]
+
+diff.markers
+
+write.xlsx(x = diff.markers, 
+           file = "data/v4/split.cluster.DEGs.xlsx",
+             sheetName='MK', append = T)
+
+```
+
+```{r}
+VlnPlot(temp.subset, features = mk.genes, pt.size = 0)
+
+VlnPlot(temp.subset, features = c('Ngp','Retnlg'))
+```
+
+```{r}
+VlnPlot(temp.subset, features = mk.genes[1:2], ncol = 2) 
+
+ggsave('./figures/v8/supp6.split.mk.markers1.pdf', device = 'pdf',
+       height = 3, width = 4, units = 'in', dpi = 600)
+mk.genes <- c('Itga2b','Pf4','Vwf','Gp6')
+for(i in mk.genes){
+  print(VlnPlot(temp.subset, features = i, cols = c('red','purple'),
+            ncol = 2, y.max = 6.5, pt.size = 0) + xlab('') + ylab('') +
+    NoLegend() + ggtitle(i) +
+    theme(axis.text.x = element_blank(), 
+          axis.text.y = element_blank()))
+  ggsave(paste0('./figures/v8/supp6.split.mk.markers.',i,'.pdf'), device = 'pdf',
+         height = 3, width = 1.5, units = 'in', dpi = 600)
+}
+
+ggsave('./figures/v8/supp6.split.mk.markers.with.labels.pdf', device = 'pdf',
+       height = 3, width = 3, units = 'in', dpi = 600)
+
+
+VlnPlot(temp.subset, features = i, cols = c('red','purple'),
+          ncol = 2, y.max = 6.5) + xlab('') + ylab('') +
+  NoLegend() +
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank())
+```
+
+### Barplots of Counts
+
+```{r}
+tmp.table <- as.data.frame(table(Idents(wbm), wbm$Condition3))
+tmp.table$State_totals <- NA
+
+
+for (i in unique(tmp.table$Var2)){
+  print(i)
+  tmp.table[tmp.table$Var2 == i,]$State_totals <- sum(tmp.table[tmp.table$Var2 == i,]$Freq)
+}
+
+tmp.table$Perc <- tmp.table$Freq / tmp.table$State_totals
+
+tmp.cnts <- tmp.table[tmp.table$Var1 %in% c('MK-1','MK-2') & 
+                        tmp.table$Var2 %in% c('MigR1','MPLW515L'),]
+
+colnames(tmp.cnts)[1:2] <- c('Cluster','State')
+
+ggplot(tmp.cnts, aes(x = Cluster, y = Perc, fill = State, label = Freq)) +
+  geom_bar(position = 'dodge', stat = 'identity') +
+  scale_fill_manual(values = c('blue','red')) +
+  theme_bw() +
+  ylab('Percentage of Cells per State') +
+  NoLegend() +
+  ylim(0,.006) +
+  geom_text(position = position_dodge(width = .9), vjust = -.25, size = 3) +
+  theme(text = element_text(size = 8, family = 'sans'))
+
+
+ggsave('./figures/v8/4d.non.enriched.MK.quant.pdf', device = 'pdf',
+       height = 2.5, width = 2, units = 'in', dpi = 600)
+```
+
+### Mature Markers
+
+```{r}
+mature.mk.genes <- c('Gp9', 'Gp1b','Gp1a')
+
+VlnPlot(temp.subset, features = mature.mk.genes, split.plot = T, split.by =  'Condition')
+
+VlnPlot(temp.subset, features = c('Mcpt8','Prss34'))
+
+DotPlot(wbm, features = c('S100a8','S100a9'))
+```
+
+### GO Term Analysis
+
+```{r}
+up.process <- c('leukocyte migration','cell chemotaxis','inflammatory response',
+                'cell death')
+up.correct_pvalue <- c(1.214e-06, 7.15791e-06, 0.0005740896, 0.002660162)
+
+up <- rep('MK-1',4)
+
+down.process <- rev(c('platelet activation', 'hemostasis','coagulation','platelet aggregation'))
+
+down.correct_pvalue <- rev(c(1.7642e-07,8.30134e-07, 8.69938e-07, 2.85106e-05))
+
+down <- rep('MK-2',4)
+
+go <- data.frame(process = c(up.process, down.process),
+                 correct_pvalue = c(up.correct_pvalue, down.correct_pvalue),
+                 direction = c(up,down))
+go$correct_pvalue.log <- -log10(go$correct_pvalue)
+go$pvalue <- ifelse(go$direction == 'MK-1', go$correct_pvalue.log, -1 * go$correct_pvalue.log)
+
+go$process <- factor(go$process, levels = rev(unique(go$process)))
+
+go$`Enriched in:` <- go$direction
+
+ggplot(go, aes(y = pvalue, x = process, fill = `Enriched in:`)) + 
+  geom_bar(stat = 'identity') + coord_flip() + 
+  # ggtitle('MK-1 vs MK-2') +
+  scale_fill_manual(values = c('red','purple')) +
+  ylab('-log10 Corrected P-Value') + xlab ('') +
+  geom_hline(yintercept = c(-log10(0.05),log10(0.05)), linetype = 2,
+             color = 'black', show.legend = T, size = .5) +
+  geom_hline(yintercept = 0, linetype = 1, color = 'black',
+             show.legend = T, size = .5) +
+  theme_bw() + NoLegend() +
+  theme(text=element_text(size = 8, family = 'sans'),
+         axis.text = element_text(size = 6.5)) 
+
+ggsave('./figures/v8/1h.split.mk.GOTERM.pdf', device = 'pdf',
+       height = 1.75, width = 3, units = 'in', dpi = 600)
+```
+
+## MEP
+
+```{r}
+temp.subset <- subset(wbm, figure.labels %in% c('MEP-1','MEP-2'))
+
+mep.markers <- c('Mcpt8','Prss34','Klf1','Rhag')
+
+for(i in mep.markers){
+  print(VlnPlot(temp.subset, features = i, cols = c("limegreen", "#D55E00"),
+            ncol = 2, y.max = 7, pt.size = 0) + xlab('') + ylab('') +
+    NoLegend() + ggtitle(i) +
+    theme(axis.text.x = element_blank(), 
+          axis.text.y = element_blank()))
+  ggsave(paste0('./figures/v8/supp6.split.mep.markers.',i,'.pdf'), device = 'pdf',
+         height = 3, width = 1.5, units = 'in', dpi = 600)
+}
+
+VlnPlot(temp.subset, features = 'Mcpt8', cols = c("limegreen", "#D55E00"),
+            ncol = 2, y.max = 7, pt.size = 0.1) + xlab('') +
+    ggtitle(i) + theme_bw()
+
+ggsave('./figures/v8/supp6.split.mep.markers.with.labels.pdf', device = 'pdf',
+       height = 3, width = 3, units = 'in', dpi = 600)
+```
+
+
+```{r}
+wbm$mep <- ifelse(wbm$figure.labels %in% c(paste0('MEP-',1:2)),
+                         as.character(wbm$figure.labels),' ')
+
+DimPlot(wbm, group.by = 'mep', label = T, pt.size = 0.001,
+        cols = c('lightgrey',"limegreen", "#D55E00")) +
+  theme_bw() + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
+        title = element_blank()) +
+  NoLegend()
+
+ggsave('./figures/v8/4e.MEP.umap.pdf', device = 'pdf',
+       height = 2.5, width = 2.5, units = 'in', dpi = 600)
+```
+
+### Barplots of Counts
+
+```{r}
+tmp.table <- as.data.frame(table(Idents(wbm), wbm$Condition3))
+tmp.table$State_totals <- NA
+
+
+for (i in unique(tmp.table$Var2)){
+  print(i)
+  tmp.table[tmp.table$Var2 == i,]$State_totals <- sum(tmp.table[tmp.table$Var2 == i,]$Freq)
+}
+
+tmp.table$Perc <- tmp.table$Freq / tmp.table$State_totals
+
+tmp.cnts <- tmp.table[tmp.table$Var1 %in% c('MEP-1','MEP-2') & 
+                        tmp.table$Var2 %in% c('MigR1','MPLW515L'),]
+
+colnames(tmp.cnts)[1:2] <- c('Cluster','State')
+
+ggplot(tmp.cnts, aes(x = Cluster, y = Perc, fill = State, label = Freq)) +
+  geom_bar(position = 'dodge', stat = 'identity') +
+  scale_fill_manual(values = c('blue','red')) +
+  theme_bw() +
+  ylab('Percentage of Cells per State') +
+  NoLegend() +
+  ylim(0,.032) +
+  geom_text(position = position_dodge(width = .9), vjust = -.25, size = 3) +
+  theme(text = element_text(size = 8, family = 'sans'))
+
+ggsave('./figures/v8/4f.non.enriched.MEP.quant.pdf', device = 'pdf',
+       height = 2.5, width = 2, units = 'in', dpi = 600)
+```
+
+
+```{r}
+remotes::install_github("coolbutuseless/ggpattern")
+library(ggpattern)
+
+ggplot(temp.cnts) +
+  geom_bar_pattern(aes(pattern = state))
+
+ggplot(tmp.cnts, aes(x = Cluster, y = Perc, fill = Cluster, label = Freq)) +
+  geom_bar_pattern(position = 'dodge', stat = 'identity', 
+                   aes(pattern = State,
+                       pattern_fill = Cluster)) +
+  scale_fill_manual(values = c('blue','red')) +
+  theme_bw() +
+  ylab('Percentage of Cells per State') +
+  NoLegend() +
+  ylim(0,.032) +
+  # geom_text(position = position_dodge(width = 1), vjust = -.25, size = 3) +
+  theme(text = element_text(size = 8, family = 'sans'))
+
+?geom_col_pattern()
+```
+
+
+```{r}
+wbm$mep <- ifelse(wbm$figure.labels %in% c(paste0('MEP-',1:2)),
+                         as.character(wbm$figure.labels),' ')
+DimPlot(wbm, group.by = 'mep', label = T,
+        cols = c('lightgrey',"limegreen", "purple")) + NoLegend()
+```
+
+```{r}
+temp.subset <- subset(wbm, figure.labels %in% c(paste0('MEP-',1:2)))
+
+diff.markers <- FindMarkers(temp.subset,
+                            ident.1 = 'MEP-1',
+                            ident.2 = 'MEP-2',
+                            test.use = 'MAST',
+                            logfc.threshold = log(2))
+
+diff.markers <- diff.markers[diff.markers$p_val_adj < 0.05,]
+diff.markers <- diff.markers[order(diff.markers$avg_logFC, decreasing = T),]
+
+diff.markers
+
+write.xlsx(x = diff.markers, 
+           file = "data/v4/split.cluster.DEGs.xlsx",
+             sheetName='MEP', append = T)
+
+```
+
+
+```{r}
+VlnPlot(temp.subset, features = c('Mcpt8','Prss34'), ncol = 2)
+
+
+ggsave('./figures/v8/supp5.split.mep.markers1.pdf', device = 'pdf',
+       height = 3, width = 4, units = 'in', dpi = 600)
+
+VlnPlot(temp.subset, features = c('Klf1','Rhag'), ncol = 2)
+
+
+ggsave('./figures/v8/supp5.split.mep.markers2.pdf', device = 'pdf',
+       height = 3, width = 4, units = 'in', dpi = 600)
+```
+
+### GO Term Analysis
+
+```{r}
+up.process <- c('leukocyte migration','inflammatory response','cell death',
+                'cell chemotaxis')
+up.correct_pvalue <- c(3.145e-27, 1.36e-26, 5.769e-19, 8.322e-17)
+
+up <- rep('MEP-1',4)
+
+down.process <- rev(c('metabolic process', 'organelle organization',
+                      'RNA processing','cell cycle'))
+
+down.correct_pvalue <- rev(c(8.6509e-42,9.228e-25,6.074e-24,1.286e-15))
+
+down <- rep('MEP-2',4)
+
+go <- data.frame(process = c(up.process, down.process),
+                 correct_pvalue = c(up.correct_pvalue, down.correct_pvalue),
+                 direction = c(up,down))
+go$correct_pvalue.log <- -log10(go$correct_pvalue)
+go$pvalue <- ifelse(go$direction == 'MEP-1', go$correct_pvalue.log, -1 * go$correct_pvalue.log)
+
+go$process <- factor(go$process, levels = rev(unique(go$process)))
+
+go$`Enriched in:` <- go$direction
+
+ggplot(go, aes(y = pvalue, x = process, fill = `Enriched in:`)) + 
+  geom_bar(stat = 'identity') + coord_flip() + 
+  # ggtitle('MkP vs MEP')+
+  scale_fill_manual(values = c('limegreen','#D55E00')) +
+  ylab('-log10 Corrected P-Value') + xlab ('') +
+  geom_hline(yintercept = c(-log10(0.05),log10(0.05)), linetype = 2,
+             color = 'black', show.legend = T, size = .5) +
+  geom_hline(yintercept = 0, linetype = 1, color = 'black',
+             show.legend = T, size = .5) +
+  theme_bw() + NoLegend() +
+  theme(text=element_text(size = 8, family = 'sans'),
+         axis.text = element_text(size = 6.5)) 
+
+ggsave('./figures/v8/1f.MEP.GOTERM.pdf', device = 'pdf',
+       height = 1.75, width = 3, units = 'in', dpi = 600)
+```
+
+
+```{r}
+# list_ <- unique(wbm$figure.labels)[!(unique(wbm$figure.labels)
+# %in%c('B-cell','B-cell Prog.','Granulocyte','T-cell'))]
+# list_
+# x <- subset(wbm, figure.labels %in% list_)
+# table(x$figure.labels)
+# 
+# library(monocle)
+# 
+# data <- as(as.matrix(x@assays$RNA@data), 'sparseMatrix')
+# pd <- new('AnnotatedDataFrame', data = x@meta.data)
+# fData <- data.frame(gene_short_name = row.names(data), row.names = row.names(data))
+# fd <- new('AnnotatedDataFrame', data = fData)
+# 
+# cds <- newCellDataSet(data,
+#                               phenoData = pd,
+#                               featureData = fd,
+#                               lowerDetectionLimit = 0.5,
+#                               expressionFamily = negbinomial.size())
+# 
+# 
+# cds <- estimateSizeFactors(cds)
+# 
+# cds <- estimateDispersions(cds)
+# 
+# cds <- detectGenes(cds, min_expr = 0.1)
+# 
+# expressed_genes <- rownames(subset(fData(cds), num_cells_expressed >= 10))
+# 
+# fData(cds)$use_for_ordering <- fData(cds)$num_cells_expressed > 0.05 * ncol (cds)
+# 
+# cds <- reduceDimension(cds, reduction_method = 'DDRTree')
+# 
+# cds <- orderCells(cds)
+# 
+# plot_cell_trajectory(cds, color_by = 'figure.labels')
+# ?plot_cell_trajectory
+# plot_cell_trajectory(cds, color_by = 'Pseudotime')
+# plot_cell_trajectory(cds, color_by = 'State')
+```
+
+# Are MK-1 and MEP-1 in the Nbeal aged-control
+
+```{r}
+nbeal <- readRDS('./data/v2/lesser.combined.integrated.NAMED.rds')
+
+summary(as.factor(nbeal$orig.ident))
+mk1.cells
+head(colnames(nbeal))
+DimPlot(nbeal, label = F, cells.highlight = paste0('Mpl_',mk1.cells))
+
+DimPlot(nbeal, label = F, cells.highlight = paste0('Mpl_',mep1.cells))
+
+table(nbeal$orig.ident, Idents(nbeal))
+```
+
+# MEP-1 Subclustering
+
+```{r}
+mep1 <- subset(wbm, figure.labels == 'MEP-1')
+
+mep1 <- FindVariableFeatures(mep1, selection.method = 'vst', nfeatures = 2000)
+
+mep1 <- RunPCA(mep1, features = VariableFeatures(mep1))
+
+ElbowPlot(mep1)
+
+mep1 <- FindNeighbors(mep1, dims = 1:10)
+
+for (i in seq(0,1,by = .1)){
+  mep1 <- FindClusters(mep1, resolution = i, verbose = F)
+}
+
+mep1 <- RunUMAP(mep1, dims = 1:10)
+head(mep1@meta.data)
+DimPlot(mep1, group.by = 'RNA_snn_res.0.4')
+Idents(mep1) <- mep1$RNA_snn_res.0.4
+
+wbm$mep1.subcluster <- NA
+
+temp.subset <- subset(wbm, figure.labels == 'MEP-1')
+
+dim(temp.subset)
+
+summary(colnames(temp.subset) == colnames(mep1))
+
+temp.subset$mep1.subcluster <- Idents(mep1)
+
+DimPlot(temp.subset, group.by = 'mep1.subcluster')
+
+table(temp.subset$Condition3, temp.subset$mep1.subcluster)
+
+DimPlot(mep1, label = T, split.by = 'Condition3')
+
+VlnPlot(mep1, features = c('Pf4','Gp9','Ppbp'))
+```
+
+## DE Genes
+
+```{r}
+# de.genes <- data.frame(p_val = numeric(),
+#                        avg_logFC = numeric(),
+#                        pct.1 = numeric(),
+#                        pct.2 = numeric(),
+#                        p_val_adj = numeric(),
+#                        cluster = character(),
+#                        gene = character())
+# 
+# 
+# for (i in levels(Idents(mep1))){
+#   print(i)
+#   
+#   x <- FindMarkers(mep1,
+#                    ident.1 = i,
+#                    test.use = 'MAST',
+#                    logfc.threshold = log(2),
+#                    only.pos = T)
+#   x$cluster <- i
+#   x$gene <- rownames(x)
+#   x <- x[x$p_val_adj < 0.05,]
+#   x <- x[abs(x$avg_logFC) > log(2),]
+#   de.genes <- rbind(de.genes,x)
+# }
+# 
+# summary(as.factor(de.genes$cluster))
+# # table(rownames(de.genes))
+# 
+# out <- split(de.genes, f = de.genes$cluster)
+# 
+# library(xlsx)
+# 
+# for (i in 1:length(out)){
+#   print(i)
+#   print(unique(out[[i]]$cluster))
+# }
+# 
+# 
+# 
+# for (i in 1:length(out)){
+#   print(i)
+#   temp.name <- unique(out[[i]]$cluster)
+#   temp.name <- gsub('/','_',temp.name)
+#   print(temp.name)
+#   write.xlsx(x = out[[i]], file = "data/v4/MEP1.between.cluster.DEGs.xlsx",
+#              sheetName=temp.name, append = T)
+# }
+# 
+# write.xlsx(x = de.genes, file = "data/v4/MEP1.between.cluster.DEGs.xlsx",
+#            sheetName='All-Clusters', append = T)
+
+de.genes <- read.xlsx('./data/v4/MEP1.between.cluster.DEGs.xlsx',
+                      sheetName = 'All-Clusters')
+de.genes
+
+```
+
+Cluster 3 is the MK leaning cluster
+
+```{r}
+mkp.genes <- c('Itga2b','Fcgr3','Fcgr2b','Cd34')
+
+for (i in mkp.genes){
+  print(VlnPlot(wbm, features = i))
+}
+
+FeaturePlot(wbm, features = mkp.genes)
+```
+
+```{r}
+VlnPlot(wbm, features = 'nCount_RNA', group.by = 'figure.labels2', pt.size = 0)
+VlnPlot(wbm, features = 'nFeature_RNA', group.by = 'figure.labels2', pt.size = 0)
+VlnPlot(wbm, features = 'percent.mt', group.by = 'figure.labels2', pt.size = 0)
+
+DotPlot(wbm, features = 'Mki67', cols = c('white','blue'))
+```
+
+# MK-1 Doublets?
+
+```{r}
+DimPlot(wbm, group.by = 'figure.labels2', label = T, repel = T)
+
+VlnPlot(wbm, features = 'nCount_RNA', group.by = 'figure.labels2', pt.size = 0)
+VlnPlot(wbm, features = 'nFeature_RNA', group.by = 'figure.labels2', pt.size = 0)
+VlnPlot(wbm, features = 'percent.mt', group.by = 'figure.labels2', pt.size = 0)
+```
+
+Doesn't look like it.
+
+## Using scdx
+
+```{r}
+library(scds)
+
+counts <- wbm@assays$RNA@counts
+sce <- SingleCellExperiment(list(counts = counts))
+sce = cxds(sce, retRes = T)
+sce = bcds(sce,retRes = TRUE,verb=TRUE)
+sce = cxds_bcds_hybrid(sce)
+
+boxplot(sce$cxds_score)
+boxplot(sce$bcds_score)
+boxplot(sce$hybrid_score)
+
+summary(names(sce$cxds_score) == rownames(wbm@meta.data))
+
+wbm$cxds_score <- sce$cxds_score
+wbm$bcds_score <- sce$bcds_score
+wbm$hybrid_score <- sce$hybrid_score
+
+```
+
+```{r}
+FeaturePlot(wbm, features = c('cxds_score','bcds_score','hybrid_score'))
+FeaturePlot(wbm, features = 'cxds_score')
+FeaturePlot(wbm, features = 'bcds_score')
+FeaturePlot(wbm, features = 'hybrid_score')
+
+tapply(wbm$hybrid_score, wbm$figure.labels, summary)
+
+ggplot(wbm@meta.data, aes(y = cxds_score, x = figure.labels2)) + geom_boxplot( )+
+  theme(axis.text.x = element_text(angle = 90))
+ggplot(wbm@meta.data, aes(y = bcds_score, x = figure.labels2)) + geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90))
+ggplot(wbm@meta.data, aes(y = hybrid_score, x = figure.labels2)) + geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(wbm@meta.data, aes(y = cxds_score, x = figure.labels2, fill = Condition3)) + geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90))
+ggplot(wbm@meta.data, aes(y = bcds_score, x = figure.labels2, fill = Condition3)) + geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90))
+ggplot(wbm@meta.data, aes(y = hybrid_score, x = figure.labels2, fill = Condition3)) + geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(wbm@meta.data, aes(x = cxds_score)) + geom_density()
+ggplot(wbm@meta.data, aes(x = bcds_score)) + geom_density()
+ggplot(wbm@meta.data, aes(x = hybrid_score)) + geom_density()
+```
+
+# Jun Extras
+
+## tsne
+
+```{r}
+wbm$figure.labels3 <- ifelse(wbm$figure.labels2 %in% c('Mono/Macro-1','Mono/Macro-2'),
+                             'Mono/Macro', as.character(wbm$figure.labels2))
+color_pal2 <- c(color_pal, 'red')
+# DimPlot(wbm, reduction = 'tsne', group.by = 'figure.labels2')
+DimPlot(wbm, reduction = 'tsne', label = T, repel = T, cols = color_pal2, 
+        group.by = 'figure.labels3')
+
+combos <- combn(1:5,2)
+# combos
+
+for (i in 1:dim(combos)[2]){
+  print(i)
+  print(DimPlot(wbm, reduction = 'pca', dims = c(combos[1,i],combos[2,i]), 
+                group.by = 'figure.labels3',
+                cols = color_pal2))
+}
+```
+
+```{r}
+for (i in 1:dim(combos)[2]){
+  print(i)
+  print(DimPlot(wbm, reduction = 'pca', dims = c(combos[1,i],combos[2,i]), group.by = 'figure.labels3',
+                cols = color_pal2, label = T))
+}
+```
+
+```{r}
+for (i in 1:dim(combos)[2]){
+  print(i)
+  print(DimPlot(wbm, reduction = 'pca', dims = c(combos[1,i],combos[2,i]), group.by = 'Condition3',
+                cols = color_pal2))
+}
+
+```
+
+# New Ontology ROntoTools Analysis
+
+```{r}
+# BiocManager::install("ROntoTools")
+
+require(graph)
+require(ROntoTools)
+
+kpg <- keggPathwayGraphs('mmu')
+head(kpg)
+kpg <- setEdgeWeights(kpg, edgeTypeAttr = "subtype", edgeWeightByType =
+                        list(activation = 1, inhibition = -1,
+                             expression = 1, repression = -1), defaultWeight = 0)
+kpn <- keggPathwayNames("hsa")
+
+degs <- read.xlsx('./data/v4/within.cluster.DEGs.Migr1.vs.Mpl.LARGE.GENERIC.CLUSTERS.xlsx',
+          sheetName = 'All-Clusters')
+
+mkp.degs <- degs[degs$cluster == 'MEP-1',]
+mkp.degs
+mus.ref <- read.table('../mus_mus_gene_id.txt', sep = '\t',header = T)
+mus.ref2 <- data.table::fread('../mus_mus_gene_id.txt', header = T)
+
+summary(mkp.degs$gene %in% mus.ref2$Symbol)
+
+
+
+mkp.degs <- mkp.degs[,1:8]
+
+mkp.degs <- mkp.degs[complete.cases(mkp.degs),]
+
+missing.genes <- mkp.degs$gene[!(mkp.degs$gene %in% mus.ref2$Symbol)]
+
+missing.genes
+
+mus.ref2$Symbol[grepl('H2a', mus.ref2$Symbol, ignore.case = T)] # H2afv
+
+colnames(mus.ref2)[2] <- 'gene'
+
+df <- merge(mkp.degs, mus.ref2, by = 'gene')
+
+df$entrez.name <- paste0('mmu:',df$GeneID)
+
+df <- df[,c('GeneID','p_val_adj','avg_logFC')]
+
+```
+
+```{r}
+fcAll <- df$avg_logFC
+names(fcAll) <- df$entrez.name
+
+pvAll <- df$p_val_adj
+names(pvAll) <- df$entrez.name
+
+ref <- df$entrez.name
+
+kpg <- setNodeWeights(kpg, weights = alphaMLG(pvAll), defaultWeight = 1)
+
+peRes <- pe(x = fcAll, graphs = kpg, ref = ref, nboot = 200, verbose = FALSE)
+```
+
+```{r}
+peRes
+plot(peRes, c("pAcc", "pORA"), comb.pv.func = compute.normalInv, threshold = .01)
+
+head(Summary(peRes))
+```
+
+# LOADING DATA
+
+```{r}
+wbm <- readRDS('./data/v3/mpl.migr1.121420-2.rds')
+table(wbm$Condition2)
+
+wbm$figure.labels <- ifelse(wbm$v7.labels %in% c('MEP/MCP','MEP/ERP'),
+                            ifelse(wbm$v7.labels == 'MEP/MCP', 'MkP','MEP'),
+                            as.character(wbm$v7.labels))
+
+wbm$figure.labels <- ifelse(wbm$figure.labels == 'Tcell', 'T-cell',
+                            ifelse(wbm$figure.labels == 'Bcell','B-cell',
+                                   ifelse(wbm$figure.labels == 'Bcell-Prog',
+                                          'B-cell Prog.', wbm$figure.labels)))
+wbm$UMAP1 <- wbm@reductions$umap@cell.embeddings[,1]
+wbm$UMAP2 <- wbm@reductions$umap@cell.embeddings[,2]
+
+wbm$figure.labels2 <- ifelse(wbm$figure.labels != 'MK',
+                             as.character(wbm$figure.labels),
+                            ifelse(wbm$UMAP1 < 0, 'MK-1','MK-2'))
+
+wbm$figure.labels2 <- ifelse(wbm$figure.labels != 'Mono/Macro', 
+                         as.character(wbm$figure.labels2),
+                         ifelse(wbm$UMAP1 < -5, 'Mono/Macro-1','Mono/Macro-2'))
+
+wbm$figure.labels <- factor(wbm$figure.labels,
+                            levels = levels(as.factor(wbm$figure.labels))[c(5,3,1,2,10,9,4,6,8,7)])
+
+Idents(wbm) <- wbm$figure.labels
+
+table(Idents(wbm))
+
+mk1.cells <- rownames(wbm@meta.data[wbm$figure.labels == 'MK-1',])
+mep1.cells <- rownames(wbm@meta.data[wbm$figure.labels == 'MkP',])
+
+wbm$figure.labels3 <- ifelse(wbm$figure.labels2 %in% c('Mono/Macro-1','Mono/Macro-2'),
+                             'Mono/Macro', as.character(wbm$figure.labels2))
+color_pal <- c("#0072B2", "#CC79A7", "#009E73",'black',"#999999",
+               "#E69F00", "#56B4E9","#D55E00", 'limegreen', 'violet')
+color_pal2 <- c(color_pal, 'red')
+
+wbm$Condition3 <- ifelse(wbm$Condition2 == 'Migr1', 'MigR1',
+                         ifelse(wbm$Condition2 == 'enrMigr1', 'CD41+ enr. MigR1',
+                                ifelse(wbm$Condition2 == 'Mpl', 'MPLW515L', 'CD41+ enr. MPLW515L')))
+
+wbm$Condition3 <- factor(wbm$Condition3,
+                         levels = levels(as.factor(wbm$Condition3))[c(3,4,1,2)])
+
+wbm$Experiment <- ifelse(wbm$Condition2 %in% c('enrMigr1','Migr1'), 'MigR1','MPL')
+```
+
+```{r}
+wbm@meta.data
+write.table(wbm@meta.data, './data/v4/seurat.metadata.txt', sep = '\t', quote = F)
+```
+
+
+# DR Plots 
+
+```{r}
+DimPlot(wbm, group.by = 'figure.labels3', cols = color_pal2, label = T, repel = T) + NoLegend()
+DimPlot(wbm, reduction = 'tsne', group.by = 'figure.labels3', cols = color_pal2,
+        label = T, repel = T) + NoLegend()
+
+DimPlot(wbm, reduction = 'pca', dims = c(1,2), group.by = 'figure.labels3', 
+        cols = color_pal2,
+        label = T, repel = T) + NoLegend() + ggtitle(NULL)
+
+DimPlot(wbm, reduction = 'pca', dims = c(1,3), group.by = 'figure.labels3', 
+        cols = color_pal2,
+        label = T, repel = T) + NoLegend() + ggtitle(NULL)
+
+DimPlot(wbm, reduction = 'pca', dims = c(1,4), group.by = 'figure.labels3', 
+        cols = color_pal2,
+        label = T, repel = T) + NoLegend() + ggtitle(NULL)
+
+DimPlot(wbm, reduction = 'pca', dims = c(1,5), group.by = 'figure.labels3', 
+        cols = color_pal2,
+        label = T, repel = T) + NoLegend() + ggtitle(NULL)
+```
+
+
+
+# Boxplots 4x11
+
+All the Violin Plots
+
+## nCount_RNA
+
+```{r}
+head(wbm@meta.data)
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nCount_RNA), fill = Condition3)) + geom_violin()
+
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nCount_RNA))) + 
+  geom_boxplot() + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nCount_RNA), 
+                          fill = Condition3)) + 
+  geom_boxplot() + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+``` 
+
+## nFeature_RNA
+
+```{r}
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nFeature_RNA))) + 
+  geom_boxplot() + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nFeature_RNA), 
+                          fill = Condition3)) + 
+  geom_boxplot() + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+``` 
+
+## percent.mt
+
+```{r}
+ggplot(wbm@meta.data, aes(x = fgure.labels3, y = percent.mt)) + 
+  geom_boxplot() + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = percent.mt, 
+                          fill = Condition3)) + 
+  geom_boxplot() + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+``` 
+
+## Interaction Plots
+
+### nCount & nFeature
+
+```{r}
+ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = log10(nFeature_RNA))) +
+  geom_point() + theme_bw() + geom_smooth()
+
+ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = log10(nFeature_RNA),
+                          colour = Condition3)) +
+  scale_color_manual(values = c('black','red','limegreen','blue')) +
+  geom_point() + theme_bw() + geom_smooth(se = F)
+
+ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = log10(nFeature_RNA),
+                          colour = figure.labels3)) +
+  scale_color_manual(values = color_pal2) +
+  geom_point() + theme_bw() 
+```
+
+### nCount & percent.mt
+
+```{r}
+ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt)) +
+  geom_point() + theme_bw() + geom_smooth()
+
+ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt,
+                          colour = Condition3)) +
+  scale_color_manual(values = c('black','red','limegreen','blue')) +
+  geom_point() + theme_bw() + geom_smooth(se = F)
+
+ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt,
+                          colour = figure.labels3)) +
+  scale_color_manual(values = color_pal2) +
+  geom_point() + theme_bw() 
+
+wbm$b.cells <- ifelse(wbm$figure.labels3 == 'B-cell', 'B-cell', 'All Others')
+
+ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt,
+                          colour = b.cells)) +
+  scale_color_manual(values = c('lightgrey','blue')) +
+  geom_point(aes(alpha = 0.2)) + theme_bw() + geom_smooth()
+```
+
+### nFeature & percent.mt
+
+```{r}
+ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt)) +
+  geom_point() + theme_bw() + geom_smooth()
+
+ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt,
+                          colour = Condition3)) +
+  scale_color_manual(values = c('black','red','limegreen','blue')) +
+  geom_point() + theme_bw() + geom_smooth(se = F)
+
+ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt,
+                          colour = figure.labels3)) +
+  scale_color_manual(values = color_pal2) +
+  geom_point() + theme_bw() 
+
+ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt,
+                          colour = b.cells)) +
+  scale_color_manual(values = c('lightgrey','blue')) +
+  geom_point(aes(alpha = 0.2)) + theme_bw() + geom_smooth()
+```
+
+# GO Term
+
+Using (LRPath) [http://lrpath.ncibi.org] from Maureen Sartor's lab. Should this just been done with WT? Could we also do this with just MUT?
+
+Need to do unbiased DE expression, not using any cutoffs. Looking within all clusters comparing WT vs MUT (normal WBM and enriched combined). This data will be inputted into the online interface, and then also used within the next section.
+
+## DE
+
+```{r}
+# de.genes <- data.frame(p_val = numeric(),
+#                        avg_logFC = numeric(),
+#                        pct.1 = numeric(),
+#                        pct.2 = numeric(),
+#                        p_val_adj = numeric(),
+#                        cluster = character(),
+#                        gene = character())
+# 
+# wbm@meta.data
+# 
+# for (i in unique(wbm$figure.labels3)){
+#   print(i)
+#   temp.subset <- subset(wbm, figure.labels3 == i)
+#   x <- FindMarkers(temp.subset,
+#                    ident.1 = 'MigR1',
+#                    ident.2 = 'MPL',
+#                    logfc.threshold = 0,
+#                    min.pct = 0,
+#                    group.by = 'Experiment')
+#   x$cluster <- i
+#   x$gene <- rownames(x)
+#   x <- x[order(x$avg_log2FC, decreasing = T),]
+#   de.genes <- rbind(de.genes,x)
+# }
+# 
+# summary(as.factor(de.genes$cluster))
+# # table(rownames(de.genes))
+# 
+
+
+
+# write.table(de.genes, './data/v4/genes.for.LR.Path.within.cluster.all.txt', sep = '\t')
+```
+
+## Exporting Results to LRPath Format
+
+```{r}
+x <- read.table('./data/v4/genes.for.LR.Path.within.cluster.all.txt', sep = '\t')
+
+mus.ref <- data.table::fread('../mus_mus_gene_id.txt', header = T)
+colnames(mus.ref)[2] <- 'gene'
+
+
+out <- split(x, f = x$cluster)
+
+for (i in 1:length(out)){
+  temp.name <- unique(out[[i]]$cluster)
+  temp.name <- gsub('/','-',temp.name)
+  
+  print(temp.name)
+  
+  temp <- out[[i]]
+  print(summary(temp$gene %in% mus.ref$gene))
+  
+  temp.df <- merge(temp, mus.ref, by = 'gene')
+  
+  temp.df$entrez.name <- paste0('mmu:', temp.df$GeneID)
+  
+  temp.df <- temp.df[,c('GeneID','p_val_adj','avg_log2FC')]
+  
+  write.table(temp.df, paste0('./data/v4/LRPath.gene.lists/',
+                              temp.name,'.txt'),
+              sep = '\t', col.names = F, quote = F, row.names = F)
+}
+```
+
+
+```{r}
+# mkp.degs <- de.genes[de.genes$cluster == 'MkP',]
+# mkp.degs
+# mus.ref <- read.table('../mus_mus_gene_id.txt', sep = '\t',header = T)
+# mus.ref2 <- data.table::fread('../mus_mus_gene_id.txt', header = T)
+# 
+# summary(mkp.degs$gene %in% mus.ref2$Symbol)
+# 
+# missing.genes <- mkp.degs$gene[!(mkp.degs$gene %in% mus.ref2$Symbol)]
+# 
+# missing.genes
+# 
+# mus.ref2$Symbol[grepl('sept', mus.ref2$Symbol, ignore.case = T)] # H2afv
+# 
+# colnames(mus.ref2)[2] <- 'gene'
+# 
+# df <- merge(mkp.degs, mus.ref2, by = 'gene')
+# 
+# df$entrez.name <- paste0('mmu:',df$GeneID)
+# 
+# df <- df[,c('GeneID','p_val_adj','avg_log2FC')]
+# 
+# write.table(df, './data/v4/LRPath.mkps.txt', sep = '\t', 
+#             col.names = F, quote = F, row.names = F)
+```
+
+
+## Cleaning Files
+
+```{r}
+library(data.table)
+bcell.prog <-fread('./data/v4/LRPath.results/within.BcellProg.txt', sep = '\t')
+bcell.prog <- bcell.prog[bcell.prog$FDR < 0.05,]
+
+files <- list.files('./data/v4/LRPath.results/')
+files <- files[grepl('txt', files)]
+
+cnt <- 1
+for (i in files){
+  print(i)
+  temp <- fread(paste0('./data/v4/LRPath.results/',i), sep = '\t')
+  
+  temp$cluster <- tstrsplit(i,'\\.', keep = 2)[[1]]
+  if (cnt == 1){
+    LR.results <- temp
+    cnt <- 0
+  }
+  else{
+    LR.results <- rbind(LR.results, temp)
+  }
+}
+
+summary(as.factor(LR.results$cluster))
+
+LR.sig.results <- LR.results[LR.results$FDR < 0.05,] 
+
+summary(as.factor(LR.sig.results$cluster))
+
+table(LR.sig.results$cluster, LR.sig.results$ConceptType)
+
+LR.sig.results$Direction2 <- ifelse(LR.sig.results$Direction == 'down', 'up','down')
+```
+
+## Clusters
+
+Looking at clusters individually
+
+### MkP
+
+```{r}
+mkp <- LR.sig.results[LR.sig.results$cluster == 'MkP',]
+
+mkp[mkp$ConceptType == 'GOBP',]
+mkp[mkp$ConceptType == 'KEGG',]
+```
+
+```{r}
+splt.obj <- tstrsplit(mkp[mkp$ConceptType == 'GOBP',]$Name,' ')
+
+words <- c()
+
+for (i in 1:length(splt.obj)){
+  words <- c(words,splt.obj[[i]])
+}
+
+words <- words[!is.na(words)]
+length(words)
+
+summary(as.factor(words))
+```
+
+## Correlation of GO Terms
+
+Reading in all the Terms
+
+```{r}
+# setwd('data/v4/LRPath.results/')
+files = list.files('./data/v4/LRPath.results/')
+files <- files[grepl('.txt',files)]
+files
+
+cnt <- 1
+
+for (i in files){
+  print(i)
+  x <- fread(paste0('./data/v4/LRPath.results/',i))
+  x$cluster <- tstrsplit(i,'\\.', keep = 2)[[1]]
+  
+  if (cnt == 1){
+    go.df <- x
+    cnt <- 2
+  }
+  else{
+    go.df <- rbind(go.df, x)
+  }
+}
+
+summary(as.factor(go.df$cluster))
+summary(as.factor(go.df$ConceptType))
+```
+
+Subsetting to just GOBP
+
+```{r}
+go.df <- go.df[go.df$ConceptType == 'GOBP',]
+
+tmp <- table(go.df$Name, go.df$cluster)
+
+# summary(as.factor(go.df$Name))
+
+go.bps <- rownames(tmp[rowSums(tmp) == 9,])
+
+length(go.bps)
+```
+
+```{r}
+out <- split(go.df, f = go.df$cluster)
+
+# w.go.df
+
+cnt = 1 
+
+for (i in 1:length(out)){
+  temp <- as.data.frame(out[[i]])
+  rown <- as.character(temp$Name)
+  coln <- paste0(names(out)[i],'_',colnames(temp)[5])
+  colnames(temp)[5] <- coln
+  temp <- data.frame(temp[,5])
+  rownames(temp) <- rown
+  temp <- data.frame(temp[go.bps,])
+  colnames(temp) <- coln
+  
+  if(cnt == 1){
+    w.go.df <- temp
+    cnt = 2
+  }
+  else{
+    w.go.df <- cbind(w.go.df, temp)
+  }
+  
+}
+```
+
+```{r}
+summary(as.factor(go.df$cluster))
+length(go.bps)
+```
+
+
+```{r}
+spearman.cor <- cor(w.go.df, method = 'spearman')
+
+temp.cor <- as.data.frame(spearman.cor)
+
+temp.cor2 <- gather(as.data.frame(temp.cor))
+
+temp.cor2$cluster2 <- rep(rownames(temp.cor), length(rownames(temp.cor)))
+
+# temp.cor2$value2 <- ifelse(temp.cor2$value == 1, 0, temp.cor2$value)
+
+ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value, label = round(value,2))) +
+  geom_tile() + # geom_text() + 
+  xlab(NULL) + ylab(NULL) + ggtitle ('T-statistics Correlation (Spearman)') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .25) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+## PCA
+
+### Coefficient?
+
+```{r}
+cnt = 1 
+
+for (i in 1:length(out)){
+  temp <- as.data.frame(out[[i]])
+  rown <- as.character(temp$Name)
+  coln <- paste0(names(out)[i],'_',colnames(temp)[5])
+  colnames(temp)[5] <- coln
+  temp <- data.frame(temp[,5])
+  rownames(temp) <- rown
+  temp <- data.frame(temp[go.bps,])
+  colnames(temp) <- coln
+  
+  if(cnt == 1){
+    w.go.df <- temp
+    cnt = 2
+  }
+  else{
+    w.go.df <- cbind(w.go.df, temp)
+  }
+  
+}
+pca <- prcomp(w.go.df)
+
+pca.sd <- pca$sdev
+pca <- as.data.frame(pca$rotation)
+
+pca.sd <- data.frame(pc = 1:9,
+                     sd = pca.sd)
+
+ggplot(pca.sd[1:9,], aes(x = pc, y = sd)) + geom_point() + geom_line() + theme_bw()
+# colnames(pca) <- paste0(colnames(pca),' (',round(pca.sd,2),')')
+
+pca$cluster <- tstrsplit(rownames(pca),'_', keep = 1)[[1]]
+pca
+
+combos <- combn(paste0('PC',1:5),2)
+combos
+
+# colnames(pca)[1:5] <- paste0(colnames(pca)[1:5], ' (SD = ', pca.sd[1:5], ')')
+
+for (i in 1:dim(combos)[2]){
+  # print(combos[1,i])
+  temp.x <- combos[1,i]
+  # print(combos[2,i])
+  temp.y <- combos[2,i]
+  
+  print(ggplot(pca, aes_string(x = temp.x, y = temp.y, color = 'cluster')) + 
+          geom_point() + scale_color_manual(values = color_pal2) +
+          theme_bw() + ggtitle(paste0(temp.x, ' vs ', temp.y)))
+}
+```
+
+# Cluster Correlation 40xGenes Delta of pairwise cluster centroid
+
+Getting the t-scores for all genes doing differential expression within a cluster comparing MigR1 to MPL. Then putting those into a table, so each column is a cluster and the rows are t-scores for genes. Then doing a correlation analysis to see if certain cell types have the same pattern.
+
+```{r}
+# de.genes <- data.frame(p_val = numeric(),
+#                        avg_logFC = numeric(),
+#                        pct.1 = numeric(),
+#                        pct.2 = numeric(),
+#                        p_val_adj = numeric(),
+#                        cluster = character(),
+#                        gene = character())
+# 
+# for (i in unique(wbm$figure.labels3)){
+#   print(i)
+#   temp.subset <- subset(wbm, figure.labels3 == i)
+#   x <- FindMarkers(temp.subset,
+#                    ident.1 = 'MigR1',
+#                    ident.2 = 'MPL',
+#                    logfc.threshold = 0,
+#                    min.pct = 0,
+#                    group.by = 'Experiment',
+#                    test.use = 'MAST')
+#   x$cluster <- i
+#   x$gene <- rownames(x)
+#   x <- x[order(x$avg_log2FC, decreasing = T),]
+#   de.genes <- rbind(de.genes,x)
+# }
+# 
+# summary(as.factor(de.genes$cluster))
+# write.table(de.genes,'./data/v4/mostly.all.genes.deg.clusters.txt',
+#             sep = '\t')
+
+x <- read.table('./data/v4/mostly.all.genes.deg.clusters.txt', sep = '\t')
+dim(x)
+
+# Limiting to only genes that are across all clusters
+
+Filter(function (elem) length(which(x$gene == elem)) == 11, x$gene)
+
+freq <- table(x$gene)
+
+genes.across.all <- names(freq[freq == 11])
+class(genes.across.all)
+
+length(genes.across.all)
+
+
+x2 <- x[x$gene %in% genes.across.all,]
+
+summary(as.factor(x2$cluster))
+
+x2 <- x2[,c(1,6:7)]
+x2.wide <- spread(x2, cluster, p_val)
+
+
+rownames(x2.wide) <- x2.wide$gene
+
+x2.wide <- x2.wide[,-1]
+
+rowSums(x2.wide) == 11
+
+x3 <- x2.wide[rowSums(x2.wide) != 11,]
+
+colSums(x3)
+
+temp.cor <- cor(x3)
+temp.cor2 <- gather(as.data.frame(temp.cor))
+
+temp.cor2$cluster2 <- rep(rownames(temp.cor), length(rownames(temp.cor)))
+
+ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value, label = round(value,2))) +
+  geom_tile() + geom_text() + 
+  xlab(NULL) + ylab(NULL) + ggtitle ('P-value Correlation') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .15) +
+  theme(axis.text.x = element_text(angle = 90))
+  
+```
+
+## Generating T-scores outside of Seurat
+
+Doing combined enriched and non-enriched
+
+```{r}
+wbm@assays$RNA@scale.data[1:10,1:10]
+
+# cnts <- wbm@assays$RNA@scale.data
+# t.scores <- as.data.frame(matrix(ncol = 11, nrow = dim(cnts)[1]))
+# rownames(t.scores) <- rownames(cnts)
+# cnt <- 1
+# 
+# for (cluster in unique(wbm$figure.labels3)){
+#   print(cluster)
+#   
+#   colnames(t.scores)[cnt] <- cluster
+#   cnt <- cnt + 1
+#   
+#   migr1.cells <- colnames(subset(wbm, figure.labels3 == cluster & Experiment == 'MigR1'))
+#   mpl.cells <- colnames(subset(wbm, figure.labels3 == cluster & Experiment == 'MPL'))
+#   
+#   migr1.cnts <- cnts[,colnames(cnts) %in% migr1.cells]
+#   mpl.cnts <- cnts[,colnames(cnts) %in% mpl.cells]
+#   
+#   t.score <- vector()
+#   
+#   for (i in 1:dim(migr1.cnts)[1]){
+#     # print(i)
+#     if (min(mpl.cnts[i,]) != max(mpl.cnts[i,]) | min(migr1.cnts[i,]) != max(migr1.cnts[i,])){
+#       p <- t.test(migr1.cnts[i,], mpl.cnts[i,])
+#       
+#       t.score[i] <- p$statistic
+#     }
+#     else{
+#       t.score[i] <- NA
+#     }
+#     if (i %% 1000 == 0){
+#       print(i)
+#     }
+#   }
+#   t.scores[,cluster] <- t.score
+# }
+# 
+# 
+# write.table(t.scores, './data/v4/t.scores.11.by.11.txt', sep = '\t', quote = F,
+#             row.names = T)
+
+t.scores <- read.table('./data/v4/t.scores.11.by.11.txt', sep = '\t')
+
+
+complete.t.scores <- complete.cases(t.scores)
+
+sum(complete.t.scores)
+
+t.scores2 <- t.scores[complete.t.scores,]
+?cor
+spearman.cor <- cor(t.scores2, method = 'spearman')
+
+temp.cor <- as.data.frame(spearman.cor)
+
+temp.cor2 <- gather(as.data.frame(temp.cor))
+
+temp.cor2$cluster2 <- rep(rownames(temp.cor), length(rownames(temp.cor)))
+
+temp.cor2$value2 <- ifelse(temp.cor2$value == 1, 0, temp.cor2$value)
+
+ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value2, label = round(value,2))) +
+  geom_tile() + geom_text() + 
+  xlab(NULL) + ylab(NULL) + ggtitle ('T-statistics Correlation (Spearman)') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = 0) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+```{r}
+table(wbm$Condition3, wbm$figure.labels3)
+```
+
+## Pairwise Comparison of T-Scores
+
+```{r}
+# wbm@assays$RNA@scale.data[1:10,1:10]
+# 
+# cnts <- wbm@assays$RNA@scale.data
+# t.scores <- as.data.frame(matrix(ncol = 56, nrow = dim(cnts)[1]))
+# rownames(t.scores) <- rownames(cnts)
+# cnt <- 1
+# 
+# wbm$Condition.short <- factor(wbm$Condition, labels = c('eWT','eMUT','WT','MUT'))
+# 
+# combos <- combn(1:4,2)
+# 
+# clusters <- unique(wbm$figure.labels3)
+# clusters <- clusters[-c(2,8)]
+# 
+# for (cluster in clusters){
+#   print(cluster)
+#   
+#   WT.cells <- colnames(subset(wbm, 
+#                               figure.labels3 == cluster & Condition.short == 'WT'))
+#   MUT.cells <- colnames(subset(wbm, 
+#                                figure.labels3 == cluster & Condition.short == 'MUT'))
+#   eWT.cells <- colnames(subset(wbm, 
+#                                figure.labels3 == cluster & Condition.short == 'eWT'))
+#   eMUT.cells <- colnames(subset(wbm, 
+#                                 figure.labels3 == cluster & Condition.short == 'eMUT'))
+#   
+#   WT.counts <- cnts[,colnames(cnts) %in% WT.cells]
+#   MUT.counts <- cnts[,colnames(cnts) %in% MUT.cells]
+#   eWT.counts <- cnts[,colnames(cnts) %in% eWT.cells]
+#   eMUT.counts <- cnts[,colnames(cnts) %in% eMUT.cells]
+#   
+#   temp <- list(WT.counts, MUT.counts, eWT.counts, eMUT.counts)
+#   names(temp) <- c('WT.counts', 'MUT.counts', 'eWT.counts', 'eMUT.counts')
+#   
+#   for (comb in 1:dim(combos)[2]){
+#     cnt1 <- combos[1,comb]
+#     cnt2 <- combos[2,comb]
+#     name1 <- tstrsplit(names(temp)[cnt1], '\\.', keep = 1)[[1]]
+#     name2 <- tstrsplit(names(temp)[cnt2], '\\.', keep = 1)[[1]]
+#     
+#     cnts1 <- temp[[cnt1]]
+#     cnts2 <- temp[[cnt2]]
+#     
+#     
+#     clm.name <- paste0(cluster,'_', name1,'.vs.',name2)
+#     print(clm.name)
+#     
+#     t.score <- vector()
+#   
+#     for (i in 1:dim(cnts1)[1]){
+#       
+#       # print(i)
+#       if (min(cnts1[i,]) != max(cnts1[i,]) | min(cnts2[i,]) != max(cnts2[i,])){
+#         p <- t.test(cnts1[i,], cnts2[i,])
+#         
+#         t.score[i] <- p$statistic
+#       }
+#       else{
+#         t.score[i] <- NA
+#       }
+#       if (i %% 1000 == 0){
+#         print(i)
+#       }
+#     }
+#     t.scores[,clm.name] <- t.score
+#   }
+# }
+# 
+# t.scores
+# 
+# t.scores.save <- t.scores
+# 
+# t.scores <- t.scores[,57:110]
+# 
+# t.scores
+# 
+# write.table(t.scores,'./data/v4/t.scores.54.by.54.txt', quote = F, sep = '\t', row.names = T)
+
+t.scores <- read.table('./data/v4/t.scores.54.by.54.txt', sep = '\t')
+
+```
+
+Looking at the missingness
+
+```{r}
+
+nas <- data.frame(ncol = 1)
+colnames(nas) <- 'Total NAs'
+
+for (i in 1:54){
+  nas[i,1] <- sum(is.na(t.scores[,i]))
+  rownames(nas)[i] <- colnames(t.scores)[i]
+}
+nas
+```
+
+### Ordered by Cluster (Complete Obs)
+
+Only looking at complete observations
+
+```{r}
+
+complete.t.scores <- complete.cases(t.scores)
+
+sum(complete.t.scores)
+
+t.scores2 <- t.scores[complete.t.scores,]
+
+spearman.cor <- cor(t.scores2, method = 'spearman')
+
+temp.cor <- as.data.frame(spearman.cor)
+
+temp.cor2 <- gather(as.data.frame(temp.cor))
+
+temp.cor2$cluster2 <- rep(rownames(temp.cor), length(rownames(temp.cor)))
+
+temp.cor2$value2 <- ifelse(temp.cor2$value == 1, 0, temp.cor2$value)
+
+ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value2, label = round(value,2))) +
+  geom_tile() + # geom_text() + 
+  xlab(NULL) + ylab(NULL) + ggtitle ('T-statistics Correlation (Spearman)') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = 0) +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank())
+```
+
+```{r}
+library(ComplexHeatmap)
+# 
+# set.seed(123)
+# nr1 = 4; nr2 = 8; nr3 = 6; nr = nr1 + nr2 + nr3
+# nc1 = 6; nc2 = 8; nc3 = 10; nc = nc1 + nc2 + nc3
+# mat = cbind(rbind(matrix(rnorm(nr1*nc1, mean = 1,   sd = 0.5), nr = nr1),
+#           matrix(rnorm(nr2*nc1, mean = 0,   sd = 0.5), nr = nr2),
+#           matrix(rnorm(nr3*nc1, mean = 0,   sd = 0.5), nr = nr3)),
+#     rbind(matrix(rnorm(nr1*nc2, mean = 0,   sd = 0.5), nr = nr1),
+#           matrix(rnorm(nr2*nc2, mean = 1,   sd = 0.5), nr = nr2),
+#           matrix(rnorm(nr3*nc2, mean = 0,   sd = 0.5), nr = nr3)),
+#     rbind(matrix(rnorm(nr1*nc3, mean = 0.5, sd = 0.5), nr = nr1),
+#           matrix(rnorm(nr2*nc3, mean = 0.5, sd = 0.5), nr = nr2),
+#           matrix(rnorm(nr3*nc3, mean = 1,   sd = 0.5), nr = nr3))
+#    )
+# mat = mat[sample(nr, nr), sample(nc, nc)] # random shuffle rows and columns
+# rownames(mat) = paste0("row", seq_len(nr))
+# colnames(mat) = paste0("column", seq_len(nc))
+# 
+# Heatmap(mat)
+# 
+# x.temp <- as.matrix(temp.cor2[])
+# Heatmap(temp.cor)
+```
+
+
+```{r}
+row.anno <- data.frame(rownames = row.names(temp.cor))
+
+head(row.anno)
+row.anno$ct <- tstrsplit(row.anno$rownames,'_', keep = 1)[[1]]
+row.anno$type1 <- tstrsplit(tstrsplit(row.anno$rownames,'_', keep = 2)[[1]],'\\.', 
+                         keep = 1)[[1]] 
+row.anno$type2 <- tstrsplit(tstrsplit(row.anno$rownames,'_', keep = 2)[[1]],'\\.', 
+                         keep = 3)[[1]] 
+
+col = list(CellType = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono.Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00",
+                        'MkP' = 'violet','MK.1' = 'purple', 'MK.2' = 'black'),
+           Grp1 = c('WT' = 'blue','eWT' = 'darkblue','MUT' = 'red'),
+           Grp2 = c('eWT' = 'darkblue','MUT' = 'red', 'eMUT' = 'darkred'))
+
+column_ha = HeatmapAnnotation(CellType = row.anno$ct, Grp1 = row.anno$type1,
+                           Grp2 = row.anno$type2, col = col)
+
+row_ha = rowAnnotation(CellType = row.anno$ct, Grp1 = row.anno$type1,
+                           Grp2 = row.anno$type2, col = col)
+
+# temp.cor[temp.cor == 1] <- 0
+Heatmap(temp.cor, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        cluster_rows = F, cluster_columns = F,
+        split = row.anno$ct,
+        column_split = row.anno$ct,
+        row_names_gp = gpar(fontsize = 0),
+        column_names_gp = gpar(fontsize = 0),
+        name = 'Correlation')
+```
+
+### Ordered by Groupings
+
+```{r}
+temp.df <- data.frame(names = colnames(temp.cor))
+
+temp.df$group <- tstrsplit(temp.df$names, '_', keep = 2)[[1]]
+
+temp.df <- temp.df[order(temp.df$group),]
+
+order_ <- as.numeric(rownames(temp.df))
+
+order_
+
+temp.cor2 <- temp.cor[order_, order_]
+temp.cor2
+
+
+row.anno <- data.frame(rownames = row.names(temp.cor2))
+
+head(row.anno)
+row.anno$ct <- tstrsplit(row.anno$rownames,'_', keep = 1)[[1]]
+row.anno$type1 <- tstrsplit(tstrsplit(row.anno$rownames,'_', keep = 2)[[1]],'\\.', 
+                         keep = 1)[[1]] 
+row.anno$type2 <- tstrsplit(tstrsplit(row.anno$rownames,'_', keep = 2)[[1]],'\\.', 
+                         keep = 3)[[1]] 
+
+row.anno$combo <- tstrsplit(row.anno$rownames, '_', keep = 2)[[1]]
+
+col = list(CellType = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono.Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00",
+                        'MkP' = 'violet','MK.1' = 'purple', 'MK.2' = 'black'),
+           Grp1 = c('WT' = 'blue','eWT' = 'darkblue','MUT' = 'red'),
+           Grp2 = c('eWT' = 'darkblue','MUT' = 'red', 'eMUT' = 'darkred'))
+
+column_ha = HeatmapAnnotation(CellType = row.anno$ct, Grp1 = row.anno$type1,
+                           Grp2 = row.anno$type2, col = col)
+
+row_ha = rowAnnotation(CellType = row.anno$ct, Grp1 = row.anno$type1,
+                           Grp2 = row.anno$type2, col = col)
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        cluster_rows = F, cluster_columns = F,
+        row_names_gp = gpar(fontsize = 0),
+        column_names_gp = gpar(fontsize = 0),
+        name = 'Correlation')
+
+col = list(CellType = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono.Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00",
+                        'MkP' = 'violet','MK.1' = 'purple', 'MK.2' = 'black'),
+           Comparison = c('WT.vs.MUT' = 'red', 'WT.vs.eMUT' = 'orange',
+                          'WT.vs.eWT' = 'yellow', 'MUT.vs.eMUT' = 'green',
+                          'MUT.vs.eWT' = 'blue', 'eWT.vs.eMUT' = 'violet'))
+
+column_ha = HeatmapAnnotation(CellType = row.anno$ct,Comparison = row.anno$combo,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = row.anno$ct, Comparison = row.anno$combo,
+                       col = col)
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = row.anno$combo,
+        column_split = row.anno$combo,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+
+
+```
+
+## Pairwise w/ NAs
+
+Don't really know how to do this, changed parameters in cor, but not sure this is valid or changes anything. It doesn't
+
+```{r}
+spearman.cor <- cor(t.scores, method = 'spearman', use = 'na.or.complete')
+
+temp.cor <- as.data.frame(spearman.cor)
+
+temp.cor2 <- gather(as.data.frame(temp.cor))
+
+temp.cor2$cluster2 <- rep(rownames(temp.cor), length(rownames(temp.cor)))
+
+temp.cor2$value2 <- ifelse(temp.cor2$value == 1, 0, temp.cor2$value)
+
+ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value2, label = round(value,2))) +
+  geom_tile() + # geom_text() + 
+  xlab(NULL) + ylab(NULL) + ggtitle ('T-statistics Correlation (Spearman)') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = 0) +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank())
+```
+
+## PC Plot of T-Scores
+
+```{r}
+t.scores2 <- t.scores[complete.cases(t.scores),]
+pca <- prcomp(t.scores2)
+
+pca.sd <- pca$sdev
+pca <- as.data.frame(pca$rotation)
+
+pca.sd <- data.frame(pc = 1:54,
+                     sd = pca.sd)
+
+ggplot(pca.sd[1:20,], aes(x = pc, y = sd)) + geom_point() + geom_line() + theme_bw()
+# colnames(pca) <- paste0(colnames(pca),' (',round(pca.sd,2),')')
+
+pca$cluster <- tstrsplit(rownames(pca),'_', keep = 1)[[1]]
+pca$comparison <- tstrsplit(rownames(pca),'_', keep = 2)[[1]]
+pca$Grp1 <- tstrsplit(pca$comparison, '\\.', keep = 1)[[1]]
+pca$Grp2 <- tstrsplit(pca$comparison, '\\.', keep = 3)[[1]]
+pca
+
+combos <- combn(paste0('PC',1:5),2)
+combos
+
+# colnames(pca)[1:5] <- paste0(colnames(pca)[1:5], ' (SD = ', pca.sd[1:5], ')')
+
+for (i in 1:dim(combos)[2]){
+  # print(combos[1,i])
+  temp.x <- combos[1,i]
+  # print(combos[2,i])
+  temp.y <- combos[2,i]
+  
+  print(ggplot(pca, aes_string(x = temp.x, y = temp.y, color = 'cluster',
+                               group = 'comparison')) + 
+          geom_point(aes(shape = comparison)) + scale_color_manual(values = color_pal2) +
+          theme_bw() + ggtitle(paste0(temp.x, ' vs ', temp.y)))
+}
+```
+
+
+# Cluster Centroid Batch Effects
+
+Getting the cluster centroid for each cluster by experiment (11x4, 44), then taking deltas between batch columns (11x6, 66 in total). 
+
+i.e. MigR1 Gran minus MPL Gran would be the first column then MigR1 B-cell minus MPL B-cell. So this would all be comparing group 1 (MigR1) vs group 2 (MPL) across all clusters. Then it would be group 1 (MigR1) vs group 2 (enrMigR1), and so on for all six combinations.
+
+It can be either organize be comparison between groups. But then also organize by clusters, to see how things are different between the clusters.
+
+```{r}
+wbm$ident.combo <- paste0(wbm$Condition, '_' ,wbm$figure.labels3)
+
+table(wbm$ident.combo)
+
+table(wbm$Condition3, wbm$figure.labels3)
+
+DimPlot(wbm, group.by = 'ident.combo')
+
+Idents(wbm) <- wbm$ident.combo
+
+av <- AverageExpression(wbm)
+
+av <- av$RNA
+
+head(av)
+
+key_ <- data.frame(ident.combo = colnames(av))
+
+rownames(key_) <- 1:length(colnames(av))
+
+key_$exp <- tstrsplit(key_$ident.combo, '_', keep = 1)[[1]]
+key_$cluster <- tstrsplit(key_$ident.combo, '_', keep = 2)[[1]]
+
+
+temp.cor <- cor(av, method = 'spearman')
+temp.cor
+
+summary(key_$ident.combo == rownames(temp.cor))
+
+```
+
+## Heatmap
+
+```{r}
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
+                        'MkP' = 'violet','MK-1' = 'purple', 'MK-2' = 'black'),
+           Exp = c('Migr1' = 'blue', 'Mpl' = 'red', 'enrMigr1' = 'violet',
+                   'enrMpl' = 'darkred'))
+
+
+
+order.rows <- data.frame(coln = colnames(temp.cor))
+
+order.rows$exp <- tstrsplit(order.rows$coln, '_', keep = 1)[[1]]
+
+order.rows <- order.rows[order(order.rows$exp),]$coln
+
+temp.cor2 <- temp.cor[order.rows, order.rows]
+
+key_ <- data.frame(ident.combo = colnames(temp.cor2))
+
+rownames(key_) <- 1:length(colnames(av))
+
+key_$exp <- tstrsplit(key_$ident.combo, '_', keep = 1)[[1]]
+key_$cluster <- tstrsplit(key_$ident.combo, '_', keep = 2)[[1]]
+
+column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = key_$exp,
+        column_split = key_$exp,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+```{r}
+order.rows <- data.frame(coln = colnames(temp.cor))
+
+order.rows$exp <- tstrsplit(order.rows$coln, '_', keep = 2)[[1]]
+
+order.rows <- order.rows[order(order.rows$exp),]$coln
+
+temp.cor2 <- temp.cor2[order.rows, order.rows]
+
+rownames(key_) <- key_$ident.combo
+key_ <- key_[rownames(temp.cor2),]
+
+column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = key_$cluster,
+        column_split = key_$cluster,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+## PC Plots
+
+```{r}
+pca <- prcomp(av)
+
+pca.sd <- pca$sdev
+pca <- as.data.frame(pca$rotation)
+
+pca.sd <- data.frame(pc = 1:length(pca.sd),
+                     sd = pca.sd)
+
+ggplot(pca.sd[1:20,], aes(x = pc, y = sd)) + geom_point() + geom_line() + theme_bw()
+# colnames(pca) <- paste0(colnames(pca),' (',round(pca.sd,2),')')
+
+pca$exp <- tstrsplit(rownames(pca),'_', keep = 1)[[1]]
+pca$cluster <- tstrsplit(rownames(pca),'_', keep = 2)[[1]]
+pca
+
+combos <- combn(paste0('PC',1:5),2)
+combos
+
+# colnames(pca)[1:5] <- paste0(colnames(pca)[1:5], ' (SD = ', pca.sd[1:5], ')')
+
+for (i in 1:dim(combos)[2]){
+  # print(combos[1,i])
+  temp.x <- combos[1,i]
+  # print(combos[2,i])
+  temp.y <- combos[2,i]
+  
+  print(ggplot(pca, aes_string(x = temp.x, y = temp.y, color = 'cluster',
+                               group = 'exp')) + 
+          geom_point(aes(shape = exp)) + scale_color_manual(values = color_pal2) +
+          theme_bw() + ggtitle(paste0(temp.x, ' vs ', temp.y)))
+}
+```
+
+
+# CCA Batch Correction
+
+```{r}
+int.list <- SplitObject(wbm, split.by = 'Condition3')
+
+for (i in 1:length(int.list)){
+  print(i)
+  int.list[[i]] <- SCTransform(int.list[[i]], verbose = F)
+}
+
+int.features <- SelectIntegrationFeatures(object.list = int.list, nfeatures = 3000)
+
+options(future.globals.maxSize = 3145728000)
+
+int.list <- PrepSCTIntegration(object.list = int.list, anchor.features = int.features,
+                               verbose = F)
+
+int.anchors <- FindIntegrationAnchors(object.list = int.list, normalization.method = 'SCT',
+                                      anchor.features = int.features, verbose = F)
+
+int.int <- IntegrateData(anchorset = int.anchors, normalization.method = 'SCT',
+                         verbose = F)
+
+int <- int.int
+
+int <- RunPCA(int, verbose = F)
+
+int <- RunUMAP(int, dims = 1:30)
+
+int <- FindNeighbors(int, dims = 1:30)
+
+# for (i in seq(0,1,by = .1)){
+#   temp <- FindClusters(int, resolution = i, verbose = F)
+#   print(DimPlot(temp, label =T , repel= T))
+# }
+
+int <- FindClusters(int, resolution = 0.3, verbose = F)
+
+DimPlot(int)
+
+DimPlot(int, label = T, repel = T)
+```
+
+## Cluster Count Tables 
+
+```{r}
+DimPlot(wbm, group.by = 'figure.labels3', label = T , repel = T)
+
+df <- as.data.frame(table(int$figure.labels3, int$seurat_clusters))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+df
+
+order_ <- c('MK-1','Granulocyte','B-cell','Mono/Macro','MkP','CMP','MEP','MK-2',
+            'Erythroid','T-cell','B-cell Prog.')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+  
+## Experiment Count Tables
+
+```{r}
+DimPlot(int, group.by = 'Condition2')
+DimPlot(int, split.by = 'Condition2', ncol = 2) + theme_bw()
+```
+
+```{r}
+df <- as.data.frame(table(int$Condition2, int$seurat_clusters))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+df
+
+# order_ <- c('MK-1','Granulocyte','B-cell','Mono/Macro','MkP','CMP','MEP','MK-2',
+#             'Erythroid','T-cell','B-cell Prog.')
+# 
+# df$Var1 <- factor(df$Var1, levels = order_)
+
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() +
+  geom_text(size = 4) + xlab('Experiment') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .15)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + 
+  geom_text(size = 4) + xlab('Experiment') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+
+# Trajectory
+
+Looking at the trajectory analysis for just the MK cell types (MK, MkP, MEP). 
+
+```{r}
+library(monocle)
+
+x <- subset(wbm, figure.labels3 %in% c('MK-1','MK-2','MEP','MkP'))
+
+data <- as(as.matrix(x@assays$RNA@data), 'sparseMatrix')
+
+
+pd <- new('AnnotatedDataFrame', data = x@meta.data)
+fData <- data.frame(gene_short_name = row.names(data), row.names = row.names(data))
+fd <- new('AnnotatedDataFrame', data = fData)
+
+cds <- newCellDataSet(data,
+                              phenoData = pd,
+                              featureData = fd,
+                              lowerDetectionLimit = 0.5,
+                              expressionFamily = negbinomial.size())
+
+
+cds <- estimateSizeFactors(cds)
+
+cds <- estimateDispersions(cds)
+
+cds <- detectGenes(cds, min_expr = 0.1)
+
+expressed_genes <- rownames(subset(fData(cds), num_cells_expressed >= 10))
+
+fData(cds)$use_for_ordering <- fData(cds)$num_cells_expressed > 0.05 * ncol (cds)
+
+cds <- reduceDimension(cds, reduction_method = 'DDRTree')
+
+cds <- orderCells(cds)
+
+plot_cell_trajectory(cds, color_by = 'figure.labels3')
+?plot_cell_trajectory
+plot_cell_trajectory(cds, color_by = 'Pseudotime')
+plot_cell_trajectory(cds, color_by = 'State')
+
+table(cds$State, cds$figure.labels3)
+```
+
+
+Should maybe also show it including Erythroid and/or CMP.
+
+# Subclustering of MK Lineages
+
+Looking at subclustering between MEP, MkP, and MK.
+
+```{r}
+x <- subset(wbm, figure.labels3 %in% c('MK-1','MK-2','MEP','MkP'))
+
+mk <- NormalizeData(x, normalization.method = 'LogNormalize', scale.factor = 10000)
+
+mk <- FindVariableFeatures(mk, selection.method = 'vst', nfeatures = 2000)
+
+summary(VariableFeatures(mk) %in% VariableFeatures(wbm))
+
+mk <- ScaleData(mk, features = rownames(mk))
+
+mk <- RunPCA(mk, features = VariableFeatures(mk), verbose = F)
+
+ElbowPlot(mk) # going with 10
+
+mk <- FindNeighbors(mk, dims = 1:10)
+
+for (i in seq(0,1,.1)){
+  mk <- FindClusters(mk, resolution = i)
+}
+
+mk <- RunUMAP(mk, dims = 1:10)
+
+mk <- RunTSNE(mk, dims = 1:10)
+
+# res.columns <- colnames(mk@meta.data)[grepl('RNA_snn',
+#                                             colnames(mk@meta.data), ignore.case = T)]
+# 
+# for (i in res.columns){
+#   # print(i)
+#   print(DimPlot(mk, group.by = i, reduction = 'umap', label = T, repel = T) + NoLegend())
+# }
+
+Idents(mk) <- mk$RNA_snn_res.0.4
+
+mk$mk.clusters <- mk$RNA_snn_res.0.4
+
+```
+
+## UMAP 
+
+```{r}
+DimPlot(mk, label = T, repel = T)
+DimPlot(mk, label = T, repel = T, split.by = 'Condition3', ncol = 2) +
+  theme_bw()
+
+
+DimPlot(mk, label = T, repel = T, group.by = 'figure.labels3') + ggtitle(NULL)
+DimPlot(mk, label = T, repel = T, group.by = 'figure.labels3', 
+        split.by = 'Condition3', ncol = 2) + theme_bw() + ggtitle(element_blank())
+
+temp.tbl <- as.data.frame(table(Idents(mk), mk$figure.labels3))
+
+temp.tbl$var2.total <- NA
+for (i in unique(temp.tbl$Var2)){
+  temp.tbl[temp.tbl$Var2 == i,]$var2.total <- sum(temp.tbl[temp.tbl$Var2 == i,]$Freq)
+}
+
+temp.tbl$var1.total <- NA
+for (i in unique(temp.tbl$Var1)){
+  temp.tbl[temp.tbl$Var1 == i,]$var1.total <- sum(temp.tbl[temp.tbl$Var1 == i,]$Freq)
+}
+
+temp.tbl$pct.var1 <- temp.tbl$Freq / temp.tbl$var1.total
+temp.tbl$pct.var2 <- temp.tbl$Freq / temp.tbl$var2.total
+
+ggplot(temp.tbl, aes(x = Var1, y = Var2, fill = pct.var1, label = Freq)) + 
+  geom_tile() + 
+  theme_bw() +
+  geom_text(size = 8) + xlab('Subclusters') + ylab('Original Cluster') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(temp.tbl, aes(x = Var1, y = Var2, fill = pct.var2, label = Freq)) + 
+  geom_tile() + 
+  theme_bw() +
+  geom_text(size = 8) + xlab('Subclusters') + ylab('Original Cluster') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+```{r}
+mk$combo.label <- paste0(mk$Experiment,'_', mk$figure.labels3)
+
+temp.tbl <- as.data.frame(table(Idents(mk), mk$combo.label))
+
+temp.tbl$var2.total <- NA
+for (i in unique(temp.tbl$Var2)){
+  temp.tbl[temp.tbl$Var2 == i,]$var2.total <- sum(temp.tbl[temp.tbl$Var2 == i,]$Freq)
+}
+
+temp.tbl$var1.total <- NA
+for (i in unique(temp.tbl$Var1)){
+  temp.tbl[temp.tbl$Var1 == i,]$var1.total <- sum(temp.tbl[temp.tbl$Var1 == i,]$Freq)
+}
+
+temp.tbl$pct.var1 <- temp.tbl$Freq / temp.tbl$var1.total
+temp.tbl$pct.var2 <- temp.tbl$Freq / temp.tbl$var2.total
+
+ggplot(temp.tbl, aes(x = Var1, y = Var2, fill = pct.var1, label = Freq)) + 
+  geom_tile() + 
+  theme_bw() +
+  geom_text(size = 8) + xlab('Subclusters') + ylab('Original Cluster') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(temp.tbl, aes(x = Var1, y = Var2, fill = pct.var2, label = Freq)) + 
+  geom_tile() + 
+  theme_bw() +
+  geom_text(size = 8) + xlab('Subclusters') + ylab('Original Cluster') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+
+
+## tSNE 
+
+```{r}
+DimPlot(mk, label = T, repel = T, reduction = 'tsne')
+DimPlot(mk, label = T, repel = T, split.by = 'Condition3', ncol = 2, 
+        reduction = 'tsne') +
+  theme_bw()
+
+
+DimPlot(mk, label = T, repel = T, group.by = 'figure.labels3', 
+        reduction = 'tsne')
+DimPlot(mk, label = T, repel = T, group.by = 'figure.labels3', 
+        split.by = 'Condition3', ncol = 2, reduction = 'tsne') + 
+  theme_bw()
+```
+
+## PC Plots
+
+```{r}
+combos <- combn(1:5,2)
+
+for (i in 1:dim(combos)[2]){
+  # print(i)
+  print(DimPlot(mk, reduction = 'pca', 
+                dims = combos[,i]))
+}
+
+for (i in 1:dim(combos)[2]){
+  # print(i)
+  print(DimPlot(mk, reduction = 'pca', 
+                dims = combos[,i], group.by = 'Condition3'))
+}
+
+for (i in 1:dim(combos)[2]){
+  # print(i)
+  print(DimPlot(mk, reduction = 'pca', 
+                dims = combos[,i], group.by = 'figure.labels3'))
+}
+```
+
+
+# Inflammatory Score
+
+Either using the list previously published, the list added onto by Priya, or also a list from GO term analysis.
+
+# Velocity Analysis
+
+I think most of this may be done on the command line.
+
+```{r}
+library(devtools)
+
+```
+
+

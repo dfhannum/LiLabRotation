@@ -1,0 +1,73 @@
+---
+title: "v3.Trajectory"
+author: "D. Ford Hannum Jr."
+date: "1/8/2021"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(monocle)
+```
+
+```{r}
+# BiocManager::install(c('BiocGenerics', 'DelayedArray', 'DelayedMatrixStats',
+#                        'limma', 'S4Vectors', 'SingleCellExperiment',
+#                        'SummarizedExperiment', 'batchelor', 'Matrix.utils'))
+# 
+# devtools::install_github('cole-trapnell-lab/leidenbase')
+# devtools::install_github('cole-trapnell-lab/monocle3')
+```
+
+
+```{r}
+x <- readRDS('./data/v3/woGranBcell.rds')
+
+data <- as(as.matrix(x@assays$RNA@data), 'sparseMatrix')
+pd <- new('AnnotatedDataFrame', data = x@meta.data)
+fData <- data.frame(gene_short_name = row.names(data), row.names = row.names(data))
+fd <- new('AnnotatedDataFrame', data = fData)
+
+cds <- newCellDataSet(data,
+                              phenoData = pd,
+                              featureData = fd,
+                              lowerDetectionLimit = 0.5,
+                              expressionFamily = negbinomial.size())
+
+
+cds <- estimateSizeFactors(cds)
+
+cds <- estimateDispersions(cds)
+
+cds <- detectGenes(cds, min_expr = 0.1)
+
+expressed_genes <- rownames(subset(fData(cds), num_cells_expressed >= 10))
+
+fData(cds)$use_for_ordering <- fData(cds)$num_cells_expressed > 0.05 * ncol (cds)
+
+cds <- reduceDimension(cds, reduction_method = 'DDRTree')
+
+cds <- orderCells(cds)
+
+plot_cell_trajectory(cds, color_by = 'v7.labels')
+?plot_cell_trajectory
+plot_cell_trajectory(cds, color_by = 'Pseudotime')
+plot_cell_trajectory(cds, color_by = 'State')
+```
+
+
+```{r}
+BiocManager::install(version = "3.10")
+R.version
+```
+
