@@ -26,10 +26,6 @@ library(ggpubr)
 library(xlsx)
 ```
 
-```{r}
-wbm <- readRDS('./data/v3/mpl.migr1.121420-2.rds')
-table(wbm$Condition2)
-```
 
 
 ```{r}
@@ -38,8 +34,13 @@ color_pal <- c("#0072B2", "#CC79A7", "#009E73","#D55E00","#999999",
                "#E69F00", "#56B4E9", 'violet',"red", 'black', 'limegreen',
                'purple')
 
+color_pal2 <- c(color_pal,'red')
+
+wbm <- readRDS('./data/v3/mpl.migr1.121420-2.rds')
+table(wbm$Condition2)
+
 wbm$figure.labels <- ifelse(wbm$v7.labels %in% c('MEP/MCP','MEP/ERP'),
-                            ifelse(wbm$v7.labels == 'MEP/MCP', 'MEP-1','MEP-2'),
+                            ifelse(wbm$v7.labels == 'MEP/MCP', 'MkP','MEP'),
                             as.character(wbm$v7.labels))
 
 wbm$figure.labels <- ifelse(wbm$figure.labels == 'Tcell', 'T-cell',
@@ -49,19 +50,48 @@ wbm$figure.labels <- ifelse(wbm$figure.labels == 'Tcell', 'T-cell',
 wbm$UMAP1 <- wbm@reductions$umap@cell.embeddings[,1]
 wbm$UMAP2 <- wbm@reductions$umap@cell.embeddings[,2]
 
-wbm$figure.labels <- ifelse(wbm$figure.labels != 'MK', wbm$figure.labels,
+wbm$figure.labels2 <- ifelse(wbm$figure.labels != 'MK',
+                             as.character(wbm$figure.labels),
                             ifelse(wbm$UMAP1 < 0, 'MK-1','MK-2'))
 
-wbm$figure.labels <- ifelse(wbm$figure.labels != 'Mono/Macro', 
-                         as.character(wbm$figure.labels),
+wbm$figure.labels2 <- ifelse(wbm$figure.labels != 'Mono/Macro', 
+                         as.character(wbm$figure.labels2),
                          ifelse(wbm$UMAP1 < -5, 'Mono/Macro-1','Mono/Macro-2'))
 
-DimPlot(wbm, group.by = 'figure.labels')
-
 wbm$figure.labels <- factor(wbm$figure.labels,
-                            levels = levels(as.factor(wbm$figure.labels))[c(5,3,1,2,12,10,11,4,8,9,6,7)])
+                            levels = levels(as.factor(wbm$figure.labels))[c(5,3,1,2,10,9,4,6,8,7)])
 
 Idents(wbm) <- wbm$figure.labels
+
+table(Idents(wbm))
+
+mk1.cells <- rownames(wbm@meta.data[wbm$figure.labels == 'MK-1',])
+mep1.cells <- rownames(wbm@meta.data[wbm$figure.labels == 'MkP',])
+
+wbm$figure.labels3 <- ifelse(wbm$figure.labels2 %in% c('Mono/Macro-1','Mono/Macro-2'),
+                             'Mono/Macro', as.character(wbm$figure.labels2))
+color_pal <- c("#0072B2", "#CC79A7", "#009E73",'black',"#999999",
+               "#E69F00", "#56B4E9","#D55E00", 'limegreen', 'violet')
+color_pal2 <- c(color_pal, 'red')
+
+wbm$Condition3 <- ifelse(wbm$Condition2 == 'Migr1', 'MigR1',
+                         ifelse(wbm$Condition2 == 'enrMigr1', 'CD41+ enr. MigR1',
+                                ifelse(wbm$Condition2 == 'Mpl', 'MPLW515L', 'CD41+ enr. MPLW515L')))
+
+wbm$Condition3 <- factor(wbm$Condition3,
+                         levels = levels(as.factor(wbm$Condition3))[c(3,4,1,2)])
+
+wbm$Experiment <- ifelse(wbm$Condition2 %in% c('enrMigr1','Migr1'), 'MigR1','MPL')
+
+idents.levels <- c('Granulocyte','CMP','B-cell','B-cell Prog.',
+                   'T-cell','Mono/Macro','Erythroid',
+                   'MEP','MkP','MK-1','MK-2')
+
+wbm$fl4 <- factor(wbm$figure.labels3, levels = idents.levels)
+
+Idents(wbm) <- wbm$fl4
+
+DimPlot(wbm, cols = color_pal2)
 ```
 
 

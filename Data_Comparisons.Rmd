@@ -12,7 +12,7 @@ output:
 ---
 
 ```{r setup, include=TRUE, message=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
 library(Seurat)
 library(ggplot2)
 library(data.table)
@@ -83,8 +83,8 @@ wbm$Experiment <- ifelse(wbm$Condition2 %in% c('enrMigr1','Migr1'), 'MigR1','MPL
 # Ref from Qianyi
 
 ```{r}
-x <- read.csv('./data/hum_ref_wbm/celltype.csv')
-summary(as.factor(x$type))
+# x <- read.csv('./data/hum_ref_wbm/celltype.csv')
+# summary(as.factor(x$type))
 ```
 
 # Psaila_et_al
@@ -92,7 +92,7 @@ summary(as.factor(x$type))
 Cannot seem to find the right clustering to match the paper though the UMAP coordinates do align.
 
 ```{r}
-load('./data/comparison_data/GSE144568/Psaila_et_al.rdata')   
+# load('./data/comparison_data/GSE144568/Psaila_et_al.rdata')   
 # names(attributes(Psaila_et_al))
 # 
 # x <- attributes(Psaila_et_al)$umap.result
@@ -108,8 +108,8 @@ load('./data/comparison_data/GSE144568/Psaila_et_al.rdata')
 ```
 
 ```{r}
-load('./data/comparison_data/GSE144568/GSE144568_cell_information.rdata')
-load('./data/comparison_data/GSE144568/GSE144568_UMI_count.rdata')
+# load('./data/comparison_data/GSE144568/GSE144568_cell_information.rdata')
+# load('./data/comparison_data/GSE144568/GSE144568_UMI_count.rdata')
 ```
 
 
@@ -121,7 +121,7 @@ hcl <- read.table('../CZI_Ovary/data/HCL_data/HCL_centroids.txt', sep = '\t')
 hcl.genes <- rownames(hcl)
 
 comp.list <- read.table('../mouse.human.orthologs.unique.tsv', sep = '\t', header = T)
-head(comp.list)
+# head(comp.list)
 dim(comp.list[comp.list$Human.gene.name %in% hcl.genes,])
 
 h.list <- comp.list[comp.list$Human.gene.name %in% hcl.genes,]
@@ -168,7 +168,7 @@ dim(mrg)
 rownames(mrg) <- mrg$Row.names
 mrg <- mrg[,-1]
 
-comp.list
+# comp.list
 summary(rownames(hcl) %in% toupper(rownames(wbm)))
 
 int.genes <- rownames(hcl)[rownames(hcl) %in% toupper(rownames(wbm))]
@@ -828,6 +828,8 @@ ggplot(temp.cor, aes(x = `HCL Clusters`, y = Cluster2, fill = Correlation)) +
 
 ### Interesting comparisons in Hcl
 
+Doing a text based search.
+
 #### MK
 
 ```{r}
@@ -1347,7 +1349,7 @@ Contains ~700 genes
 hca <- read.xlsx('./data/comparison_data/human_cell_atlas/Markers-Centroids-HCA-CD34+.xlsx',sheetIndex = 2)
 
 rownames(hca) <- hca$UID
-head(hca)
+# head(hca)
 
 hca <- hca[-1,-1]
 hca <- hca[,-c(1,2)]
@@ -1376,7 +1378,7 @@ comp.list[comp.list$Human.gene.name == 'IFITM3',]
 summary(comp.list$Gene.name %in% VariableFeatures(wbm))
 
 comp.list$hv.gene <- ifelse(comp.list$Gene.name %in% VariableFeatures(wbm), 1,0)
-head(comp.list)
+# head(comp.list)
 
 cl2 <- comp.list[comp.list$hv.gene == 1,]
 cl1 <- comp.list[comp.list$hv.gene == 0,]
@@ -1426,7 +1428,7 @@ mrg <- merge(hca.overlap, av, by = 0)
 rownames(mrg) <- mrg$Row.names
 mrg <- mrg[,-1]
 
-head(mrg)
+# head(mrg)
 
 temp.cor <- cor(mrg, method = 'spearman')
 
@@ -1434,7 +1436,7 @@ key.columns <- as.character(unique(Idents(wbm)))
 
 key.columns[10] <- 'MEP.y'
 
-key.columns
+# key.columns
 
 
 
@@ -1447,11 +1449,11 @@ temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
 
 temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
 
-temp.cor
+# temp.cor
 
 colnames(temp.cor) <- c('HCA Clusters','Correlation','Our Cluster')
 
-temp.cor
+# temp.cor
 
 temp.cor$cor.label <- ''
 
@@ -1500,14 +1502,14 @@ rownames(mrg) <- mrg$Row.names
 mrg <- mrg[,-1]
 
 mrg <- mrg[rownames(mrg) %in% cl2[cl2$hv.gene == 1,]$Human.gene.name,]
-dim(mrg)
+# dim(mrg)
 temp.cor <- cor(mrg, method = 'spearman')
 
 key.columns <- as.character(unique(Idents(wbm)))
 
 key.columns[10] <- 'MEP.y'
 
-key.columns
+# key.columns
 
 
 
@@ -1520,11 +1522,11 @@ temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
 
 temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
 
-temp.cor
+# temp.cor
 
 colnames(temp.cor) <- c('HCA Clusters','Correlation','Our Cluster')
 
-temp.cor
+# temp.cor
 
 temp.cor$cor.label <- ''
 
@@ -1569,79 +1571,89 @@ ggplot(temp.cor, aes(x = `HCA Clusters`, y = `Our Cluster`, fill = Correlation))
 Centroids for all genes for each donor (n = 8) and celltype (n = 35) combination.
 
 ```{r}
-x <- as.data.frame(fread('./data/comparison_data/human_cell_atlas/GE-BM-HCA-Donor-Avg.txt'))
+# x <- as.data.frame(fread('./data/comparison_data/human_cell_atlas/GE-BM-HCA-Donor-Avg.txt'))
+# 
+# rownames(x) <- x$uid
+# x <- x[,-1]
+# 
+# unique(tstrsplit(colnames(x),'__', keep = 2)[[1]])
+# 
+# comp.list <- read.table('../mouse.human.orthologs.unique.tsv', sep = '\t', header = T)
+# # colnames(comp.list)
+# cl <- comp.list[,6:7]
+# cl <- distinct(cl)
+# 
+# hca <- x
+# summary(rownames(hca) %in% cl$Human.gene.name)
+# 
+# cl <- cl[cl$Human.gene.name %in% rownames(hca) & cl$Gene.name %in% rownames(wbm),]
+# dim(cl)
+# 
+# cl$hv <- ifelse(cl$Gene.name %in% VariableFeatures(wbm), 1,0)
+# 
+# summary(as.factor(cl$hv))
+# 
+# cl2 <- cl[cl$hv == 1,]
+# 
+# cl2 <- cl2[!duplicated(cl2$Gene.name),]
+# 
+# cl2[cl2$Human.gene.name == 'APOL4',]
+# 
+# cl2 <- cl2[!duplicated(cl2$Human.gene.name),]
+# 
+# cl1 <- cl[cl$hv == 0,]
+# 
+# for (i in 1:dim(cl1)[1]){
+#   if( !(cl1[i,]$Gene.name %in% cl2$Gene.name)){
+#     if( !(cl1[i,]$Human.gene.name %in% cl2$Human.gene.name)){
+#       cl2 <- rbind(cl2,cl1[i,])
+#     }
+#   }
+# }
+# dim(cl2)
+# 
+# summary(as.factor(cl2$Human.gene.name))
+# summary(as.factor(cl2$Gene.name))
+# 
+# dim(hca)
+# hca <- hca[rownames(hca) %in% cl2$Human.gene.name,]
+# dim(hca)
+# 
+# av <- AverageExpression(wbm)$RNA
+# dim(av)
+# av <- av[rownames(av) %in% cl2$Gene.name,]
+# dim(av)
+# 
+# 
+# for (i in 1:dim(av)[1]){
+#   temp <- rownames(av)[i]
+#   temp2 <- cl2[cl2$Gene.name == temp,]$Human.gene.name
+#   # print(paste0(temp,' -> ', temp2))
+#   rownames(av)[i] <- temp2
+# }
+# 
+# dim(av)
+# summary(rownames(av) %in% rownames(hca))
+# 
+# av <- av[rownames(hca),]
+# 
+# summary(rownames(av) == rownames(hca))
+# 
+# mrg.hca.all <- cbind(av,hca)
 
-rownames(x) <- x$uid
-x <- x[,-1]
+# head(mrg.hca.all)
+# getwd()
+# write.csv(mrg.hca.all,'./data/comparison_data/human_cell_atlas/GE-BM-HCA-Donor-Avg.merged.with.our.clusters.csv', quote = F, row.names = T)
 
-unique(tstrsplit(colnames(x),'__', keep = 2)[[1]])
+mrg.hca.all <- read.csv('./data/comparison_data/human_cell_atlas/GE-BM-HCA-Donor-Avg.merged.with.our.clusters.csv')
 
-comp.list <- read.table('../mouse.human.orthologs.unique.tsv', sep = '\t', header = T)
-colnames(comp.list)
-cl <- comp.list[,6:7]
-cl <- distinct(cl)
+# head(mrg.hca.all)
 
-hca <- x
-summary(rownames(hca) %in% cl$Human.gene.name)
+rownames(mrg.hca.all) <- mrg.hca.all[,1]
 
-cl <- cl[cl$Human.gene.name %in% rownames(hca) & cl$Gene.name %in% rownames(wbm),]
-dim(cl)
+mrg.hca.all <- mrg.hca.all[,-1]
 
-cl$hv <- ifelse(cl$Gene.name %in% VariableFeatures(wbm), 1,0)
-
-summary(as.factor(cl$hv))
-
-cl2 <- cl[cl$hv == 1,]
-
-cl2 <- cl2[!duplicated(cl2$Gene.name),]
-
-cl2[cl2$Human.gene.name == 'APOL4',]
-
-cl2 <- cl2[!duplicated(cl2$Human.gene.name),]
-
-cl1 <- cl[cl$hv == 0,]
-
-for (i in 1:dim(cl1)[1]){
-  if( !(cl1[i,]$Gene.name %in% cl2$Gene.name)){
-    if( !(cl1[i,]$Human.gene.name %in% cl2$Human.gene.name)){
-      cl2 <- rbind(cl2,cl1[i,])
-    }
-  }
-}
-dim(cl2)
-
-summary(as.factor(cl2$Human.gene.name))
-summary(as.factor(cl2$Gene.name))
-
-dim(hca)
-hca <- hca[rownames(hca) %in% cl2$Human.gene.name,]
-dim(hca)
-
-av <- AverageExpression(wbm)$RNA
-dim(av)
-av <- av[rownames(av) %in% cl2$Gene.name,]
-dim(av)
-
-
-for (i in 1:dim(av)[1]){
-  temp <- rownames(av)[i]
-  temp2 <- cl2[cl2$Gene.name == temp,]$Human.gene.name
-  # print(paste0(temp,' -> ', temp2))
-  rownames(av)[i] <- temp2
-}
-
-dim(av)
-summary(rownames(av) %in% rownames(hca))
-
-av <- av[rownames(hca),]
-
-summary(rownames(av) == rownames(hca))
-
-mrg.hca.all <- cbind(av,hca)
-
-head(mrg.hca.all)
-getwd()
-write.csv(mrg.hca.all,'./data/comparison_data/human_cell_atlas/GE-BM-HCA-Donor-Avg.merged.with.our.clusters.csv', quote = F, row.names = T)
+# head(mrg.hca.all)
 ```
 
 ### All Genes
@@ -1651,9 +1663,9 @@ temp.cor <- cor(mrg.hca.all, method = 'spearman')
 
 key.columns <- as.character(unique(Idents(wbm)))
 
-# key.columns[10] <- 'MEP.y'
+key.columns[10] <- 'MEP.y'
 
-key.columns
+# key.columns
 
 
 
@@ -1666,11 +1678,11 @@ temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
 
 temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
 
-temp.cor
+# temp.cor
 
 colnames(temp.cor) <- c('HCA Clusters','Correlation','Our Cluster')
 
-temp.cor
+# temp.cor
 
 temp.cor$cor.label <- ''
 
@@ -1714,7 +1726,7 @@ ggplot(temp.cor, aes(x = `HCA Clusters`, y = `Our Cluster`, fill = Correlation))
 temp.cor$hca.sample <- tstrsplit(temp.cor$`HCA Clusters`,'_', keep = 1)[[1]]
 temp.cor$hca.ct <- tstrsplit(temp.cor$`HCA Clusters`,'__', keep = 2)[[1]]
 temp.cor$cd34.pos <- grepl('CD34+', temp.cor$`HCA Clusters`)
-temp.cor
+# temp.cor
 ```
 
 ### HV Genes
@@ -1727,7 +1739,7 @@ temp.cor <- cor(mrg.hca.hv, method = 'spearman')
 
 key.columns <- as.character(unique(Idents(wbm)))
 
-# key.columns[10] <- 'MEP.y'
+key.columns[10] <- 'MEP.y'
 
 key.columns
 
@@ -1746,7 +1758,7 @@ temp.cor
 
 colnames(temp.cor) <- c('HCA Clusters','Correlation','Our Cluster')
 
-temp.cor
+# temp.cor
 
 temp.cor$cor.label <- ''
 
@@ -1791,7 +1803,7 @@ ggplot(temp.cor, aes(x = `HCA Clusters`, y = `Our Cluster`, fill = Correlation))
 temp.cor$hca.sample <- tstrsplit(temp.cor$`HCA Clusters`,'_', keep = 1)[[1]]
 temp.cor$hca.ct <- tstrsplit(temp.cor$`HCA Clusters`,'__', keep = 2)[[1]]
 temp.cor$cd34.pos <- grepl('CD34+', temp.cor$`HCA Clusters`)
-temp.cor
+# temp.cor
 ```
 
 #### CD34+ Cells
@@ -1808,7 +1820,7 @@ ggplot(tc2, aes(y = hca.sample, x = `Our Cluster`, fill = Correlation)) +
   ggtitle('HCA Comparison using all genes') +
   facet_wrap(~hca.ct, ncol = 2)
 
-ggsave('./data/comparison_data/human_cell_atlas/cd34+.clusters.png', device = 'png', height = 16, width = 8, units = 'in')
+# ggsave('./data/comparison_data/human_cell_atlas/cd34+.clusters.png', device = 'png', height = 16, width = 8, units = 'in')
 ```
 
 #### Non CD34+ Cells
@@ -1825,6 +1837,1641 @@ ggplot(tc3, aes(y = hca.sample, x = `Our Cluster`, fill = Correlation)) +
   ggtitle('HCA Comparison using all genes') +
   facet_wrap(~hca.ct, ncol = 2)
 
-ggsave('./data/comparison_data/human_cell_atlas/cd34-.clusters.png', device = 'png', height = 16, width = 8, units = 'in')
+# ggsave('./data/comparison_data/human_cell_atlas/cd34-.clusters.png', device = 'png', height = 16, width = 8, units = 'in')
 ```
 
+## Averaging across BE-BM-HCA
+
+```{r}
+
+centroids <- read.csv('./data/comparison_data/human_cell_atlas/GE-BM-HCA-Donor-Avg.merged.with.our.clusters.csv')
+
+# head(centroids)
+
+rownames(centroids) <- centroids[,1]
+centroids <- centroids[,-1]
+# head(centroids)
+
+grepl('__', colnames(centroids))
+
+av <- centroids[,!grepl('__', colnames(centroids))]
+
+centroids <- centroids[,grepl('__', colnames(centroids))]
+
+centroids <- as.data.frame(t(centroids))
+centroids$ct <- tstrsplit(rownames(centroids),'__', keep = 2)[[1]]
+
+# summary(as.factor(centroids$ct))
+
+out <- split(centroids, f = centroids$ct)
+
+out.df <- data.frame(genes = colnames(out[[1]]))
+
+out.df <- as.data.frame(out.df[-13182,])
+colnames(out.df) <- 'gene'
+
+for (i in out){
+  ct <- i$ct[1]
+  i <- i[,-13182]
+  temp <- as.data.frame(t(i))
+  temp.add <- data.frame(V1 = rowSums(temp))
+  colnames(temp.add) <- ct
+  out.df <- cbind(out.df, temp.add)
+}
+
+out.df <- out.df[,-1]
+# dim(out.df)
+# summary(rownames(out.df) == rownames(av))
+
+df <- cbind(av, out.df)
+```
+
+```{r}
+our.hv.genes <- cl2[cl2$hv == 1,]$Human.gene.name 
+summary(our.hv.genes %in% rownames(df))
+
+RowVar <- function(x, ...) {
+  rowSums((x - rowMeans(x, ...))^2, ...)/(dim(x)[2] - 1)
+} # https://stackoverflow.com/questions/25099825/row-wise-variance-of-a-matrix-in-r
+
+hca.var <- data.frame(row.var = RowVar(out.df),
+                      row.mean = rowMeans(out.df))
+hca.hv.genes <- head(row.names(hca.var[order(hca.var$row.var, 
+                                             decreasing = T),]),2000)
+
+length(intersect(hca.hv.genes, our.hv.genes))
+
+intersect.hv.genes <- intersect(hca.hv.genes, our.hv.genes)
+```
+
+```{r}
+dim(df)
+length(our.hv.genes)
+length(hca.hv.genes)
+length(intersect.hv.genes)
+```
+
+
+### CD34+
+
+```{r}
+df.save <- df
+```
+
+
+#### All Genes
+
+```{r}
+# head(df)
+
+keep.columns <- grepl('Cd34', colnames(df), ignore.case = T)
+keep.columns[1:11] <- T
+
+keep.rows <- rownames(df)
+
+temp.df <- df[keep.rows,keep.columns]
+dim(temp.df)
+
+temp.cor <- cor(temp.df, method = 'spearman')
+
+key.columns <- as.character(unique(wbm$figure.labels3))
+
+# key.columns
+
+key.columns <- gsub('/','.',key.columns)
+key.columns <- gsub(' ','.',key.columns)
+key.columns <- gsub('\\.','.',key.columns)
+key.columns <- gsub('-','.',key.columns)
+
+
+# key.columns
+
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+# temp.cor
+
+colnames(temp.cor) <- c('HCA CD34+ Clusters','Correlation','Our Cluster')
+
+# temp.cor
+
+temp.cor$cor.label <- ''
+
+summary(is.na(temp.cor$Correlation))
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`HCA CD34+ Clusters`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`HCA CD34+ Clusters` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$cor.label2 <- ''
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`Our Cluster`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`Our Cluster` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label2[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .6) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCA CD34+ Comparison using all genes')
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .6) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label2), size = 3) +
+  ggtitle('HCA CD34+ Comparison using all genes')
+```
+
+#### Our HV genes
+
+```{r}
+# head(df)
+
+keep.columns <- grepl('Cd34', colnames(df), ignore.case = T)
+keep.columns[1:11] <- T
+
+keep.rows <- our.hv.genes
+
+temp.df <- df[keep.rows,keep.columns]
+# temp.df <- temp.df[complete.cases()]
+dim(temp.df)
+
+temp.cor <- cor(temp.df, method = 'spearman', use = 'pairwise.complete.obs')
+
+key.columns <- as.character(unique(wbm$figure.labels3))
+
+# key.columns
+
+key.columns <- gsub('/','.',key.columns)
+key.columns <- gsub(' ','.',key.columns)
+key.columns <- gsub('\\.','.',key.columns)
+key.columns <- gsub('-','.',key.columns)
+
+
+# key.columns
+
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+# temp.cor
+
+colnames(temp.cor) <- c('HCA CD34+ Clusters','Correlation','Our Cluster')
+
+# temp.cor
+
+temp.cor$cor.label <- ''
+
+summary(is.na(temp.cor$Correlation))
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`HCA CD34+ Clusters`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`HCA CD34+ Clusters` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$cor.label2 <- ''
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`Our Cluster`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`Our Cluster` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label2[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .55) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCA CD34+ Comparison using our hv genes')
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .55) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label2), size = 3) +
+  ggtitle('HCA CD34+ Comparison using our hv genes')
+```
+
+#### Their HV genes
+
+```{r}
+# head(df)
+
+keep.columns <- grepl('Cd34', colnames(df), ignore.case = T)
+keep.columns[1:11] <- T
+
+keep.rows <- hca.hv.genes
+
+temp.df <- df[keep.rows,keep.columns]
+# dim(temp.df)
+
+temp.cor <- cor(temp.df, method = 'spearman', use = 'pairwise.complete.obs')
+
+key.columns <- as.character(unique(wbm$figure.labels3))
+
+# key.columns
+
+key.columns <- gsub('/','.',key.columns)
+key.columns <- gsub(' ','.',key.columns)
+key.columns <- gsub('\\.','.',key.columns)
+key.columns <- gsub('-','.',key.columns)
+
+
+# key.columns
+
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+# temp.cor
+
+colnames(temp.cor) <- c('HCA CD34+ Clusters','Correlation','Our Cluster')
+
+# temp.cor
+
+temp.cor$cor.label <- ''
+
+summary(is.na(temp.cor$Correlation))
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`HCA CD34+ Clusters`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`HCA CD34+ Clusters` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$cor.label2 <- ''
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`Our Cluster`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`Our Cluster` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label2[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .55) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCA CD34+ Comparison using their hv genes')
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .55) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label2), size = 3) +
+  ggtitle('HCA CD34+ Comparison using their hv genes')
+```
+
+#### Intersect of HV genes
+
+```{r}
+# head(df)
+
+keep.columns <- grepl('Cd34', colnames(df), ignore.case = T)
+keep.columns[1:11] <- T
+
+keep.rows <- hca.hv.genes
+
+temp.df <- df[keep.rows,keep.columns]
+# dim(temp.df)
+
+temp.cor <- cor(temp.df, method = 'spearman', use = 'pairwise.complete.obs')
+
+key.columns <- as.character(unique(wbm$figure.labels3))
+
+# key.columns
+
+key.columns <- gsub('/','.',key.columns)
+key.columns <- gsub(' ','.',key.columns)
+key.columns <- gsub('\\.','.',key.columns)
+key.columns <- gsub('-','.',key.columns)
+
+
+# key.columns
+
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+# temp.cor
+
+colnames(temp.cor) <- c('HCA CD34+ Clusters','Correlation','Our Cluster')
+
+# temp.cor
+
+temp.cor$cor.label <- ''
+
+summary(is.na(temp.cor$Correlation))
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`HCA CD34+ Clusters`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`HCA CD34+ Clusters` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$cor.label2 <- ''
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`Our Cluster`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`Our Cluster` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label2[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .55) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCA CD34+ Comparison using intersect hv genes')
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .55) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label2), size = 3) +
+  ggtitle('HCA CD34+ Comparison using intersect hv genes')
+```
+
+### CD34 -
+
+#### All Genes
+
+```{r}
+# head(df)
+
+keep.columns <- !grepl('Cd34', colnames(df), ignore.case = T)
+# keep.columns[1:11] <- T
+
+keep.rows <- rownames(df)
+
+temp.df <- df[keep.rows,keep.columns]
+# dim(temp.df)
+
+temp.cor <- cor(temp.df, method = 'spearman', use = 'pairwise.complete.obs')
+
+key.columns <- as.character(unique(wbm$figure.labels3))
+
+# key.columns
+
+key.columns <- gsub('/','.',key.columns)
+key.columns <- gsub(' ','.',key.columns)
+key.columns <- gsub('\\.','.',key.columns)
+key.columns <- gsub('-','.',key.columns)
+
+
+# key.columns
+
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+# temp.cor
+
+colnames(temp.cor) <- c('HCA CD34+ Clusters','Correlation','Our Cluster')
+
+# temp.cor
+
+temp.cor$cor.label <- ''
+
+# summary(is.na(temp.cor$Correlation))
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`HCA CD34+ Clusters`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`HCA CD34+ Clusters` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$cor.label2 <- ''
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`Our Cluster`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`Our Cluster` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label2[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .6) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCA CD34- Comparison using all genes')
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .6) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label2), size = 3) +
+  ggtitle('HCA CD34- Comparison using all genes')
+```
+
+#### Our HV genes
+
+```{r}
+# head(df)
+
+keep.columns <- !grepl('Cd34', colnames(df), ignore.case = T)
+# keep.columns[1:11] <- T
+
+keep.rows <- our.hv.genes
+
+temp.df <- df[keep.rows,keep.columns]
+# dim(temp.df)
+
+temp.cor <- cor(temp.df, method = 'spearman', use = 'pairwise.complete.obs')
+
+key.columns <- as.character(unique(wbm$figure.labels3))
+
+# key.columns
+
+key.columns <- gsub('/','.',key.columns)
+key.columns <- gsub(' ','.',key.columns)
+key.columns <- gsub('\\.','.',key.columns)
+key.columns <- gsub('-','.',key.columns)
+
+
+# key.columns
+
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+# temp.cor
+
+colnames(temp.cor) <- c('HCA CD34+ Clusters','Correlation','Our Cluster')
+
+# temp.cor
+
+temp.cor$cor.label <- ''
+
+summary(is.na(temp.cor$Correlation))
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`HCA CD34+ Clusters`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`HCA CD34+ Clusters` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$cor.label2 <- ''
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`Our Cluster`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`Our Cluster` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label2[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .55) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCA CD34- Comparison using our hv genes')
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .55) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label2), size = 3) +
+  ggtitle('HCA CD34- Comparison using our hv genes')
+```
+
+#### Their HV genes
+
+```{r}
+# head(df)
+
+keep.columns <- !grepl('Cd34', colnames(df), ignore.case = T)
+# keep.columns[1:11] <- T
+
+keep.rows <- hca.hv.genes
+
+temp.df <- df[keep.rows,keep.columns]
+# dim(temp.df)
+
+temp.cor <- cor(temp.df, method = 'spearman', use = 'pairwise.complete.obs')
+
+key.columns <- as.character(unique(wbm$figure.labels3))
+
+# key.columns
+
+key.columns <- gsub('/','.',key.columns)
+key.columns <- gsub(' ','.',key.columns)
+key.columns <- gsub('\\.','.',key.columns)
+key.columns <- gsub('-','.',key.columns)
+
+
+# key.columns
+
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+# temp.cor
+
+colnames(temp.cor) <- c('HCA CD34+ Clusters','Correlation','Our Cluster')
+
+# temp.cor
+
+temp.cor$cor.label <- ''
+
+summary(is.na(temp.cor$Correlation))
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`HCA CD34+ Clusters`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`HCA CD34+ Clusters` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$cor.label2 <- ''
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`Our Cluster`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`Our Cluster` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label2[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .55) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCA CD34- Comparison using their hv genes')
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .55) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label2), size = 3) +
+  ggtitle('HCA CD34- Comparison using their hv genes')
+```
+
+#### Intersect of HV genes
+
+```{r}
+# head(df)
+
+keep.columns <- !grepl('Cd34', colnames(df), ignore.case = T)
+# keep.columns[1:11] <- T
+
+keep.rows <- hca.hv.genes
+
+temp.df <- df[keep.rows,keep.columns]
+# dim(temp.df)
+
+temp.cor <- cor(temp.df, method = 'spearman', use = 'pairwise.complete.obs')
+
+key.columns <- as.character(unique(wbm$figure.labels3))
+
+# key.columns
+
+key.columns <- gsub('/','.',key.columns)
+key.columns <- gsub(' ','.',key.columns)
+key.columns <- gsub('\\.','.',key.columns)
+key.columns <- gsub('-','.',key.columns)
+
+
+# key.columns
+
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+# temp.cor
+
+colnames(temp.cor) <- c('HCA CD34+ Clusters','Correlation','Our Cluster')
+
+# temp.cor
+
+temp.cor$cor.label <- ''
+
+# summary(is.na(temp.cor$Correlation))
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`HCA CD34+ Clusters`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`HCA CD34+ Clusters` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$cor.label2 <- ''
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$`Our Cluster`[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$`Our Cluster` == temp.cluster,]$Correlation)){
+    temp.cor$cor.label2[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .55) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCA CD34- Comparison using intersect hv genes')
+
+ggplot(temp.cor, aes(x = `HCA CD34+ Clusters`, y = `Our Cluster`, 
+                     fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .55) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  # xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label2), size = 3) +
+  ggtitle('HCA CD34- Comparison using intersect hv genes')
+```
+
+# Mouse RNA Dataset
+
+```{r}
+Idents(wbm) <- wbm$figure.labels3
+av_wbm <- AverageExpression(wbm)$RNA
+
+m.ref.immgen <- celldex::MouseRNAseqData()
+
+m.ref.counts <- as.data.frame(assays(m.ref.immgen)$logcounts)
+
+m.ref.counts <- m.ref.counts[rownames(m.ref.counts) %in% rownames(av_wbm),]
+
+av_wbm <- as.data.frame(av_wbm[rownames(av_wbm) %in% rownames(m.ref.counts),])
+
+dim(av_wbm)
+
+m.ref.counts$gene <- rownames(m.ref.counts)
+
+av_wbm$gene <- rownames(av_wbm)
+
+mg <- merge(av_wbm, m.ref.counts, by = 'gene')
+
+rownames(mg) <- mg[,1]
+mg <- mg[,-1]
+```
+
+```{r}
+# Restricting it to highly variable genes
+our.mouse.hv.genes <- VariableFeatures(wbm)
+
+m.ref.counts <- m.ref.counts[,-359]
+
+m.ref.var <- data.frame(row.var = RowVar(m.ref.counts),
+                      row.mean = rowMeans(m.ref.counts))
+m.ref.hv.genes <- head(row.names(m.ref.var[order(m.ref.var$row.var, decreasing = T),]),2000)
+
+length(intersect(m.ref.hv.genes, our.mouse.hv.genes))
+
+sum(rownames(mg) %in% our.mouse.hv.genes)
+dim(m.ref.counts)
+
+intersect.hv.genes <- intersect(m.ref.hv.genes, our.mouse.hv.genes)
+```
+
+## All Genes
+
+```{r}
+genes <- rownames(mg)
+
+hv.mg <- mg[genes,]
+dim(hv.mg)
+temp.cor <- cor(hv.mg)
+
+key.columns <- unique(wbm$figure.labels3)
+key.columns
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+temp.cor$Cluster1 <- rep(m.ref.immgen$label.fine, each = length(key.columns))
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2,
+#                             levels = 0:15)
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:11,]
+  temp <- temp[!duplicated(temp$Cluster1),][1,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+top3.hits <- top3.hits[-1,c(3,1,2)]
+
+colnames(top3.hits) <- c('Our Clusters','MouseRNA Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`MouseRNA Cluster`,]
+
+temp.cor$`MouseRNA Clusters` <- factor(temp.cor$Cluster1, 
+                                     levels = unique(top3.hits$`MouseRNA Cluster`))
+###
+temp.cor$cor.label <- ''
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 ==
+                                              temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$exp <- rep(1:75, each = 11) 
+
+temp.cor$cluster1.plus.number <- paste0(temp.cor$Cluster1, '_', temp.cor$exp)
+
+temp.cor$keep <- 0
+
+for (i in temp.cor$cluster1.plus.number){
+  temp.df <- temp.cor[temp.cor$cluster1.plus.number == i,]
+  if (sum(temp.df$cor.label != '') != 0){
+    temp.cor[temp.cor$cluster1.plus.number == i,]$keep <- 1
+  }
+}
+
+temp.cor2 <- temp.cor[temp.cor$keep == 1,]
+
+# m.samp.levels <- c('B cells_64','B cells_60','Macrophages_19','Granulocytes_8',
+                   # 'Granulocytes_10','Erythrocytes_3',
+                   # 'Granulocytes_16','Macrophages_31','T cells_50')
+
+# temp.cor2$cluster1.plus.number2 <- factor(temp.cor2$cluster1.plus.number,
+#                                           levels = m.samp.levels)
+
+ggplot(temp.cor2, aes(x = cluster1.plus.number, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  xlab('MouseRNA Cluster Centroids') + ylab('Our Cluster Centroids') + 
+  ggtitle('MouseRNA comparison using all genes') +
+  geom_text(aes(label = cor.label), size = 3) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+# ggsave('figures/v8/1sup.mouseRNA.cluster.centroid.top.hit.pdf', device = 'pdf',
+#        units = 'in', width = 5, height = 3, dpi = 600)
+# 
+# mref.cor <- temp.cor2
+```
+
+## Our HV Genes
+
+```{r}
+genes <- our.mouse.hv.genes
+
+hv.mg <- mg[rownames(mg) %in% genes,]
+dim(hv.mg)
+temp.cor <- cor(hv.mg)
+
+key.columns <- unique(wbm$figure.labels3)
+key.columns
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+temp.cor$Cluster1 <- rep(m.ref.immgen$label.fine, each = length(key.columns))
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2,
+#                             levels = 0:15)
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:11,]
+  temp <- temp[!duplicated(temp$Cluster1),][1,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+top3.hits <- top3.hits[-1,c(3,1,2)]
+
+colnames(top3.hits) <- c('Our Clusters','MouseRNA Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`MouseRNA Cluster`,]
+
+temp.cor$`MouseRNA Clusters` <- factor(temp.cor$Cluster1, 
+                                     levels = unique(top3.hits$`MouseRNA Cluster`))
+###
+temp.cor$cor.label <- ''
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 ==
+                                              temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+l <- dim(temp.cor)[1]/length(key.columns)
+temp.cor$exp <- rep(1:l, each = 11) 
+
+temp.cor$cluster1.plus.number <- paste0(temp.cor$Cluster1, '_', temp.cor$exp)
+
+temp.cor$keep <- 0
+
+for (i in temp.cor$cluster1.plus.number){
+  temp.df <- temp.cor[temp.cor$cluster1.plus.number == i,]
+  if (sum(temp.df$cor.label != '') != 0){
+    temp.cor[temp.cor$cluster1.plus.number == i,]$keep <- 1
+  }
+}
+
+temp.cor2 <- temp.cor[temp.cor$keep == 1,]
+
+# m.samp.levels <- c('B cells_64','B cells_60','Macrophages_19','Granulocytes_8',
+                   # 'Granulocytes_10','Erythrocytes_3',
+                   # 'Granulocytes_16','Macrophages_31','T cells_50')
+
+# temp.cor2$cluster1.plus.number2 <- factor(temp.cor2$cluster1.plus.number,
+#                                           levels = m.samp.levels)
+
+ggplot(temp.cor2, aes(x = cluster1.plus.number, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  xlab('MouseRNA Cluster Centroids') + ylab('Our Cluster Centroids') + 
+  ggtitle('MouseRNA comparison using our highly variable genes') +
+  geom_text(aes(label = cor.label), size = 3) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+# ggsave('figures/v8/1sup.mouseRNA.cluster.centroid.top.hit.pdf', device = 'pdf',
+#        units = 'in', width = 5, height = 3, dpi = 600)
+# 
+# mref.cor <- temp.cor2
+```
+
+## Their HV Genes
+
+```{r}
+genes <- m.ref.hv.genes
+
+hv.mg <- mg[rownames(mg) %in% genes,]
+dim(hv.mg)
+temp.cor <- cor(hv.mg)
+
+key.columns <- unique(wbm$figure.labels3)
+key.columns
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+temp.cor$Cluster1 <- rep(m.ref.immgen$label.fine, each = length(key.columns))
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2,
+#                             levels = 0:15)
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:11,]
+  temp <- temp[!duplicated(temp$Cluster1),][1,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+top3.hits <- top3.hits[-1,c(3,1,2)]
+
+colnames(top3.hits) <- c('Our Clusters','MouseRNA Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`MouseRNA Cluster`,]
+
+temp.cor$`MouseRNA Clusters` <- factor(temp.cor$Cluster1, 
+                                     levels = unique(top3.hits$`MouseRNA Cluster`))
+###
+temp.cor$cor.label <- ''
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 ==
+                                              temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+l <- dim(temp.cor)[1]/length(key.columns)
+temp.cor$exp <- rep(1:l, each = 11) 
+
+temp.cor$cluster1.plus.number <- paste0(temp.cor$Cluster1, '_', temp.cor$exp)
+
+temp.cor$keep <- 0
+
+for (i in temp.cor$cluster1.plus.number){
+  temp.df <- temp.cor[temp.cor$cluster1.plus.number == i,]
+  if (sum(temp.df$cor.label != '') != 0){
+    temp.cor[temp.cor$cluster1.plus.number == i,]$keep <- 1
+  }
+}
+
+temp.cor2 <- temp.cor[temp.cor$keep == 1,]
+
+# m.samp.levels <- c('B cells_64','B cells_60','Macrophages_19','Granulocytes_8',
+                   # 'Granulocytes_10','Erythrocytes_3',
+                   # 'Granulocytes_16','Macrophages_31','T cells_50')
+
+# temp.cor2$cluster1.plus.number2 <- factor(temp.cor2$cluster1.plus.number,
+#                                           levels = m.samp.levels)
+
+ggplot(temp.cor2, aes(x = cluster1.plus.number, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  xlab('MouseRNA Cluster Centroids') + ylab('Our Cluster Centroids') + 
+  ggtitle('MouseRNA comparison using their highly variable genes') +
+  geom_text(aes(label = cor.label), size = 3) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+# ggsave('figures/v8/1sup.mouseRNA.cluster.centroid.top.hit.pdf', device = 'pdf',
+#        units = 'in', width = 5, height = 3, dpi = 600)
+# 
+# mref.cor <- temp.cor2
+```
+
+## Intersect HV Genes
+
+```{r}
+genes <- intersect.hv.genes
+
+hv.mg <- mg[rownames(mg) %in% genes,]
+dim(hv.mg)
+temp.cor <- cor(hv.mg)
+
+key.columns <- unique(wbm$figure.labels3)
+key.columns
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+temp.cor$Cluster1 <- rep(m.ref.immgen$label.fine, each = length(key.columns))
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2,
+#                             levels = 0:15)
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:11,]
+  temp <- temp[!duplicated(temp$Cluster1),][1,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+top3.hits <- top3.hits[-1,c(3,1,2)]
+
+colnames(top3.hits) <- c('Our Clusters','MouseRNA Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`MouseRNA Cluster`,]
+
+temp.cor$`MouseRNA Clusters` <- factor(temp.cor$Cluster1, 
+                                     levels = unique(top3.hits$`MouseRNA Cluster`))
+###
+temp.cor$cor.label <- ''
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 ==
+                                              temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+l <- dim(temp.cor)[1]/length(key.columns)
+temp.cor$exp <- rep(1:l, each = 11) 
+
+temp.cor$cluster1.plus.number <- paste0(temp.cor$Cluster1, '_', temp.cor$exp)
+
+temp.cor$keep <- 0
+
+for (i in temp.cor$cluster1.plus.number){
+  temp.df <- temp.cor[temp.cor$cluster1.plus.number == i,]
+  if (sum(temp.df$cor.label != '') != 0){
+    temp.cor[temp.cor$cluster1.plus.number == i,]$keep <- 1
+  }
+}
+
+temp.cor2 <- temp.cor[temp.cor$keep == 1,]
+
+# m.samp.levels <- c('B cells_64','B cells_60','Macrophages_19','Granulocytes_8',
+                   # 'Granulocytes_10','Erythrocytes_3',
+                   # 'Granulocytes_16','Macrophages_31','T cells_50')
+
+# temp.cor2$cluster1.plus.number2 <- factor(temp.cor2$cluster1.plus.number,
+#                                           levels = m.samp.levels)
+
+ggplot(temp.cor2, aes(x = cluster1.plus.number, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  xlab('MouseRNA Cluster Centroids') + ylab('Our Cluster Centroids') + 
+  ggtitle('MouseRNA comparison using intersect highly variable genes') +
+  geom_text(aes(label = cor.label), size = 3) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+# ggsave('figures/v8/1sup.mouseRNA.cluster.centroid.top.hit.pdf', device = 'pdf',
+#        units = 'in', width = 5, height = 3, dpi = 600)
+# 
+# mref.cor <- temp.cor2
+```
+
+# ImmGen Comparison
+
+```{r}
+av_wbm <- AverageExpression(wbm)$RNA
+
+m.ref.immgen <- celldex::ImmGenData()
+
+m.ref.counts <- as.data.frame(assays(m.ref.immgen)$logcounts)
+
+m.ref.counts <- m.ref.counts[rownames(m.ref.counts) %in% rownames(av_wbm),]
+
+av_wbm <- as.data.frame(av_wbm[rownames(av_wbm) %in% rownames(m.ref.counts),])
+
+dim(av_wbm)
+
+m.ref.counts$gene <- rownames(m.ref.counts)
+
+av_wbm$gene <- rownames(av_wbm)
+
+mg <- merge(av_wbm, m.ref.counts, by = 'gene')
+
+rownames(mg) <- mg[,1]
+mg <- mg[,-1]
+dim(mg)
+```
+
+```{r}
+# Restricting it to highly variable genes
+our.mouse.hv.genes <- VariableFeatures(wbm)
+
+m.ref.counts <- m.ref.counts[,-831]
+
+m.ref.var <- data.frame(row.var = RowVar(m.ref.counts),
+                      row.mean = rowMeans(m.ref.counts))
+m.ref.hv.genes <- head(row.names(m.ref.var[order(m.ref.var$row.var, decreasing = T),]),2000)
+
+sum(rownames(mg) %in% our.mouse.hv.genes)
+dim(m.ref.counts)
+
+length(intersect(m.ref.hv.genes, our.mouse.hv.genes))
+
+intersect.hv.genes <- intersect(m.ref.hv.genes, our.mouse.hv.genes)
+
+union.hv.genes <- union(m.ref.hv.genes, our.mouse.hv.genes)
+length(union.hv.genes)
+```
+
+## All Genes
+
+```{r}
+genes <- rownames(mg)
+
+hv.mg <- mg[genes,]
+dim(hv.mg)
+temp.cor <- cor(hv.mg)
+
+key.columns <- unique(wbm$figure.labels3)
+key.columns
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+temp.cor$Cluster1 <- rep(m.ref.immgen$label.fine, each = length(key.columns))
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2,
+#                             levels = 0:15)
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:11,]
+  temp <- temp[!duplicated(temp$Cluster1),][1,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+top3.hits <- top3.hits[-1,c(3,1,2)]
+
+colnames(top3.hits) <- c('Our Clusters','MouseRNA Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`MouseRNA Cluster`,]
+
+temp.cor$`MouseRNA Clusters` <- factor(temp.cor$Cluster1, 
+                                     levels = unique(top3.hits$`MouseRNA Cluster`))
+###
+temp.cor$cor.label <- ''
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 ==
+                                              temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+l <- dim(temp.cor)[1] /11
+temp.cor$exp <- rep(1:l, each = 11) 
+
+temp.cor$cluster1.plus.number <- paste0(temp.cor$Cluster1, '_', temp.cor$exp)
+
+temp.cor$keep <- 0
+
+for (i in temp.cor$cluster1.plus.number){
+  temp.df <- temp.cor[temp.cor$cluster1.plus.number == i,]
+  if (sum(temp.df$cor.label != '') != 0){
+    temp.cor[temp.cor$cluster1.plus.number == i,]$keep <- 1
+  }
+}
+
+temp.cor2 <- temp.cor[temp.cor$keep == 1,]
+
+# m.samp.levels <- c('B cells_64','B cells_60','Macrophages_19','Granulocytes_8',
+                   # 'Granulocytes_10','Erythrocytes_3',
+                   # 'Granulocytes_16','Macrophages_31','T cells_50')
+
+# temp.cor2$cluster1.plus.number2 <- factor(temp.cor2$cluster1.plus.number,
+#                                           levels = m.samp.levels)
+
+ggplot(temp.cor2, aes(x = cluster1.plus.number, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  xlab('ImmGen Cluster Centroids') + ylab('Our Cluster Centroids') + 
+  ggtitle('ImmGen comparison using all genes') +
+  geom_text(aes(label = cor.label), size = 3) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+# ggsave('figures/v8/1sup.mouseRNA.cluster.centroid.top.hit.pdf', device = 'pdf',
+#        units = 'in', width = 5, height = 3, dpi = 600)
+# 
+# mref.cor <- temp.cor2
+```
+
+## Our HV Genes
+
+```{r}
+genes <- our.mouse.hv.genes
+
+hv.mg <- mg[rownames(mg) %in% genes,]
+dim(hv.mg)
+temp.cor <- cor(hv.mg)
+
+key.columns <- unique(wbm$figure.labels3)
+key.columns
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+temp.cor$Cluster1 <- rep(m.ref.immgen$label.fine, each = length(key.columns))
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2,
+#                             levels = 0:15)
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:11,]
+  temp <- temp[!duplicated(temp$Cluster1),][1,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+top3.hits <- top3.hits[-1,c(3,1,2)]
+
+colnames(top3.hits) <- c('Our Clusters','MouseRNA Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`MouseRNA Cluster`,]
+
+temp.cor$`MouseRNA Clusters` <- factor(temp.cor$Cluster1, 
+                                     levels = unique(top3.hits$`MouseRNA Cluster`))
+###
+temp.cor$cor.label <- ''
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 ==
+                                              temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+l <- dim(temp.cor)[1] /11
+temp.cor$exp <- rep(1:l, each = 11)
+
+temp.cor$cluster1.plus.number <- paste0(temp.cor$Cluster1, '_', temp.cor$exp)
+
+temp.cor$keep <- 0
+
+for (i in temp.cor$cluster1.plus.number){
+  temp.df <- temp.cor[temp.cor$cluster1.plus.number == i,]
+  if (sum(temp.df$cor.label != '') != 0){
+    temp.cor[temp.cor$cluster1.plus.number == i,]$keep <- 1
+  }
+}
+
+temp.cor2 <- temp.cor[temp.cor$keep == 1,]
+
+# m.samp.levels <- c('B cells_64','B cells_60','Macrophages_19','Granulocytes_8',
+                   # 'Granulocytes_10','Erythrocytes_3',
+                   # 'Granulocytes_16','Macrophages_31','T cells_50')
+
+# temp.cor2$cluster1.plus.number2 <- factor(temp.cor2$cluster1.plus.number,
+#                                           levels = m.samp.levels)
+
+ggplot(temp.cor2, aes(x = cluster1.plus.number, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  xlab('ImmGen Cluster Centroids') + ylab('Our Cluster Centroids') + 
+  ggtitle('ImmGen comparison using our highly variable genes') +
+  geom_text(aes(label = cor.label), size = 3) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+# ggsave('figures/v8/1sup.mouseRNA.cluster.centroid.top.hit.pdf', device = 'pdf',
+#        units = 'in', width = 5, height = 3, dpi = 600)
+# 
+# mref.cor <- temp.cor2
+```
+
+## Their HV Genes
+
+```{r}
+genes <- m.ref.hv.genes
+
+hv.mg <- mg[rownames(mg) %in% genes,]
+dim(hv.mg)
+temp.cor <- cor(hv.mg)
+
+key.columns <- unique(wbm$figure.labels3)
+key.columns
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+temp.cor$Cluster1 <- rep(m.ref.immgen$label.fine, each = length(key.columns))
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2,
+#                             levels = 0:15)
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:11,]
+  temp <- temp[!duplicated(temp$Cluster1),][1,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+top3.hits <- top3.hits[-1,c(3,1,2)]
+
+colnames(top3.hits) <- c('Our Clusters','MouseRNA Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`MouseRNA Cluster`,]
+
+temp.cor$`MouseRNA Clusters` <- factor(temp.cor$Cluster1, 
+                                     levels = unique(top3.hits$`MouseRNA Cluster`))
+###
+temp.cor$cor.label <- ''
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 ==
+                                              temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+l <- dim(temp.cor)[1]/length(key.columns)
+temp.cor$exp <- rep(1:l, each = 11) 
+
+temp.cor$cluster1.plus.number <- paste0(temp.cor$Cluster1, '_', temp.cor$exp)
+
+temp.cor$keep <- 0
+
+for (i in temp.cor$cluster1.plus.number){
+  temp.df <- temp.cor[temp.cor$cluster1.plus.number == i,]
+  if (sum(temp.df$cor.label != '') != 0){
+    temp.cor[temp.cor$cluster1.plus.number == i,]$keep <- 1
+  }
+}
+
+temp.cor2 <- temp.cor[temp.cor$keep == 1,]
+
+# m.samp.levels <- c('B cells_64','B cells_60','Macrophages_19','Granulocytes_8',
+                   # 'Granulocytes_10','Erythrocytes_3',
+                   # 'Granulocytes_16','Macrophages_31','T cells_50')
+
+# temp.cor2$cluster1.plus.number2 <- factor(temp.cor2$cluster1.plus.number,
+#                                           levels = m.samp.levels)
+
+ggplot(temp.cor2, aes(x = cluster1.plus.number, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  xlab('ImmGen Cluster Centroids') + ylab('Our Cluster Centroids') + 
+  ggtitle('ImmGen comparison using their highly variable genes') +
+  geom_text(aes(label = cor.label), size = 3) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+# ggsave('figures/v8/1sup.mouseRNA.cluster.centroid.top.hit.pdf', device = 'pdf',
+#        units = 'in', width = 5, height = 3, dpi = 600)
+# 
+# mref.cor <- temp.cor2
+```
+
+## Intersect HV Genes
+
+```{r}
+genes <- intersect.hv.genes
+
+hv.mg <- mg[rownames(mg) %in% genes,]
+dim(hv.mg)
+temp.cor <- cor(hv.mg)
+
+key.columns <- unique(wbm$figure.labels3)
+key.columns
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, 
+                     !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- as.data.frame(temp.cor)
+
+temp.cor <- gather(temp.cor, Cluster1, Correlation, factor_key = T)
+
+temp.cor$Cluster2 <- rep(key.columns, dim(temp.cor)[1]/length(key.columns))
+
+temp.cor$Cluster1 <- rep(m.ref.immgen$label.fine, each = length(key.columns))
+
+# temp.cor$Cluster2 <- factor(temp.cor$Cluster2,
+#                             levels = 0:15)
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:11,]
+  temp <- temp[!duplicated(temp$Cluster1),][1,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+top3.hits <- top3.hits[-1,c(3,1,2)]
+
+colnames(top3.hits) <- c('Our Clusters','MouseRNA Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`MouseRNA Cluster`,]
+
+temp.cor$`MouseRNA Clusters` <- factor(temp.cor$Cluster1, 
+                                     levels = unique(top3.hits$`MouseRNA Cluster`))
+###
+temp.cor$cor.label <- ''
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 ==
+                                              temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+l <- dim(temp.cor)[1]/length(key.columns)
+temp.cor$exp <- rep(1:l, each = 11) 
+
+temp.cor$cluster1.plus.number <- paste0(temp.cor$Cluster1, '_', temp.cor$exp)
+
+temp.cor$keep <- 0
+
+for (i in temp.cor$cluster1.plus.number){
+  temp.df <- temp.cor[temp.cor$cluster1.plus.number == i,]
+  if (sum(temp.df$cor.label != '') != 0){
+    temp.cor[temp.cor$cluster1.plus.number == i,]$keep <- 1
+  }
+}
+
+temp.cor2 <- temp.cor[temp.cor$keep == 1,]
+
+# m.samp.levels <- c('B cells_64','B cells_60','Macrophages_19','Granulocytes_8',
+                   # 'Granulocytes_10','Erythrocytes_3',
+                   # 'Granulocytes_16','Macrophages_31','T cells_50')
+
+# temp.cor2$cluster1.plus.number2 <- factor(temp.cor2$cluster1.plus.number,
+#                                           levels = m.samp.levels)
+
+ggplot(temp.cor2, aes(x = cluster1.plus.number, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .2) +
+  xlab('ImmGen Cluster Centroids') + ylab('Our Cluster Centroids') + 
+  ggtitle('ImmGen comparison using intersect highly variable genes') +
+  geom_text(aes(label = cor.label), size = 3) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 8))
+
+# ggsave('figures/v8/1sup.mouseRNA.cluster.centroid.top.hit.pdf', device = 'pdf',
+#        units = 'in', width = 5, height = 3, dpi = 600)
+# 
+# mref.cor <- temp.cor2
+```

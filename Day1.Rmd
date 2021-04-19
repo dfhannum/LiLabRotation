@@ -1,0 +1,275 @@
+---
+title: "UT_Hackathon Start"
+author: "D. Ford Hannum Jr."
+date: "4/14/2021"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+library(data.table)
+library(ggplot2)
+```
+
+# Introduction
+
+Welcome to the First Annual ABCB/CDRL Bioinformatics Hackathon.
+
+We are at the first stage: Dataset Reveal.
+
+The dataset that we are using this year is a personal favorite dataset of mine. This dataset is a transcriptomic dataset of post-mortem brain samples. There are three brain regions (Nucleus Accumbens, Dorolateral Prefrontal Cortex and Anterior Cingulate Gyrus) across four disease states Major Depressive Disorder, Bipolar Affective Disorder, Schizophrenia and Controls). There is demographic data available and the data itself comes from Pritzker Brain Bank. The dataset is GSE80655 (https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE80655).
+
+The dataset is available at this history on the galaxy server: https://usegalaxy.org/u/asimami/h/abcbcdrl-hackathon-2021
+
+There are two pre-loaded files.
+
+1. GSE80655-Count-Data.csv
+This file has the gene counts. This was mapped against GRCh38 using the latest ENSEMBL file.
+
+2. GSE80655-Sample-Metadata.csv
+This file has all the available and relevant metadata, including things like RNA Integrity Number, Post-Mortem Interval, Race and ethnicity and sequencing data
+
+
+```{r}
+getwd()
+data <- read.csv('/Users/dfhannum/Desktop/UT_Hackathon/data/Galaxy1-[GSE80655-Count-Data.csv].csv')
+
+dim(data) 
+
+md <- read.csv('/Users/dfhannum/Desktop/UT_Hackathon/data/Galaxy2-[GSE80655-Sample-Metadata.csv].csv')
+
+dim(md)
+```
+
+First thing is the columns in data and the rows in md have different sizes.
+
+```{r}
+summary(colnames(data) %in% md$Sample.ID)
+summary(md$Sample.ID %in% colnames(data))
+
+multi.samples <- md$Sample.ID[duplicated(md$Sample.ID)]
+
+# head(md[md$Sample.ID %in% multi.samples,])
+```
+
+It looks like in the meta data file there are repeated samples that have two different runs. The only things that change between the rows is: Run, Bases, and Bytes. For the most part this shouldn't be an issue because we weren't
+thinking of using these as covariates. So removing the duplicated rows.
+
+```{r}
+md <- md[!duplicated(md$Sample.ID),]
+
+summary(md$Sample.ID %in% colnames(data))
+summary(colnames(data) %in% md$Sample.ID)
+
+dim(md)
+dim(data)
+```
+
+No the data has a 1-1 orientation.
+
+# Looking at Sample Read Depth
+
+```{r}
+head(data[1:5,1:5])
+rownames(data) <- data[,1]
+
+data <- data[,-1]
+
+head(data[1:5,1:5])
+```
+
+```{r}
+summary(colnames(data) == md$Sample.ID)
+
+md$sample.depth <- colSums(data)
+
+summary(md$sample.depth)
+
+ggplot(md, aes(x = Bytes, y = sample.depth)) + geom_point()
+
+ggplot(md, aes(x = sample.depth, color = clinical_diagnosis)) + geom_density()
+```
+
+# Normalizing to TPM
+
+```{r}
+data.raw <- data
+
+data.tpm <- data
+
+for (i in 1:dim(data.tpm)[2]){
+        
+        # print(colnames(data.tpm)[i])
+        
+        data.tpm[,i] <- data.tpm[,i] * 1000000 / md$sample.depth[i]
+
+}
+
+data.tpm[1:5,1:5]
+```
+
+# Highly Variable Genes
+
+```{r}
+RowVar <- function(x, ...) {
+  rowSums((x - rowMeans(x, ...))^2, ...)/(dim(x)[2] - 1)
+}
+
+gene.variances <- RowVar(data.tpm)
+
+top2k.genes <- names(gene.variances[order(gene.variances, decreasing = T)][1:2000])
+```
+
+
+# PCA of TPM 
+
+Checking to see if our different clinical things can be distinguished in PCA
+
+## All Genes
+
+```{r}
+pc <- prcomp(data.tpm)
+
+pc.vars <- pc$rotation
+
+md$pc1.all <- pc.vars[,1]
+md$pc2.all <- pc.vars[,2]
+
+ggplot(md, aes( x= pc1.all, y = pc2.all, color = clinical_diagnosis,
+                shape = brain_region)) + 
+        geom_point() + 
+        theme_bw()
+```
+
+## Top 2K Genes
+
+```{r}
+pc <- prcomp(data.tpm[top2k.genes,])
+
+pc.vars <- pc$rotation
+
+md$pc1.hv <- pc.vars[,1]
+md$pc2.hv <- pc.vars[,2]
+
+ggplot(md, aes( x= pc1.hv, y = pc2.hv, color = clinical_diagnosis,
+                shape = brain_region)) + 
+        geom_point() + 
+        theme_bw()
+
+class(pc.vars)
+pc.vars <- as.data.frame(pc.vars)
+
+pc.vars$diag <- md$clinical_diagnosis
+
+
+```
+
+# PCA of Raw 
+
+Checking to see if our different clinical things can be distinguished in PCA
+
+## All Genes
+
+```{r}
+pc <- prcomp(data.raw)
+
+pc.vars <- pc$rotation
+
+md$pc1.all <- pc.vars[,1]
+md$pc2.all <- pc.vars[,2]
+
+ggplot(md, aes( x= pc1.all, y = pc2.all, color = clinical_diagnosis,
+                shape = brain_region)) + 
+        geom_point() + 
+        theme_bw()
+```
+
+## Top 2K Genes
+
+```{r}
+pc <- prcomp(data.raw[top2k.genes,])
+dim(pc$rotation)
+pcs <- pc$rotation[,1:20]
+pc.vars <- pc$rotation
+
+md$pc1.hv <- pc.vars[,1]
+md$pc2.hv <- pc.vars[,2]
+
+
+ggplot(md, aes( x= pc1.hv, y = pc2.hv, color = clinical_diagnosis)) + 
+        geom_point() + 
+        theme_bw()
+
+ggplot(md, aes( x= pc1.hv, y = pc2.hv, color = clinical_diagnosis)) + 
+        geom_point(aes(shape = brain_region)) + 
+        theme_bw()
+
+```
+
+```{r}
+# head(md)
+```
+
+PCs aren't really picking anything out
+
+# UMAP
+
+## TPM HV Genes
+
+```{r}
+# install.packages('umap')
+library(umap)
+
+data.tpm.hv.umap <- umap(t(data.tpm[top2k.genes,]))
+
+md$umap.tpm.hv.1 <- data.tpm.hv.umap$layout[,1]
+md$umap.tpm.hv.2 <- data.tpm.hv.umap$layout[,2]
+
+ggplot(md, aes(x = umap.tpm.hv.1, y = umap.tpm.hv.2, 
+               color = clinical_diagnosis, shape = brain_region)) +
+        geom_point() + theme_bw()
+
+colnames(md)
+v.o.i <- c(4,10,11,13, 14, 19, 21) # variables of interest
+
+for (i in v.o.i){
+        i <- colnames(md)[i]
+        print(ggplot(md, aes_string(x = 'umap.tpm.hv.1', y = 'umap.tpm.hv.2',
+                             color = i)) +
+                      geom_point() + theme_bw() + ggtitle(i))
+}
+```
+
+
+## TPM All Genes
+
+```{r}
+# install.packages('umap')
+# library(umap)
+
+data.tpm.hv.umap <- umap(t(data.tpm))
+
+md$umap.tpm.hv.1 <- data.tpm.hv.umap$layout[,1]
+md$umap.tpm.hv.2 <- data.tpm.hv.umap$layout[,2]
+
+ggplot(md, aes(x = umap.tpm.hv.1, y = umap.tpm.hv.2, 
+               color = clinical_diagnosis, shape = brain_region)) +
+        geom_point() + theme_bw()
+
+# colnames(md)
+v.o.i <- c(4,10,11,13, 14, 19, 21) # variables of interest
+
+for (i in v.o.i){
+        i <- colnames(md)[i]
+        print(ggplot(md, aes_string(x = 'umap.tpm.hv.1', y = 'umap.tpm.hv.2',
+                             color = i)) +
+                      geom_point() + theme_bw() + ggtitle(i))
+}
+```
+

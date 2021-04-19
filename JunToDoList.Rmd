@@ -12,7 +12,7 @@ output:
 ---
 
 ```{r setup, include=TRUE, message=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
 library(Seurat)
 library(ggplot2)
 library(data.table)
@@ -87,7 +87,7 @@ wbm$tsne2 <- wbm@reductions$tsne@cell.embeddings[,'tSNE_2']
 ```
 
 
-# Dimension Reduction Plots 
+# 1 Dimension Reduction Plots 
 
 ```{r}
 DimPlot(wbm, group.by = 'figure.labels3', cols = color_pal2, label = T, repel = T) + NoLegend()
@@ -113,11 +113,13 @@ DimPlot(wbm, reduction = 'pca', dims = c(1,5), group.by = 'figure.labels3',
 
 
 
-# Boxplots for all Clusters
+# 2 Plots for all Clusters
 
 All the Violin Plots
 
-## nCount_RNA
+## 2a BoxPlots
+
+### nCount_RNA
 
 ```{r}
 head(wbm@meta.data)
@@ -136,7 +138,7 @@ ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nCount_RNA),
 
 ``` 
 
-## nFeature_RNA
+### nFeature_RNA
 
 ```{r}
 ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nFeature_RNA))) + 
@@ -152,7 +154,7 @@ ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nFeature_RNA),
 
 ``` 
 
-## percent.mt
+### percent.mt
 
 ```{r}
 ggplot(wbm@meta.data, aes(x = figure.labels3, y = percent.mt)) + 
@@ -168,7 +170,7 @@ ggplot(wbm@meta.data, aes(x = figure.labels3, y = percent.mt,
 
 ``` 
 
-## Interaction Plots
+## 2b Interaction Plots
 
 ### nCount & nFeature
 
@@ -268,7 +270,7 @@ for (i in unique(wbm$figure.labels3)){
 #   geom_point(aes(alpha = 0.2)) + theme_bw() + geom_smooth()
 ```
 
-# GO Term w/in clusters
+# 3 GO Term w/in clusters
 
 Using (LRPath) [http://lrpath.ncibi.org] from Maureen Sartor's lab. Should this just been done with WT? Could we also do this with just MUT?
 
@@ -314,33 +316,33 @@ Need to do unbiased DE expression, not using any cutoffs. Looking within all clu
 ## Exporting Results to LRPath Format
 
 ```{r}
-x <- read.table('./data/v4/genes.for.LR.Path.within.cluster.all.txt', sep = '\t')
-
-mus.ref <- data.table::fread('../mus_mus_gene_id.txt', header = T)
-colnames(mus.ref)[2] <- 'gene'
-
-
-out <- split(x, f = x$cluster)
-
-for (i in 1:length(out)){
-  temp.name <- unique(out[[i]]$cluster)
-  temp.name <- gsub('/','-',temp.name)
-  
-  print(temp.name)
-  
-  temp <- out[[i]]
-  print(summary(temp$gene %in% mus.ref$gene))
-  
-  temp.df <- merge(temp, mus.ref, by = 'gene')
-  
-  temp.df$entrez.name <- paste0('mmu:', temp.df$GeneID)
-  
-  temp.df <- temp.df[,c('GeneID','p_val_adj','avg_log2FC')]
-  
-  write.table(temp.df, paste0('./data/v4/LRPath.gene.lists/',
-                              temp.name,'.txt'),
-              sep = '\t', col.names = F, quote = F, row.names = F)
-}
+# x <- read.table('./data/v4/genes.for.LR.Path.within.cluster.all.txt', sep = '\t')
+# 
+# mus.ref <- data.table::fread('../mus_mus_gene_id.txt', header = T)
+# colnames(mus.ref)[2] <- 'gene'
+# 
+# 
+# out <- split(x, f = x$cluster)
+# 
+# for (i in 1:length(out)){
+#   temp.name <- unique(out[[i]]$cluster)
+#   temp.name <- gsub('/','-',temp.name)
+#   
+#   print(temp.name)
+#   
+#   temp <- out[[i]]
+#   print(summary(temp$gene %in% mus.ref$gene))
+#   
+#   temp.df <- merge(temp, mus.ref, by = 'gene')
+#   
+#   temp.df$entrez.name <- paste0('mmu:', temp.df$GeneID)
+#   
+#   temp.df <- temp.df[,c('GeneID','p_val_adj','avg_log2FC')]
+#   
+#   write.table(temp.df, paste0('./data/v4/LRPath.gene.lists/',
+#                               temp.name,'.txt'),
+#               sep = '\t', col.names = F, quote = F, row.names = F)
+# }
 ```
 
 
@@ -435,7 +437,7 @@ length(words)
 summary(as.factor(words))
 ```
 
-## Correlation of GO Terms
+## 3a Correlation of GO Terms
 
 Reading in all the Terms
 
@@ -609,9 +611,9 @@ ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value2, label = round(value,
 
 ```
 
-## PCA
+### PCA
 
-### Odds Ratio
+#### Odds Ratio
 
 ```{r}
 cnt = 1 
@@ -666,7 +668,7 @@ for (i in 1:dim(combos)[2]){
 }
 ```
 
-### Signed FDR
+#### Signed FDR
 
 ```{r}
 go.df$signed.FDR <- ifelse(go.df$Direction == 'down', -1*go.df$FDR, go.df$FDR)
@@ -726,8 +728,109 @@ for (i in 1:dim(combos)[2]){
 }
 ```
 
+## 3b Between Cluster GO Terms
 
-# Cluster T-Score Correlation 
+```{r}
+ de.genes <- data.frame(p_val = numeric(),
+                       avg_logFC = numeric(),
+                       pct.1 = numeric(),
+                       pct.2 = numeric(),
+                       p_val_adj = numeric(),
+                       cluster1 = character(),
+                       cluster2 = character(),
+                       gene = character())
+
+# wbm@meta.data
+
+combos <- as.data.frame(combn(unique(wbm$figure.labels3), 2))
+
+mk.combos <- combos[,grepl('MK', combos)]
+non.mk.combos <- combos[,!grepl('MK',combos)]
+
+for (i in 1:dim(mk.combos)[2]){
+  print(mk.combos[,i])
+  ct.1 <- mk.combos[1,i]
+  ct.2 <- mk.combos[2,i]
+  x <- FindMarkers(wbm,
+                   ident.1 = ct.1,
+                   ident.2 = ct.2,
+                   logfc.threshold = 0,
+                   min.pct = 0)
+  x$cluster1 <- ct.1
+  x$cluster2 <- ct.2
+  x$gene <- rownames(x)
+  x <- x[order(x$avg_log2FC, decreasing = T),]
+  de.genes <- rbind(de.genes,x)
+}
+
+summary(as.factor(de.genes$cluster1))
+# table(rownames(de.genes))
+
+write.table(de.genes, './data/v4/genes.for.LR.Path.between.MK.clusters.all.txt', sep = '\t')
+
+de.genes <- data.frame(p_val = numeric(),
+                     avg_logFC = numeric(),
+                     pct.1 = numeric(),
+                     pct.2 = numeric(),
+                     p_val_adj = numeric(),
+                     cluster1 = character(),
+                     cluster2 = character(),
+                     gene = character())
+
+for (i in 1:dim(non.mk.combos)[2]){
+  print(non.mk.combos[,i])
+  print(paste0('Progress: ', i,' / ', dim(non.mk.combos)[2]))
+  ct.1 <- non.mk.combos[1,i]
+  ct.2 <- non.mk.combos[2,i]
+  x <- FindMarkers(wbm,
+                   ident.1 = ct.1,
+                   ident.2 = ct.2,
+                   logfc.threshold = 0,
+                   min.pct = 0)
+  x$cluster1 <- ct.1
+  x$cluster2 <- ct.2
+  x$gene <- rownames(x)
+  x <- x[order(x$avg_log2FC, decreasing = T),]
+  de.genes <- rbind(de.genes,x)
+}
+```
+
+## Exporting Results to LRPath Format
+
+```{r}
+x <- read.table('./data/v4/genes.for.LR.Path.between.MK.clusters.all.txt', sep = '\t')
+
+mus.ref <- data.table::fread('../mus_mus_gene_id.txt', header = T)
+colnames(mus.ref)[2] <- 'gene'
+
+x$comp <- paste0(x$cluster1,'.vs.', x$cluster2)
+out <- split(x, f = x$comp)
+
+for (i in 1:length(out)){
+  temp.name <- unique(out[[i]]$comp)
+  temp.name <- gsub('/','-',temp.name)
+
+  print(temp.name)
+
+  temp <- out[[i]]
+  print(summary(temp$gene %in% mus.ref$gene))
+
+  temp.df <- merge(temp, mus.ref, by = 'gene')
+
+  temp.df$entrez.name <- paste0('mmu:', temp.df$GeneID)
+
+  temp.df <- temp.df[,c('GeneID','p_val_adj','avg_log2FC')]
+
+  write.table(temp.df, paste0('./data/v4/LRPath.gene.between.clusters.lists/',
+                              temp.name,'.txt'),
+              sep = '\t', col.names = F, quote = F, row.names = F)
+}
+```
+
+
+## 3c Meta-Analysis of all GO Terms
+
+# 4 Cluster T-Score Correlation 
 
 40xGenes Delta of pairwise cluster centroid
 
@@ -767,7 +870,7 @@ dim(x)
 
 # Limiting to only genes that are across all clusters
 
-Filter(function (elem) length(which(x$gene == elem)) == 11, x$gene)
+# Filter(function (elem) length(which(x$gene == elem)) == 11, x$gene)
 
 freq <- table(x$gene)
 
@@ -808,7 +911,7 @@ ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value, label = round(value,2
   
 ```
 
-## T-score Correlation
+## 4a T-score Correlation 11x11
 
 Doing combined enriched and non-enriched
 
@@ -968,7 +1071,7 @@ ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value2, label = round(value,
 table(wbm$Condition3, wbm$figure.labels3)
 ```
 
-## Pairwise Comparison of T-Scores
+## 4b Pairwise Comparison of T-Scores
 
 ```{r}
 # wbm@assays$RNA@scale.data[1:10,1:10]
@@ -1074,11 +1177,11 @@ nas$pct.missing <- nas$`Total NAs` / dim(t.scores)[1]
 ggplot(nas, aes(x = ct, y = comp, label = `Total NAs`, fill = pct.missing)) +
         geom_tile() + geom_text() + 
         scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
-                             midpoint = .5) +
+                             midpoint = .5) + ggtitle('Missingness') +
         theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
 
-## PC Plot of T-Scores
+### PC Plot of T-Scores
 
 ```{r}
 t.scores2 <- t.scores[complete.cases(t.scores),]
@@ -1119,9 +1222,9 @@ for (i in 1:dim(combos)[2]){
 ```
 
 
-## Heatmap w/o PC
+### Heatmap w/o PC
 
-#### Ordered by Cluster (Complete Obs)
+##### Ordered by Cluster (Complete Obs)
 
 Only looking at complete observations
 
@@ -1211,7 +1314,7 @@ Heatmap(temp.cor,
         name = 'Correlation')
 ```
 
-### Ordered by Groupings
+#### Ordered by Groupings
 
 ```{r}
 temp.df <- data.frame(names = colnames(temp.cor))
@@ -1284,9 +1387,9 @@ Heatmap(temp.cor2,
 ```
 
 
-## Heatmap w PC
+### Heatmap w/ PC
 
-#### Ordered by Cluster (Complete Obs)
+##### Ordered by Cluster (Complete Obs)
 
 Only looking at complete observations
 
@@ -1296,7 +1399,7 @@ complete.t.scores <- complete.cases(t.scores)
 sum(complete.t.scores)
 
 t.scores2 <- t.scores[complete.t.scores,]
-t.scores2 <- cbind(t.scores2, t.pca.vectors[rownames(t.scores2),1:5])
+t.scores2 <- cbind(t.scores2, t.pca.vectors[rownames(t.scores2),1:20])
 
 spearman.cor <- cor(t.scores2, method = 'spearman')
 
@@ -1316,45 +1419,21 @@ ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value2, label = round(value,
         axis.text.y = element_blank())
 ```
 
-```{r}
-# library(ComplexHeatmap)
-# 
-# set.seed(123)
-# nr1 = 4; nr2 = 8; nr3 = 6; nr = nr1 + nr2 + nr3
-# nc1 = 6; nc2 = 8; nc3 = 10; nc = nc1 + nc2 + nc3
-# mat = cbind(rbind(matrix(rnorm(nr1*nc1, mean = 1,   sd = 0.5), nr = nr1),
-#           matrix(rnorm(nr2*nc1, mean = 0,   sd = 0.5), nr = nr2),
-#           matrix(rnorm(nr3*nc1, mean = 0,   sd = 0.5), nr = nr3)),
-#     rbind(matrix(rnorm(nr1*nc2, mean = 0,   sd = 0.5), nr = nr1),
-#           matrix(rnorm(nr2*nc2, mean = 1,   sd = 0.5), nr = nr2),
-#           matrix(rnorm(nr3*nc2, mean = 0,   sd = 0.5), nr = nr3)),
-#     rbind(matrix(rnorm(nr1*nc3, mean = 0.5, sd = 0.5), nr = nr1),
-#           matrix(rnorm(nr2*nc3, mean = 0.5, sd = 0.5), nr = nr2),
-#           matrix(rnorm(nr3*nc3, mean = 1,   sd = 0.5), nr = nr3))
-#    )
-# mat = mat[sample(nr, nr), sample(nc, nc)] # random shuffle rows and columns
-# rownames(mat) = paste0("row", seq_len(nr))
-# colnames(mat) = paste0("column", seq_len(nc))
-# 
-# Heatmap(mat)
-# 
-# x.temp <- as.matrix(temp.cor2[])
-# Heatmap(temp.cor)
-```
-
 
 ```{r}
 row.anno <- data.frame(rownames = row.names(temp.cor))
 
 head(row.anno)
-row.anno$pc <- ifelse(row.anno$rownames %in% paste0('PC',1:5), 1,0)
+row.anno$pc <- ifelse(row.anno$rownames %in% paste0('PC',1:20), 1,0)
 row.anno$ct <- ifelse(row.anno$pc == T, 'PC', 
                       tstrsplit(row.anno$rownames,'_', keep = 1)[[1]])
 row.anno$type1 <- ifelse(row.anno$pc == T, 'PC', 
-                         tstrsplit(tstrsplit(row.anno$rownames,'_', keep = 2)[[1]],'\\.', 
+                         tstrsplit(tstrsplit(row.anno$rownames,'_', 
+                                             keep = 2)[[1]],'\\.', 
                          keep = 1)[[1]])
 row.anno$type2 <- ifelse(row.anno$pc == T, 'PC', 
-                         tstrsplit(tstrsplit(row.anno$rownames,'_', keep = 2)[[1]],'\\.', 
+                         tstrsplit(tstrsplit(row.anno$rownames,'_', 
+                                             keep = 2)[[1]],'\\.', 
                          keep = 3)[[1]])
 
 col = list(CellType = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
@@ -1363,7 +1442,8 @@ col = list(CellType = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
                         'MkP' = 'violet','MK.1' = 'purple', 'MK.2' = 'darkgreen',
                         'PC' = 'black'),
            Grp1 = c('WT' = 'blue','eWT' = 'darkblue','MUT' = 'red', 'PC' = 'black'),
-           Grp2 = c('eWT' = 'darkblue','MUT' = 'red', 'eMUT' = 'darkred', 'PC' = 'black'))
+           Grp2 = c('eWT' = 'darkblue','MUT' = 'red', 'eMUT' = 'darkred', 
+                    'PC' = 'black'))
 
 column_ha = HeatmapAnnotation(CellType = row.anno$ct, Grp1 = row.anno$type1,
                            Grp2 = row.anno$type2, col = col)
@@ -1382,12 +1462,12 @@ Heatmap(temp.cor,
         name = 'Correlation')
 ```
 
-### Ordered by Groupings
+#### Ordered by Groupings
 
 ```{r}
 temp.df <- data.frame(names = colnames(temp.cor))
 
-temp.df$group <- ifelse(temp.df$names %in% paste0('PC', 1:5), 'PC',
+temp.df$group <- ifelse(temp.df$names %in% paste0('PC', 1:20), 'PC',
                         tstrsplit(temp.df$names, '_', keep = 2)[[1]])
 
 temp.df <- temp.df[order(temp.df$group),]
@@ -1404,14 +1484,16 @@ temp.cor2
 row.anno <- data.frame(rownames = row.names(temp.cor2))
 
 head(row.anno)
-row.anno$pc <- ifelse(row.anno$rownames %in% paste0('PC',1:5), 1, 0)
+row.anno$pc <- ifelse(row.anno$rownames %in% paste0('PC',1:20), 1, 0)
 row.anno$ct <- ifelse(row.anno$pc == 1, 'PC',
                       tstrsplit(row.anno$rownames,'_', keep = 1)[[1]])
 row.anno$type1 <- ifelse(row.anno$pc == 1, 'PC',
-                         tstrsplit(tstrsplit(row.anno$rownames,'_', keep = 2)[[1]],'\\.', 
+                         tstrsplit(tstrsplit(row.anno$rownames,'_', 
+                                             keep = 2)[[1]],'\\.', 
                          keep = 1)[[1]])
 row.anno$type2 <- ifelse(row.anno$pc == 1, 'PC',
-                         tstrsplit(tstrsplit(row.anno$rownames,'_', keep = 2)[[1]],'\\.', 
+                         tstrsplit(tstrsplit(row.anno$rownames,'_', 
+                                             keep = 2)[[1]],'\\.', 
                          keep = 3)[[1]])
 
 row.anno$combo <- ifelse(row.anno$pc == 1, 'PC',
@@ -1423,7 +1505,8 @@ col = list(CellType = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
                         'MkP' = 'violet','MK.1' = 'purple', 'MK.2' = 'darkgreen',
                         'PC' = 'black'),
            Grp1 = c('WT' = 'blue','eWT' = 'darkblue','MUT' = 'red', 'PC' = 'black'),
-           Grp2 = c('eWT' = 'darkblue','MUT' = 'red', 'eMUT' = 'darkred', 'PC' = 'black'))
+           Grp2 = c('eWT' = 'darkblue','MUT' = 'red', 'eMUT' = 'darkred', 
+                    'PC' = 'black'))
 
 column_ha = HeatmapAnnotation(CellType = row.anno$ct, Grp1 = row.anno$type1,
                            Grp2 = row.anno$type2, col = col)
@@ -1465,31 +1548,7 @@ Heatmap(temp.cor2,
 ```
 
 
-## Pairwise w/ NAs
-
-Don't really know how to do this, changed parameters in cor, but not sure this is valid or changes anything. It doesn't
-
-```{r}
-spearman.cor <- cor(t.scores, method = 'spearman', use = 'na.or.complete')
-
-temp.cor <- as.data.frame(spearman.cor)
-
-temp.cor2 <- gather(as.data.frame(temp.cor))
-
-temp.cor2$cluster2 <- rep(rownames(temp.cor), length(rownames(temp.cor)))
-
-temp.cor2$value2 <- ifelse(temp.cor2$value == 1, 0, temp.cor2$value)
-
-ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value2, label = round(value,2))) +
-  geom_tile() + # geom_text() + 
-  xlab(NULL) + ylab(NULL) + ggtitle ('T-statistics Correlation (Spearman)') +
-  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = 0) +
-  theme(axis.text.x = element_blank(),
-        axis.text.y = element_blank())
-```
-
-
-# Cluster Centroid Batch Effects
+# 5 Cluster Centroid Batch Effects
 
 Getting the cluster centroid for each cluster by experiment (11x4, 44), then taking deltas between batch columns (11x6, 66 in total). 
 
@@ -1497,14 +1556,16 @@ i.e. MigR1 Gran minus MPL Gran would be the first column then MigR1 B-cell minus
 
 It can be either organize be comparison between groups. But then also organize by clusters, to see how things are different between the clusters.
 
+## 5a Cluster by Sample 
+
 ```{r}
 wbm$ident.combo <- paste0(wbm$Condition, '_' ,wbm$figure.labels3)
 
-table(wbm$ident.combo)
+# table(wbm$ident.combo)
 
-table(wbm$Condition3, wbm$figure.labels3)
+# table(wbm$Condition3, wbm$figure.labels3)
 
-DimPlot(wbm, group.by = 'ident.combo')
+# DimPlot(wbm, group.by = 'ident.combo')
 
 Idents(wbm) <- wbm$ident.combo
 
@@ -1512,7 +1573,7 @@ av <- AverageExpression(wbm)
 
 av <- av$RNA
 
-head(av)
+# head(av)
 
 key_ <- data.frame(ident.combo = colnames(av))
 
@@ -1527,7 +1588,7 @@ key_$cluster <- tstrsplit(key_$ident.combo, '_', keep = 2)[[1]]
 
 ```
 
-## PC Plots
+### PC Plots
 
 ```{r}
 pca <- prcomp(av)
@@ -1598,16 +1659,15 @@ ggplot(pca, aes_string(x = 'PC1', y = 'PC2', color = 'cluster',
 ```
 
 
-## Heatmap
+### Heatmap
 
 ```{r}
-av.with.pca <- cbind(av, pc.vectors[,1:5])
-temp.cor.pca 
+av.with.pca <- cbind(av, pc.vectors[,1:20])
 temp.cor <- cor(av, method = 'spearman')
 temp.cor.pca <- cor(av.with.pca, method = 'spearman')
 ```
 
-### Without PC Vectors
+#### Without PC Vectors
 
 ```{r}
 col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
@@ -1681,7 +1741,7 @@ Heatmap(temp.cor2,
         name = 'Correlation')
 ```
 
-### With PC Vectors
+#### With PC Vectors
 
 ```{r}
 col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
@@ -1696,7 +1756,7 @@ col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
 
 
 order.rows <- data.frame(coln = colnames(temp.cor.pca))
-order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:5),
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
                         1,0)
 order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
                          tstrsplit(order.rows$coln, '_', keep = 1)[[1]])
@@ -1713,7 +1773,7 @@ key_ <- data.frame(ident.combo = colnames(temp.cor2))
 
 rownames(key_) <- 1:length(colnames(av.with.pca))
 
-key_$pc <- ifelse(key_$ident.combo %in% paste0('PC',1:5), 1,0)
+key_$pc <- ifelse(key_$ident.combo %in% paste0('PC',1:20), 1,0)
 key_$exp <- ifelse(key_$pc == T, 'PC',tstrsplit(key_$ident.combo, '_', keep = 1)[[1]])
 key_$cluster <- ifelse(key_$pc == T, 'PC', tstrsplit(key_$ident.combo, '_', keep = 2)[[1]])
 
@@ -1736,7 +1796,7 @@ Heatmap(temp.cor2,
 ```{r}
 order.rows <- data.frame(coln = colnames(temp.cor.pca))
 
-order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:5),
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
                         1,0)
 order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
                          tstrsplit(order.rows$coln, '_', keep = 1)[[1]])
@@ -1768,50 +1828,183 @@ Heatmap(temp.cor2,
         name = 'Correlation')
 ```
 
-# CCA Batch Correction
+
+## 5b Cluster Centroid Deltas
 
 ```{r}
-int.list <- SplitObject(wbm, split.by = 'Condition3')
+av <- AverageExpression(wbm)$RNA
+# head(av)
 
-for (i in 1:length(int.list)){
-  print(i)
-  int.list[[i]] <- SCTransform(int.list[[i]], verbose = F)
+av <- as.data.frame(t(av))
+
+av$exp <- tstrsplit(rownames(av), '_', keep = 1)[[1]]
+
+av$ct <- tstrsplit(rownames(av), '_', keep = 2)[[1]]
+
+outs <- split(av, f = av$ct)
+genes <- colnames(outs[[1]])[!colnames(outs[[1]]) %in% c('ct','exp')]
+out.df <- data.frame(na.row = rep(NA,length(genes)),
+                     row.names = genes)
+
+for (p in outs){
+  temp.df <- t(p[,!(colnames(p) %in% c('ct','exp'))])
+  ct <- tstrsplit(colnames(temp.df)[1], '_', keep = 2)[[1]]
+  colnames(temp.df) <- tstrsplit(colnames(temp.df), '_', keep = 1)[[1]]
+  
+  combos <- combn(1:length(colnames(temp.df)), 2)
+  
+  if (dim(temp.df)[2] == 4){
+    temp.df <- temp.df[,c('Migr1','Mpl','enrMigr1','enrMpl')]
+  }
+  else{
+    temp.df <- temp.df[,c('Migr1','Mpl','enrMigr1')]
+  }
+  
+  for (i in 1:dim(combos)[2]){
+    clm1 <- combos[1,i]
+    clm2 <- combos[2,i]
+    # print(paste0(clm1, clm2))
+    
+    if (i == 1){
+      new.df.temp <- data.frame(V1 = temp.df[,clm1] - temp.df[,clm2])
+      
+    }
+    else{
+      new.df.temp <- cbind(new.df.temp, temp.df[,clm1] - temp.df[,clm2])
+    }
+    colnames(new.df.temp)[i] <- paste0(colnames(temp.df)[clm1],
+                                       '_vs_', colnames(temp.df)[clm2],
+                                       '.',ct)
+  }
+  
+  out.df <- cbind(out.df, new.df.temp)
+  
 }
 
-int.features <- SelectIntegrationFeatures(object.list = int.list, nfeatures = 3000)
+# summary(as.factor(tstrsplit(colnames(out.df), '\\.', keep = 2)[[1]]))
+# summary(as.factor(tstrsplit(colnames(out.df), '\\.', keep = 1)[[1]]))
 
-options(future.globals.maxSize = 3145728000)
-
-int.list <- PrepSCTIntegration(object.list = int.list, anchor.features = int.features,
-                               verbose = F)
-
-int.anchors <- FindIntegrationAnchors(object.list = int.list, normalization.method = 'SCT',
-                                      anchor.features = int.features, verbose = F)
-
-int.int <- IntegrateData(anchorset = int.anchors, normalization.method = 'SCT',
-                         verbose = F)
-
-int <- int.int
-
-int <- RunPCA(int, verbose = F)
-
-int <- RunUMAP(int, dims = 1:30)
-
-int <- FindNeighbors(int, dims = 1:30)
-
-# for (i in seq(0,1,by = .1)){
-#   temp <- FindClusters(int, resolution = i, verbose = F)
-#   print(DimPlot(temp, label =T , repel= T))
-# }
-
-int <- FindClusters(int, resolution = 0.3, verbose = F)
-
-DimPlot(int)
-
-DimPlot(int, label = T, repel = T)
+out.df <- out.df[,-1]
 ```
 
-## Cluster Count Tables 
+### PCs
+
+```{r}
+pca <- prcomp(out.df)
+
+pc.vectors <- pca$x
+
+out.df.pca <- cbind(out.df, pc.vectors[,1:20])
+
+temp.cor.pca <- cor(out.df.pca, method = 'spearman')
+
+temp.cor.pca <- temp.cor.pca[,!(grepl('Prog', colnames(temp.cor.pca)))]
+# unique(tstrsplit(rownames(temp.cor.pca),'\\.', keep = 1)[[1]])[1:12]
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
+                        'MkP' = 'violet','MK-1' = 'purple', 'MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1_vs_Mpl' = 'blue',
+                   'Migr1_vs_enrMigr1' = 'red',
+                   'Migr1_vs_enrMpl' = 'violet',
+                   'Mpl_vs_enrMigr1' = 'darkred',
+                   'Mpl_vs_enrMpl' = 'green',
+                   'enrMigr1_vs_enrMpl' = "orange",
+                   'PC' = 'black'))
+
+
+
+order.rows <- data.frame(coln = colnames(temp.cor.pca))
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 1)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 2)[[1]])
+
+order.rows <- order.rows[order(order.rows$pc,order.rows$exp, order.rows$ct),]$coln
+
+order.rows
+
+temp.cor2 <- temp.cor.pca[order.rows, order.rows]
+
+key_ <- data.frame(ident.combo = colnames(temp.cor2))
+
+rownames(key_) <- 1:(length(colnames(out.df.pca))-3)
+
+key_$pc <- ifelse(key_$ident.combo %in% paste0('PC',1:20), 1,0)
+key_$exp <- ifelse(key_$pc == T, 'PC',tstrsplit(key_$ident.combo, '\\.', keep = 1)[[1]])
+key_$cluster <- ifelse(key_$pc == T, 'PC', tstrsplit(key_$ident.combo, '\\.', keep = 2)[[1]])
+
+column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = key_$exp,
+        column_split = key_$exp,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+
+# key_
+```
+
+
+# 6 CCA Batch Correction
+
+```{r}
+# int.list <- SplitObject(wbm, split.by = 'Condition3')
+# 
+# for (i in 1:length(int.list)){
+#   print(i)
+#   int.list[[i]] <- SCTransform(int.list[[i]], verbose = F)
+# }
+# 
+# int.features <- SelectIntegrationFeatures(object.list = int.list, nfeatures = 3000)
+# 
+# options(future.globals.maxSize = 3145728000)
+# 
+# int.list <- PrepSCTIntegration(object.list = int.list, anchor.features = int.features,
+#                                verbose = F)
+# 
+# int.anchors <- FindIntegrationAnchors(object.list = int.list, normalization.method = 'SCT',
+#                                       anchor.features = int.features, verbose = F)
+# 
+# int.int <- IntegrateData(anchorset = int.anchors, normalization.method = 'SCT',
+#                          verbose = F)
+# 
+# int <- int.int
+# 
+# int <- RunPCA(int, verbose = F)
+# 
+# int <- RunUMAP(int, dims = 1:30)
+# 
+# int <- FindNeighbors(int, dims = 1:30)
+# 
+# # for (i in seq(0,1,by = .1)){
+# #   temp <- FindClusters(int, resolution = i, verbose = F)
+# #   print(DimPlot(temp, label =T , repel= T))
+# # }
+# 
+# int <- FindClusters(int, resolution = 0.3, verbose = F)
+# 
+# DimPlot(int)
+# 
+# DimPlot(int, label = T, repel = T)
+# 
+# saveRDS(int, './data/v4/cca.integrated.rds')
+
+int <- readRDS('./data/v4/cca.integrated.rds')
+```
+
+## 6a Cluster Count Tables 
 
 ```{r}
 DimPlot(wbm, group.by = 'figure.labels3', label = T , repel = T)
@@ -1851,7 +2044,19 @@ ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
   geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
   scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
 ```
-  
+
+```{r}
+int$int.label <- factor(int$seurat_clusters,
+                        labels = c('Gran','Gran','Gran','B-cell','Gran','Mono/Macro',
+                        'MkP','CMP','MEP/B-cell','Mono/Macro/MK-2','Erythroid','MkP',
+                        'T-cell','B-cell','B-cell','B-cell Prog.'))
+table(int$int.label, int$seurat_clusters)
+
+DimPlot(int, group.by = 'int.label', label = T, repel = T, cols = color_pal)
+FeaturePlot(int, features = c('Itga2b','Pf4'))
+```
+
+
 ## Experiment Count Tables
 
 ```{r}
@@ -1897,7 +2102,7 @@ ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
 ```
 
 
-# Trajectory
+# 7 Trajectory
 
 Looking at the trajectory analysis for just the MK cell types (MK, MkP, MEP). 
 
@@ -1945,7 +2150,7 @@ table(cds$State, cds$figure.labels3)
 
 Should maybe also show it including Erythroid and/or CMP.
 
-# Subclustering of MK Lineages
+# 8 Subclustering of MK Lineages
 
 Looking at subclustering between MEP, MkP, and MK.
 
@@ -2125,5 +2330,118 @@ Either using the list previously published, the list added onto by Priya, or als
 
 Using scVelo on the cluster
 
+# 9 Erythrocyte Naming
 
+## Unique Markers
 
+```{r}
+Idents(wbm) <- wbm$figure.labels3
+ery.markers <- FindMarkers(wbm,
+            ident.1 = 'Erythroid',
+            only.pos = T)
+
+# head(ery.markers)
+ery.markers$pct.diff <- ery.markers$pct.1 - ery.markers$pct.2
+head(ery.markers)
+```
+
+# 10 MK-1 Doublets?
+
+```{r}
+DimPlot(wbm, group.by = 'seurat_clusters', label= T, repel = T)
+wbm$mk.fine.labels <- paste0(wbm$figure.labels3, '_', wbm$seurat_clusters)
+DimPlot(wbm, group.by = 'mk.fine.labels', label = T, repel = T)
+
+```
+
+## General Markers
+
+```{r}
+all.gran.markers <- FindMarkers(wbm, ident.1 = 'Granulocyte', only.pos = T)
+# head(all.gran.markers)
+gran.0.1.markers <- FindMarkers(wbm, ident.1 = c('Granulocyte_0','Granulocyte_1'),
+                                group.by = 'mk.fine.labels', only.pos = T)
+mk2.markers <- FindMarkers(wbm, ident.1 = 'MK-2', only.pos = T)
+mk1.markers <- FindMarkers(wbm, ident.1 = 'MK-1', only.pos = T)
+```
+
+```{r}
+head(all.gran.markers)
+
+for (i in rownames(all.gran.markers)[1:6]){
+  print(VlnPlot(wbm, features = i) + ggtitle(paste0('Gran Marker ',i)))
+}
+```
+
+```{r}
+head(gran.0.1.markers)
+
+for (i in rownames(gran.0.1.markers)[1:6]){
+  print(VlnPlot(wbm, features = i) + ggtitle(paste0('Gran Marker ',i)))
+}
+```
+
+```{r}
+head(mk2.markers)
+
+for (i in rownames(mk2.markers)[1:6]){
+  print(VlnPlot(wbm, features = i) + ggtitle(paste0('MK-2 Marker ',i)))
+}
+```
+
+```{r}
+head(mk1.markers)
+
+for (i in rownames(mk1.markers)[1:6]){
+  print(VlnPlot(wbm, features = i) + ggtitle(paste0('MK-1 Marker ',i)))
+}
+```
+
+## Comparing Populations
+
+### MK-1 vs Granulocytes
+
+```{r}
+gran.vs.mk1 <- FindMarkers(wbm, ident.1 = 'MK-1', 
+                           ident.2 = 'Granulocyte')
+
+gran.vs.mk1 <- gran.vs.mk1[gran.vs.mk1$p_val < 0.05,]
+gran.vs.mk1 <- gran.vs.mk1[order(gran.vs.mk1$avg_log2FC, decreasing = T),]
+
+head(gran.vs.mk1)
+
+for (i in rownames(gran.vs.mk1)[1:6]){
+  print(VlnPlot(wbm, features = i) + ggtitle(paste0('MK-1 vs Gran ',i)))
+}
+
+tail(gran.vs.mk1)
+
+for (i in rownames(tail(mk1.markers))){
+  print(VlnPlot(wbm, features = i) + ggtitle(paste0('MK-1 Marker ',i)))
+}
+```
+
+### MK-1 vs Specific Granulocytes
+
+```{r}
+gran.vs.mk1 <- FindMarkers(wbm, ident.1 = 'MK-1_14', 
+                           ident.2 = c('Granulocyte_0', 'Granulocyte_1'),
+                           group.by = 'mk.fine.labels')
+
+gran.vs.mk1 <- gran.vs.mk1[gran.vs.mk1$p_val < 0.05,]
+gran.vs.mk1 <- gran.vs.mk1[order(gran.vs.mk1$avg_log2FC, decreasing = T),]
+
+head(gran.vs.mk1)
+
+for (i in rownames(gran.vs.mk1)[1:6]){
+  print(VlnPlot(wbm, features = i, group.by = 'mk.fine.labels') + 
+          ggtitle(paste0('MK-1  ',i)))
+}
+
+tail(gran.vs.mk1)
+
+for (i in rownames(tail(mk1.markers))){
+  print(VlnPlot(wbm, features = i, group.by = 'mk.fine.labels') +
+          ggtitle(paste0('Gran 0 and 1 Marker ',i)))
+}
+```
