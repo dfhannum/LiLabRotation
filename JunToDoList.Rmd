@@ -6,6 +6,7 @@ output:
         html_document:
                 toc: true
                 toc_depth: 3
+                code_folding: hide
                 number_sections: false
                 theme: united
                 highlight: tango
@@ -24,7 +25,7 @@ library(limma)
 library(scRNAseq)
 library(ggpubr)
 library(xlsx)
-# library(ComplexHeatmap)
+library(ComplexHeatmap)
 ```
 
 # LOADING DATA
@@ -57,7 +58,7 @@ wbm$figure.labels <- factor(wbm$figure.labels,
 
 Idents(wbm) <- wbm$figure.labels
 
-table(Idents(wbm))
+# table(Idents(wbm))
 
 mk1.cells <- rownames(wbm@meta.data[wbm$figure.labels == 'MK-1',])
 mep1.cells <- rownames(wbm@meta.data[wbm$figure.labels == 'MkP',])
@@ -79,7 +80,7 @@ wbm$Experiment <- ifelse(wbm$Condition2 %in% c('enrMigr1','Migr1'), 'MigR1','MPL
 ```
 
 ```{r}
-wbm@meta.data
+# wbm@meta.data
 wbm$tsne1 <- wbm@reductions$tsne@cell.embeddings[,'tSNE_1']
 wbm$tsne2 <- wbm@reductions$tsne@cell.embeddings[,'tSNE_2']
 
@@ -90,7 +91,8 @@ wbm$tsne2 <- wbm@reductions$tsne@cell.embeddings[,'tSNE_2']
 # 1 Dimension Reduction Plots 
 
 ```{r}
-DimPlot(wbm, group.by = 'figure.labels3', cols = color_pal2, label = T, repel = T) + NoLegend()
+DimPlot(wbm, group.by = 'figure.labels3', cols = color_pal2, label = T, 
+        repel = T) + NoLegend()
 DimPlot(wbm, reduction = 'tsne', group.by = 'figure.labels3', cols = color_pal2,
         label = T, repel = T) + NoLegend()
 
@@ -111,548 +113,2126 @@ DimPlot(wbm, reduction = 'pca', dims = c(1,5), group.by = 'figure.labels3',
         label = T, repel = T) + NoLegend() + ggtitle(NULL)
 ```
 
+# 2 Version2 CCA Batch Correction
 
+**V2**
 
-# 2 Plots for all Clusters
-
-All the Violin Plots
-
-## 2a BoxPlots
-
-### nCount_RNA
+Checking to see if CCA batch correction is useful and how it may change our projection
 
 ```{r}
-head(wbm@meta.data)
-# ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nCount_RNA), fill = Condition3)) + geom_violin()
-
-ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nCount_RNA))) + 
-  geom_boxplot() + 
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nCount_RNA), 
-                          fill = Condition3)) + 
-  geom_boxplot() + 
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 90))
-
-``` 
-
-### nFeature_RNA
-
-```{r}
-ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nFeature_RNA))) + 
-  geom_boxplot() + 
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nFeature_RNA), 
-                          fill = Condition3)) + 
-  geom_boxplot() + 
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 90))
-
-``` 
-
-### percent.mt
-
-```{r}
-ggplot(wbm@meta.data, aes(x = figure.labels3, y = percent.mt)) + 
-  geom_boxplot() + 
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(wbm@meta.data, aes(x = figure.labels3, y = percent.mt, 
-                          fill = Condition3)) + 
-  geom_boxplot() + 
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 90))
-
-``` 
-
-## 2b Interaction Plots
-
-### nCount & nFeature
-
-```{r}
-ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = log10(nFeature_RNA))) +
-  geom_point() + theme_bw() + geom_smooth()
-
-ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = log10(nFeature_RNA),
-                          colour = Condition3)) +
-  scale_color_manual(values = c('black','red','limegreen','blue')) +
-  geom_point() + theme_bw() + geom_smooth(se = F)
-
-ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = log10(nFeature_RNA),
-                          colour = figure.labels3)) +
-  scale_color_manual(values = color_pal2) +
-  geom_point() + theme_bw() 
-
-for (i in unique(wbm$figure.labels3)){
-        # print(i)
-        
-        wbm$highlight.cells <- ifelse(wbm$figure.labels3 == i, i,'All Others')
-        
-        print(ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = log10(nFeature_RNA),
-                          colour = highlight.cells)) +
-          scale_color_manual(values = c('lightgrey','blue')) +
-          geom_point(aes(alpha = 0.2)) + theme_bw() + geom_smooth())
-        
-}
-```
-
-### nCount & percent.mt
-
-```{r}
-ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt)) +
-  geom_point() + theme_bw() + geom_smooth()
-
-ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt,
-                          colour = Condition3)) +
-  scale_color_manual(values = c('black','red','limegreen','blue')) +
-  geom_point() + theme_bw() + geom_smooth(se = F)
-
-ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt,
-                          colour = figure.labels3)) +
-  scale_color_manual(values = color_pal2) +
-  geom_point() + theme_bw() 
-
-for (i in unique(wbm$figure.labels3)){
-        # print(i)
-        
-        wbm$highlight.cells <- ifelse(wbm$figure.labels3 == i, i,'All Others')
-        
-        print(ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt,
-                          colour = highlight.cells)) +
-          scale_color_manual(values = c('lightgrey','blue')) +
-          geom_point(aes(alpha = 0.2)) + theme_bw() + geom_smooth())
-        
-}
-# wbm$b.cells <- ifelse(wbm$figure.labels3 == 'B-cell', 'B-cell', 'All Others')
+# int.list <- SplitObject(wbm, split.by = 'Condition3')
 # 
-# ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt,
-#                           colour = b.cells)) +
-#   scale_color_manual(values = c('lightgrey','blue')) +
-#   geom_point(aes(alpha = 0.2)) + theme_bw() + geom_smooth()
-```
-
-### nFeature & percent.mt
-
-```{r}
-ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt)) +
-  geom_point() + theme_bw() + geom_smooth()
-
-ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt,
-                          colour = Condition3)) +
-  scale_color_manual(values = c('black','red','limegreen','blue')) +
-  geom_point() + theme_bw() + geom_smooth(se = F)
-
-ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt,
-                          colour = figure.labels3)) +
-  scale_color_manual(values = color_pal2) +
-  geom_point() + theme_bw() 
-
-for (i in unique(wbm$figure.labels3)){
-        # print(i)
-        
-        wbm$highlight.cells <- ifelse(wbm$figure.labels3 == i, i,'All Others')
-        
-        print(ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt,
-                          colour = highlight.cells)) +
-          scale_color_manual(values = c('lightgrey','blue')) +
-          geom_point(aes(alpha = 0.2)) + theme_bw() + geom_smooth())
-        
-}
-# 
-# ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt,
-#                           colour = b.cells)) +
-#   scale_color_manual(values = c('lightgrey','blue')) +
-#   geom_point(aes(alpha = 0.2)) + theme_bw() + geom_smooth()
-```
-
-# 3 GO Term w/in clusters
-
-Using (LRPath) [http://lrpath.ncibi.org] from Maureen Sartor's lab. Should this just been done with WT? Could we also do this with just MUT?
-
-Need to do unbiased DE expression, not using any cutoffs. Looking within all clusters comparing WT vs MUT (normal WBM and enriched combined). This data will be inputted into the online interface, and then also used within the next section.
-
-## DE
-
-```{r}
-# de.genes <- data.frame(p_val = numeric(),
-#                        avg_logFC = numeric(),
-#                        pct.1 = numeric(),
-#                        pct.2 = numeric(),
-#                        p_val_adj = numeric(),
-#                        cluster = character(),
-#                        gene = character())
-# 
-# wbm@meta.data
-# 
-# for (i in unique(wbm$figure.labels3)){
+# for (i in 1:length(int.list)){
 #   print(i)
-#   temp.subset <- subset(wbm, figure.labels3 == i)
-#   x <- FindMarkers(temp.subset,
-#                    ident.1 = 'MigR1',
-#                    ident.2 = 'MPL',
-#                    logfc.threshold = 0,
-#                    min.pct = 0,
-#                    group.by = 'Experiment')
-#   x$cluster <- i
-#   x$gene <- rownames(x)
-#   x <- x[order(x$avg_log2FC, decreasing = T),]
-#   de.genes <- rbind(de.genes,x)
+#   int.list[[i]] <- SCTransform(int.list[[i]], verbose = F)
 # }
 # 
-# summary(as.factor(de.genes$cluster))
-# # table(rownames(de.genes))
+# int.features <- SelectIntegrationFeatures(object.list = int.list, nfeatures = 3000)
 # 
-
-
-
-# write.table(de.genes, './data/v4/genes.for.LR.Path.within.cluster.all.txt', sep = '\t')
-```
-
-## Exporting Results to LRPath Format
-
-```{r}
-# x <- read.table('./data/v4/genes.for.LR.Path.within.cluster.all.txt', sep = '\t')
+# options(future.globals.maxSize = 3145728000)
 # 
-# mus.ref <- data.table::fread('../mus_mus_gene_id.txt', header = T)
-# colnames(mus.ref)[2] <- 'gene'
+# int.list <- PrepSCTIntegration(object.list = int.list, anchor.features = int.features,
+#                                verbose = F)
 # 
+# int.anchors <- FindIntegrationAnchors(object.list = int.list, normalization.method = 'SCT',
+#                                       anchor.features = int.features, verbose = F)
 # 
-# out <- split(x, f = x$cluster)
+# int.int <- IntegrateData(anchorset = int.anchors, normalization.method = 'SCT',
+#                          verbose = F)
 # 
-# for (i in 1:length(out)){
-#   temp.name <- unique(out[[i]]$cluster)
-#   temp.name <- gsub('/','-',temp.name)
-#   
-#   print(temp.name)
-#   
-#   temp <- out[[i]]
-#   print(summary(temp$gene %in% mus.ref$gene))
-#   
-#   temp.df <- merge(temp, mus.ref, by = 'gene')
-#   
-#   temp.df$entrez.name <- paste0('mmu:', temp.df$GeneID)
-#   
-#   temp.df <- temp.df[,c('GeneID','p_val_adj','avg_log2FC')]
-#   
-#   write.table(temp.df, paste0('./data/v4/LRPath.gene.lists/',
-#                               temp.name,'.txt'),
-#               sep = '\t', col.names = F, quote = F, row.names = F)
+# int <- int.int
+# 
+# int <- RunPCA(int, verbose = F)
+# 
+# int <- RunUMAP(int, dims = 1:30)
+# 
+# int <- FindNeighbors(int, dims = 1:30)
+# 
+# for (i in seq(0,1,by = .1)){
+#   temp <- FindClusters(int, resolution = i, verbose = F)
+#   print(DimPlot(temp, label =T , repel= T))
 # }
+# 
+# int <- FindClusters(int, resolution = 0.3, verbose = F)
+# 
+# DimPlot(int)
+# 
+# DimPlot(int, label = T, repel = T)
+# 
+# saveRDS(int, './data/v4/cca.integrated.rds')
+
+int <- readRDS('./data/v4/cca.integrated.rds')
+
+for (i in seq(0,1,by = .1)){
+  temp <- FindClusters(int, resolution = i, verbose = F)
+  print(DimPlot(temp, label =T , repel= T))
+}
 ```
 
+## 2a Cluster Count Tables 
 
 ```{r}
-# mkp.degs <- de.genes[de.genes$cluster == 'MkP',]
-# mkp.degs
-# mus.ref <- read.table('../mus_mus_gene_id.txt', sep = '\t',header = T)
-# mus.ref2 <- data.table::fread('../mus_mus_gene_id.txt', header = T)
-# 
-# summary(mkp.degs$gene %in% mus.ref2$Symbol)
-# 
-# missing.genes <- mkp.degs$gene[!(mkp.degs$gene %in% mus.ref2$Symbol)]
-# 
-# missing.genes
-# 
-# mus.ref2$Symbol[grepl('sept', mus.ref2$Symbol, ignore.case = T)] # H2afv
-# 
-# colnames(mus.ref2)[2] <- 'gene'
-# 
-# df <- merge(mkp.degs, mus.ref2, by = 'gene')
-# 
-# df$entrez.name <- paste0('mmu:',df$GeneID)
-# 
-# df <- df[,c('GeneID','p_val_adj','avg_log2FC')]
-# 
-# write.table(df, './data/v4/LRPath.mkps.txt', sep = '\t', 
-#             col.names = F, quote = F, row.names = F)
-```
+DimPlot(wbm, group.by = 'figure.labels3', label = T , repel = T)
 
+df <- as.data.frame(table(int$figure.labels3, int$seurat_clusters))
+df$var1.total <- NA
 
-## Cleaning Files
-
-```{r}
-library(data.table)
-bcell.prog <-fread('./data/v4/LRPath.results/within.BcellProg.txt', sep = '\t')
-bcell.prog <- bcell.prog[bcell.prog$FDR < 0.05,]
-
-files <- list.files('./data/v4/LRPath.results/')
-files <- files[grepl('txt', files)]
-
-cnt <- 1
-for (i in files){
+for (i in unique(df$Var1)){
   print(i)
-  temp <- fread(paste0('./data/v4/LRPath.results/',i), sep = '\t')
-  
-  temp$cluster <- tstrsplit(i,'\\.', keep = 2)[[1]]
-  if (cnt == 1){
-    LR.results <- temp
-    cnt <- 0
-  }
-  else{
-    LR.results <- rbind(LR.results, temp)
-  }
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
 }
 
-summary(as.factor(LR.results$cluster))
-
-LR.sig.results <- LR.results[LR.results$FDR < 0.05,] 
-
-summary(as.factor(LR.sig.results$cluster))
-
-table(LR.sig.results$cluster, LR.sig.results$ConceptType)
-
-LR.sig.results$Direction2 <- ifelse(LR.sig.results$Direction == 'down', 'up','down')
-```
-
-## Clusters
-
-Looking at clusters individually
-
-### MkP
-
-```{r}
-mkp <- LR.sig.results[LR.sig.results$cluster == 'MkP',]
-
-mkp[mkp$ConceptType == 'GOBP',]
-mkp[mkp$ConceptType == 'KEGG',]
-```
-
-```{r}
-splt.obj <- tstrsplit(mkp[mkp$ConceptType == 'GOBP',]$Name,' ')
-
-words <- c()
-
-for (i in 1:length(splt.obj)){
-  words <- c(words,splt.obj[[i]])
-}
-
-words <- words[!is.na(words)]
-length(words)
-
-summary(as.factor(words))
-```
-
-## 3a Correlation of GO Terms
-
-Reading in all the Terms
-
-```{r}
-# setwd('data/v4/LRPath.results/')
-files = list.files('./data/v4/LRPath.results/')
-files <- files[grepl('.txt',files)]
-files
-
-cnt <- 1
-
-for (i in files){
+df$var2.total <- NA
+for (i in unique(df$Var2)){
   print(i)
-  x <- fread(paste0('./data/v4/LRPath.results/',i))
-  x$cluster <- tstrsplit(i,'\\.', keep = 2)[[1]]
-  
-  if (cnt == 1){
-    go.df <- x
-    cnt <- 2
-  }
-  else{
-    go.df <- rbind(go.df, x)
-  }
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
 }
 
-summary(as.factor(go.df$cluster))
-summary(as.factor(go.df$ConceptType))
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# df
+
+order_ <- c('MK-1','Granulocyte','B-cell','Mono/Macro','MkP','CMP','MEP','MK-2',
+            'Erythroid','T-cell','B-cell Prog.')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
 ```
 
-Subsetting to just GOBP
-
 ```{r}
-go.df <- go.df[go.df$ConceptType == 'GOBP',]
+int$int.label <- factor(int$seurat_clusters,
+                        labels = c('Gran','Gran','Gran','B-cell','Gran','Mono/Macro',
+                        'MkP','CMP','MEP/B-cell','Mono/Macro/MK-2','Erythroid','MkP',
+                        'T-cell','B-cell','B-cell','B-cell Prog.'))
+# table(int$int.label, int$seurat_clusters)
 
-tmp <- table(go.df$Name, go.df$cluster)
-
-# summary(as.factor(go.df$Name))
-
-go.bps <- rownames(tmp[rowSums(tmp) == 9,])
-
-length(go.bps)
+DimPlot(int, group.by = 'int.label', label = T, repel = T, cols = color_pal)
+FeaturePlot(int, features = c('Itga2b','Pf4'))
 ```
 
-### Odds Ratio
+
+### Experiment Count Tables
 
 ```{r}
-out <- split(go.df, f = go.df$cluster)
+DimPlot(int, group.by = 'Condition2')
+DimPlot(int, split.by = 'Condition2', ncol = 2) + theme_bw()
+```
 
-# w.go.df
+```{r}
+df <- as.data.frame(table(int$Condition2, int$seurat_clusters))
+df$var1.total <- NA
 
-cnt = 1 
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
 
-for (i in 1:length(out)){
-  temp <- as.data.frame(out[[i]])
-  rown <- as.character(temp$Name)
-  coln <- paste0(names(out)[i],'_',colnames(temp)[5])
-  colnames(temp)[5] <- coln
-  temp <- data.frame(temp[,5])
-  rownames(temp) <- rown
-  temp <- data.frame(temp[go.bps,])
-  colnames(temp) <- coln
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# df
+
+# order_ <- c('MK-1','Granulocyte','B-cell','Mono/Macro','MkP','CMP','MEP','MK-2',
+#             'Erythroid','T-cell','B-cell Prog.')
+# 
+# df$Var1 <- factor(df$Var1, levels = order_)
+
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() +
+  geom_text(size = 4) + xlab('Experiment') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .15)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + 
+  geom_text(size = 4) + xlab('Experiment') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+### Variable Features
+
+```{r}
+hv.genes <- VariableFeatures(int)
+hv.genes.org <- VariableFeatures(wbm)
+
+length(intersect(hv.genes, hv.genes.org))
+```
+
+Around half the highly variable genes overlap
+
+## 2a.2 Looking at another resolution
+
+Perhaps we were looking at too low of a resolution with the integrated model.
+
+```{r}
+int <- FindClusters(int,resolution = 1, verbose = F)
+
+Idents(int) <- int$seurat_clusters
+
+DimPlot(int, label = T, repel = T)
+```
+
+```{r}
+# DimPlot(wbm, group.by = 'figure.labels3', label = T , repel = T)
+
+df <- as.data.frame(table(int$figure.labels3, int$seurat_clusters))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# df
+
+order_ <- c('MK-1','Granulocyte','B-cell','Mono/Macro','MkP','CMP','MEP','MK-2',
+            'Erythroid','T-cell','B-cell Prog.')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+#### int.labels
+
+```{r}
+int$int.label <- factor(int$seurat_clusters,
+                        labels = c('Gran','Gran','Gran','B-cell','Gran','Gran','Gran','MkP',
+                                   'Mono/Macro', 'Gran','CMP','B-cell','Gran','Gran',
+                                   'Mono/Macro','Erythroid','B-cell','MEP',
+                                   'T-cell','MkP','Gran', 'B-cell',
+                                   'B-cell','Mono/Macro','B-cell Prog.', 'MK-2'))
+
+# saveRDS(int, './data/v4/cca.integrated.rds')
+
+table(int$int.label, int$seurat_clusters)
+
+DimPlot(int, group.by = 'int.label', label = T, repel = T)
+FeaturePlot(int, features = c('Itga2b','Pf4'))
+```
+
+#### Further cross-tab with new naming
+
+```{r}
+df <- as.data.frame(table(int$figure.labels3, int$int.label))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# df
+
+order_ <- c('MK-1','Granulocyte','B-cell','MkP','Mono/Macro','CMP','Erythroid',
+            'MEP',
+            'T-cell','B-cell Prog.','MK-2')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+### Experiment Count Tables
+
+```{r}
+DimPlot(int, group.by = 'Condition2')
+DimPlot(int, split.by = 'Condition2', ncol = 2) + theme_bw()
+```
+
+```{r}
+df <- as.data.frame(table(int$Condition2, int$int.label))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# df
+
+# order_ <- c('MK-1','Granulocyte','B-cell','Mono/Macro','MkP','CMP','MEP','MK-2',
+#             'Erythroid','T-cell','B-cell Prog.')
+# 
+# df$Var1 <- factor(df$Var1, levels = order_)
+
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() +
+  geom_text(size = 4) + xlab('Experiment') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .15)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + 
+  geom_text(size = 4) + xlab('Experiment') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+## 2b Combining w/ Original Data
+
+```{r}
+df2 <- as.data.frame(table(wbm$Condition2, wbm$figure.labels3))
+df2$var1.total <- NA
+
+for (i in unique(df2$Var1)){
+  print(i)
+  df2[df2$Var1 == i,]$var1.total <- sum(df2[df2$Var1 == i,]$Freq)
+}
+
+df2$var2.total <- NA
+for (i in unique(df2$Var2)){
+  print(i)
+  df2[df2$Var2 ==i,]$var2.total <- sum(df2[df2$Var2 ==i,]$Freq)
+}
+
+df2$perc.var1 <- df2$Freq / df2$var1.total
+df2$perc.var2 <- df2$Freq / df2$var2.total
+
+ggplot(df2, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() +
+  geom_text(size = 4) + xlab('Experiment') + ylab ('Original Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .15)
+
+ggplot(df2, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + 
+  geom_text(size = 4) + xlab('Experiment') + ylab ('Original Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+```{r}
+df$status <- 'post-correction'
+df2$status <- 'pre-correction'
+df2$Var2 <- ifelse(df2$Var2 == 'Granulocyte', 'Gran', as.character(df2$Var2))
+dfc <- rbind(df2,df)
+
+table(dfc$Var1, dfc$Var2)
+
+dfc$status <- factor(dfc$status, levels = c('pre-correction','post-correction'))
+
+for (exp in unique(dfc$Var1)){
+  # print(exp)
+  tmp <- dfc[dfc$Var1 == exp,]
+  print(ggplot(tmp, aes(x = Var2, y = perc.var1, fill = status, label = Freq)) +
+    geom_bar(position = 'dodge', stat = 'identity') + 
+    ggtitle (exp) +
+    theme_bw() +
+    geom_text(position = position_dodge(width = .9), vjust = -.25, size = 2.5) + 
+    theme(axis.text.x = element_text(angle = 45, hjust =1))
+  )
+}
+
+```
+
+### Two Tile Charts in One
+
+```{r}
+df2 <- as.data.frame(table(wbm$Condition2, wbm$figure.labels3))
+df2$var1.total <- NA
+
+for (i in unique(df2$Var1)){
+  print(i)
+  df2[df2$Var1 == i,]$var1.total <- sum(df2[df2$Var1 == i,]$Freq)
+}
+
+df2$var2.total <- NA
+for (i in unique(df2$Var2)){
+  print(i)
+  df2[df2$Var2 ==i,]$var2.total <- sum(df2[df2$Var2 ==i,]$Freq)
+}
+
+df2$perc.var1 <- df2$Freq / df2$var1.total
+df2$perc.var2 <- df2$Freq / df2$var2.total
+
+df <- as.data.frame(table(int$Condition2, int$int.label))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+df$var1.plus <- paste0('2_',df$Var1)
+df2$var1.plus <- paste0('1_',df2$Var1)
+
+df2$Var2 <- ifelse(df2$Var2 == 'Granulocyte', 'Gran',as.character(df2$Var2))
+
+df3 <- rbind(df,df2)
+
+
+
+ggplot(df3, aes(x = var1.plus, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() +
+  geom_text(size = 4) + xlab('Experiment') + ylab ('Original Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .15)
+
+ggplot(df3, aes(x = var1.plus, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + 
+  geom_text(size = 4) + xlab('Experiment') + ylab ('Original Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+### Plots
+
+```{r}
+DimPlot(int, group.by = 'int.label', label = T, repel = T) + ggtitle('V2 Clustering/V2 Naming')
+DimPlot(int, group.by = 'figure.labels3', label = T, repel = T) + 
+  ggtitle('V2 Clustering/V2 Naming')
+
+int$clustering4.labels <- v4$int.labels
+
+DimPlot(int, group.by = 'clustering4.labels', label = T, repel = T) + 
+  ggtitle('V2 Clustering/V4 Naming')
+```
+
+
+### Variable Features
+
+```{r}
+hv.genes <- VariableFeatures(int)
+hv.genes.org <- VariableFeatures(wbm)
+
+length(intersect(hv.genes, hv.genes.org))
+```
+
+Going with the second clustering!
+
+## 2c Cluster Centroids
+
+### All Genes
+
+```{r}
+Idents(int) <- int$int.label
+
+av <- AverageExpression(int)$RNA
+
+pcs <- prcomp(av)
+pc.vectors <- pcs$x
+# head(pc.vectors)
+
+av.c <- cbind(av, pc.vectors[,1:10])
+
+temp.cor <- cor(av.c, use = 'pairwise.complete.obs', method = 'spearman')
+
+tc <- as.data.frame(temp.cor)
+
+tc <- gather(tc, key = 'ct1', value = 'Correlation', factor_key = T)
+tc$ct2 <- rep(unique(tc$ct1), dim(tc)[1]/length(unique(tc$ct1)))
+
+ggplot(tc, aes(x = ct1, y = ct2, fill = Correlation)) + geom_tile() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red') +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+### HV Genes
+
+```{r}
+pcs <- prcomp(av[hv.genes,])
+pc.vectors <- pcs$x
+# head(pc.vectors)
+
+av.c <- cbind(av[hv.genes,], pc.vectors[,1:10])
+
+temp.cor <- cor(av.c, use = 'pairwise.complete.obs', method = 'spearman')
+
+tc <- as.data.frame(temp.cor)
+
+tc <- gather(tc, key = 'ct1', value = 'Correlation', factor_key = T)
+tc$ct2 <- rep(unique(tc$ct1), dim(tc)[1]/length(unique(tc$ct1)))
+
+ggplot(tc, aes(x = ct1, y = ct2, fill = Correlation)) + geom_tile() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red') +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+## 2d Cluster Centroids by Sample
+
+### By Experiment
+
+#### All Genes
+
+```{r}
+Idents(int) <- paste0(int$int.label, '_', int$Condition2)
+
+av <- AverageExpression(int)$RNA
+
+pcs <- prcomp(av)
+pc.vectors <- pcs$x
+# head(pc.vectors)
+
+av.c <- cbind(av, pc.vectors[,1:10])
+
+temp.cor <- cor(av.c, use = 'pairwise.complete.obs', method = 'spearman')
+
+tc <- as.data.frame(temp.cor)
+
+tc <- gather(tc, key = 'ct1', value = 'Correlation', factor_key = T)
+tc$ct2 <- rep(unique(tc$ct1), dim(tc)[1]/length(unique(tc$ct1)))
+
+order.rows <- data.frame(coln = colnames(temp.cor))
+# order.rows
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 2)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 1)[[1]])
+
+order.rows.order <- order.rows[order(order.rows$pc,order.rows$exp, order.rows$ct),]$coln
+
+# order.rows
+
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Gran' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
+                        'MkP' = 'violet','MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1' = 'blue', 'Mpl' = 'red', 'enrMigr1' = 'violet',
+                   'enrMpl' = 'darkred','PC' = 'black'))
+
+temp.cor2 <- temp.cor[order.rows.order, order.rows.order]
+
+
+column_ha = HeatmapAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = order.rows$exp,
+        column_split = order.rows$exp,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+#### HV Genes
+
+```{r}
+av <- av[hv.genes,]
+pcs <- prcomp(av)
+pc.vectors <- pcs$x
+# head(pc.vectors)
+
+av.c <- cbind(av, pc.vectors[,1:10])
+
+temp.cor <- cor(av.c, use = 'pairwise.complete.obs', method = 'spearman')
+
+tc <- as.data.frame(temp.cor)
+
+tc <- gather(tc, key = 'ct1', value = 'Correlation', factor_key = T)
+tc$ct2 <- rep(unique(tc$ct1), dim(tc)[1]/length(unique(tc$ct1)))
+
+order.rows <- data.frame(coln = colnames(temp.cor))
+# order.rows
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 2)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 1)[[1]])
+
+order.rows.order <- order.rows[order(order.rows$pc,order.rows$exp, order.rows$ct),]$coln
+
+# order.rows
+
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Gran' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
+                        'MkP' = 'violet','MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1' = 'blue', 'Mpl' = 'red', 'enrMigr1' = 'violet',
+                   'enrMpl' = 'darkred','PC' = 'black'))
+
+temp.cor2 <- temp.cor[order.rows.order, order.rows.order]
+
+
+column_ha = HeatmapAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = order.rows$exp,
+        column_split = order.rows$exp,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+### By Cell Type
+
+#### All Genes
+
+```{r}
+# Idents(int) <- paste0(int$int.label, '_', int$Condition2)
+
+av <- AverageExpression(int)$RNA
+
+pcs <- prcomp(av)
+pc.vectors <- pcs$x
+# head(pc.vectors)
+
+av.c <- cbind(av, pc.vectors[,1:10])
+
+temp.cor <- cor(av.c, use = 'pairwise.complete.obs', method = 'spearman')
+
+tc <- as.data.frame(temp.cor)
+
+tc <- gather(tc, key = 'ct1', value = 'Correlation', factor_key = T)
+tc$ct2 <- rep(unique(tc$ct1), dim(tc)[1]/length(unique(tc$ct1)))
+
+order.rows <- data.frame(coln = colnames(temp.cor))
+# order.rows
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 2)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 1)[[1]])
+
+order.rows.order <- order.rows[order(order.rows$pc,order.rows$ct, order.rows$exp),]$coln
+order.rows <- order.rows[order(order.rows$pc,order.rows$ct, order.rows$exp),]
+# order.rows
+
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Gran' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
+                        'MkP' = 'violet','MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1' = 'blue', 'Mpl' = 'red', 'enrMigr1' = 'violet',
+                   'enrMpl' = 'darkred','PC' = 'black'))
+
+temp.cor2 <- temp.cor[order.rows.order, order.rows.order]
+
+
+column_ha = HeatmapAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = order.rows$ct,
+        column_split = order.rows$ct,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+#### HV Genes
+
+```{r}
+av <- av[hv.genes,]
+pcs <- prcomp(av)
+pc.vectors <- pcs$x
+# head(pc.vectors)
+
+av.c <- cbind(av, pc.vectors[,1:10])
+
+temp.cor <- cor(av.c, use = 'pairwise.complete.obs', method = 'spearman')
+
+tc <- as.data.frame(temp.cor)
+
+tc <- gather(tc, key = 'ct1', value = 'Correlation', factor_key = T)
+tc$ct2 <- rep(unique(tc$ct1), dim(tc)[1]/length(unique(tc$ct1)))
+
+order.rows <- data.frame(coln = colnames(temp.cor))
+# order.rows
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 2)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 1)[[1]])
+
+order.rows.order <- order.rows[order(order.rows$pc,order.rows$exp, order.rows$ct),]$coln
+
+# order.rows
+
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Gran' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
+                        'MkP' = 'violet','MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1' = 'blue', 'Mpl' = 'red', 'enrMigr1' = 'violet',
+                   'enrMpl' = 'darkred','PC' = 'black'))
+
+temp.cor2 <- temp.cor[order.rows.order, order.rows.order]
+
+
+column_ha = HeatmapAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = order.rows$ct,
+        column_split = order.rows$ct,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+### With Column V5 By Cell Type
+
+Adding a column for post-corrected cluster centroids
+
+#### All Genes
+
+```{r}
+Idents(int) <- paste0(int$int.label, '_', int$Condition2)
+
+av <- AverageExpression(int)$RNA
+head(av)
+
+Idents(int) <- int$int.label
+av2 <- AverageExpression(int)
+av2 <- av2$integrated
+
+pcs <- prcomp(av)
+pc.vectors <- pcs$x
+# head(pc.vectors)
+colnames(av2) <- paste0(colnames(av2),'_Int')
+
+dim(av)
+
+av.c <- cbind(av, pc.vectors[,1:10])
+
+av.c2 <- merge(av2, av.c, by = 0, all.y = T)
+
+rownames(av.c2) <- av.c2$Row.names
+
+av.c2 <- av.c2[,-1]
+
+temp.cor <- cor(av.c2, use = 'pairwise.complete.obs', method = 'spearman')
+
+tc <- as.data.frame(temp.cor)
+
+tc <- gather(tc, key = 'ct1', value = 'Correlation', factor_key = T)
+tc$ct2 <- rep(unique(tc$ct1), dim(tc)[1]/length(unique(tc$ct1)))
+
+order.rows <- data.frame(coln = colnames(temp.cor))
+# order.rows
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 2)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 1)[[1]])
+order.rows$int <- ifelse(order.rows$exp == 'Int', 1,0)
+
+order.rows.order <- order.rows[order(order.rows$pc,order.rows$ct,
+                                     order.rows$int, order.rows$exp),]$coln
+
+order.rows <- order.rows[order(order.rows$pc,order.rows$ct,
+                               order.rows$int,order.rows$exp),]
+# order.rows
+
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Gran' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
+                        'MkP' = 'violet','MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1' = 'blue', 'Mpl' = 'red', 'enrMigr1' = 'violet',
+                   'enrMpl' = 'darkred','Int' = 'black','PC' = 'black'))
+
+temp.cor2 <- temp.cor[order.rows.order, order.rows.order]
+
+
+column_ha = HeatmapAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = order.rows$ct,
+        column_split = order.rows$ct,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+#### HV Genes
+
+```{r}
+av <- av[hv.genes,]
+pcs <- prcomp(av)
+pc.vectors <- pcs$x
+
+Idents(int) <- int$int.label
+av2 <- AverageExpression(int)
+av2 <- av2$integrated
+
+colnames(av2) <- paste0(colnames(av2),'_Int')
+
+dim(av)
+
+av.c <- cbind(av, pc.vectors[,1:10])
+
+av.c2 <- merge(av2, av.c, by = 0, all.y = T)
+
+rownames(av.c2) <- av.c2$Row.names
+
+av.c2 <- av.c2[,-1]
+
+temp.cor <- cor(av.c2, use = 'pairwise.complete.obs', method = 'spearman')
+
+tc <- as.data.frame(temp.cor)
+
+tc <- gather(tc, key = 'ct1', value = 'Correlation', factor_key = T)
+tc$ct2 <- rep(unique(tc$ct1), dim(tc)[1]/length(unique(tc$ct1)))
+
+order.rows <- data.frame(coln = colnames(temp.cor))
+# order.rows
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 2)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 1)[[1]])
+order.rows$int <- ifelse(order.rows$exp == 'Int', 1,0)
+
+order.rows.order <- order.rows[order(order.rows$pc,order.rows$ct,
+                                     order.rows$int, order.rows$exp),]$coln
+
+order.rows <- order.rows[order(order.rows$pc,order.rows$ct,
+                               order.rows$int,order.rows$exp),]
+# order.rows
+
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Gran' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
+                        'MkP' = 'violet','MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1' = 'blue', 'Mpl' = 'red', 'enrMigr1' = 'violet',
+                   'enrMpl' = 'darkred','Int' = 'black','PC' = 'black'))
+
+temp.cor2 <- temp.cor[order.rows.order, order.rows.order]
+
+
+column_ha = HeatmapAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = order.rows$ct,
+        column_split = order.rows$ct,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+
+## 2e Cluster Centroid Deltas
+
+### Using Uncorrected Values
+
+Using top 10 PCs from cluster centroids
+
+```{r}
+Idents(int) <- paste0(int$int.label, '_', int$Condition2)
+av <- AverageExpression(int)$RNA
+# head(av)
+
+av <- as.data.frame(t(av))
+
+av$exp <- tstrsplit(rownames(av), '_', keep = 2)[[1]]
+
+av$ct <- tstrsplit(rownames(av), '_', keep = 1)[[1]]
+
+outs <- split(av, f = av$ct)
+genes <- colnames(outs[[1]])[!colnames(outs[[1]]) %in% c('ct','exp')]
+out.df <- data.frame(na.row = rep(NA,length(genes)),
+                     row.names = genes)
+
+for (p in outs){
+  temp.df <- t(p[,!(colnames(p) %in% c('ct','exp'))])
+  ct <- tstrsplit(colnames(temp.df)[1], '_', keep = 1)[[1]]
+  colnames(temp.df) <- tstrsplit(colnames(temp.df), '_', keep = 2)[[1]]
   
-  if(cnt == 1){
-    w.go.df <- temp
-    cnt = 2
+  combos <- combn(1:length(colnames(temp.df)), 2)
+  
+  if (dim(temp.df)[2] == 4){
+    temp.df <- temp.df[,c('Migr1','Mpl','enrMigr1','enrMpl')]
   }
   else{
-    w.go.df <- cbind(w.go.df, temp)
+    temp.df <- temp.df[,c('Migr1','Mpl','enrMigr1')]
   }
   
-}
-```
-
-```{r}
-summary(as.factor(go.df$cluster))
-length(go.bps)
-```
-
-
-```{r}
-spearman.cor <- cor(w.go.df, method = 'spearman')
-
-temp.cor <- as.data.frame(spearman.cor)
-
-temp.cor2 <- gather(as.data.frame(temp.cor))
-
-temp.cor2$cluster2 <- rep(rownames(temp.cor), length(rownames(temp.cor)))
-
-temp.cor2$value2 <- ifelse(temp.cor2$value == 1, 0, temp.cor2$value)
-
-temp.cor2$key <- tstrsplit(temp.cor2$key, '_', keep = 1)[[1]]
-temp.cor2$cluster2 <- tstrsplit(temp.cor2$cluster2, '_', keep = 1)[[1]]
-
-ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value, label = round(value,2))) +
-  geom_tile() + # geom_text() + 
-  xlab(NULL) + ylab(NULL) + ggtitle ('Odds Ratio Correlation (Spearman)') +
-  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .25) +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value2, label = round(value,2))) +
-  geom_tile() + # geom_text() + 
-  xlab(NULL) + ylab(NULL) + ggtitle ('Odds Ratio Correlation (Spearman)') +
-  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .1) +
-  theme(axis.text.x = element_text(angle = 90))
-```
-
-### Signed FDR
-
-```{r}
-go.df$signed.FDR <- ifelse(go.df$Direction == 'down', -1*go.df$FDR, go.df$FDR)
-out <- split(go.df, f = go.df$cluster)
-
-# w.go.df
-
-cnt = 1 
-
-for (i in 1:length(out)){
-  temp <- as.data.frame(out[[i]])
-  rown <- as.character(temp$Name)
-  coln <- paste0(names(out)[i],'_',colnames(temp)[11])
-  colnames(temp)[11] <- coln
-  temp <- data.frame(temp[,11])
-  rownames(temp) <- rown
-  temp <- data.frame(temp[go.bps,])
-  colnames(temp) <- coln
+  for (i in 1:dim(combos)[2]){
+    clm1 <- combos[1,i]
+    clm2 <- combos[2,i]
+    # print(paste0(clm1, clm2))
+    
+    if (i == 1){
+      new.df.temp <- data.frame(V1 = temp.df[,clm1] - temp.df[,clm2])
+      
+    }
+    else{
+      new.df.temp <- cbind(new.df.temp, temp.df[,clm1] - temp.df[,clm2])
+    }
+    colnames(new.df.temp)[i] <- paste0(colnames(temp.df)[clm1],
+                                       '_vs_', colnames(temp.df)[clm2],
+                                       '.',ct)
+  }
   
-  if(cnt == 1){
-    w.go.df <- temp
-    cnt = 2
+  out.df <- cbind(out.df, new.df.temp)
+  
+}
+
+# summary(as.factor(tstrsplit(colnames(out.df), '\\.', keep = 2)[[1]]))
+# summary(as.factor(tstrsplit(colnames(out.df), '\\.', keep = 1)[[1]]))
+
+out.df <- out.df[,-1]
+```
+
+#### By Cluster
+
+##### All Genes
+
+```{r}
+# head(out.df)
+Idents(int) <- int$int.label
+av <- AverageExpression(int)$RNA
+
+pcs <- prcomp(av)
+pc.vectors <- pcs$x
+# head(pc.vectors)
+
+av.c <- cbind(out.df, pc.vectors[,1:10])
+
+temp.cor <- cor(av.c, use = 'pairwise.complete.obs', method = 'spearman')
+
+tc <- as.data.frame(temp.cor)
+
+tc <- gather(tc, key = 'ct1', value = 'Correlation', factor_key = T)
+tc$ct2 <- rep(unique(tc$ct1), dim(tc)[1]/length(unique(tc$ct1)))
+
+order.rows <- data.frame(coln = colnames(temp.cor))
+# order.rows
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 1)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 2)[[1]])
+
+order.rows.order <- order.rows[order(order.rows$pc,order.rows$exp, order.rows$ct),]$coln
+
+order.rows
+
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Gran' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog' = '#CC79A7',
+                        'MkP' = 'violet','MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1_vs_Mpl' = 'blue', 'Migr1_vs_enrMigr1' = 'red', 
+                   'Migr1_vs_enrMpl' = 'violet',
+                   'Mpl_vs_enrMigr1' = 'darkred', 'Mpl_vs_enrMpl' = 'orange',
+                   'enrMigr1_vs_enrMpl' = 'pink','PC' = 'black'))
+
+temp.cor2 <- temp.cor[order.rows.order, order.rows.order]
+
+
+column_ha = HeatmapAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = order.rows$ct,
+        column_split = order.rows$ct,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+##### HV Genes
+
+```{r}
+# head(out.df)
+# Idents(int) <- int$int.label
+# av <- AverageExpression(int)$RNA
+
+pcs <- prcomp(av[hv.genes,])
+pc.vectors <- pcs$x
+# head(pc.vectors)
+
+av.c <- cbind(out.df[hv.genes,], pc.vectors[,1:10])
+
+temp.cor <- cor(av.c, use = 'pairwise.complete.obs', method = 'spearman')
+
+tc <- as.data.frame(temp.cor)
+
+tc <- gather(tc, key = 'ct1', value = 'Correlation', factor_key = T)
+tc$ct2 <- rep(unique(tc$ct1), dim(tc)[1]/length(unique(tc$ct1)))
+
+order.rows <- data.frame(coln = colnames(temp.cor))
+# order.rows
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 1)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 2)[[1]])
+
+order.rows.order <- order.rows[order(order.rows$pc,order.rows$exp, order.rows$ct),]$coln
+
+order.rows
+
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Gran' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog' = '#CC79A7',
+                        'MkP' = 'violet','MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1_vs_Mpl' = 'blue', 'Migr1_vs_enrMigr1' = 'red', 
+                   'Migr1_vs_enrMpl' = 'violet',
+                   'Mpl_vs_enrMigr1' = 'darkred', 'Mpl_vs_enrMpl' = 'orange',
+                   'enrMigr1_vs_enrMpl' = 'pink','PC' = 'black'))
+
+temp.cor2 <- temp.cor[order.rows.order, order.rows.order]
+
+
+column_ha = HeatmapAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = order.rows$ct,
+        column_split = order.rows$ct,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+#### By Experiment
+
+##### All Genes
+
+```{r}
+# head(out.df)
+Idents(int) <- int$int.label
+av <- AverageExpression(int)$RNA
+
+pcs <- prcomp(av)
+pc.vectors <- pcs$x
+# head(pc.vectors)
+
+av.c <- cbind(out.df, pc.vectors[,1:10])
+
+temp.cor <- cor(av.c, use = 'pairwise.complete.obs', method = 'spearman')
+
+tc <- as.data.frame(temp.cor)
+
+tc <- gather(tc, key = 'ct1', value = 'Correlation', factor_key = T)
+tc$ct2 <- rep(unique(tc$ct1), dim(tc)[1]/length(unique(tc$ct1)))
+
+order.rows <- data.frame(coln = colnames(temp.cor))
+# order.rows
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 1)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 2)[[1]])
+
+order.rows.order <- order.rows[order(order.rows$pc,order.rows$ct, order.rows$exp),]$coln
+
+order.rows
+
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Gran' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog' = '#CC79A7',
+                        'MkP' = 'violet','MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1_vs_Mpl' = 'blue', 'Migr1_vs_enrMigr1' = 'red', 
+                   'Migr1_vs_enrMpl' = 'violet',
+                   'Mpl_vs_enrMigr1' = 'darkred', 'Mpl_vs_enrMpl' = 'orange',
+                   'enrMigr1_vs_enrMpl' = 'pink','PC' = 'black'))
+
+temp.cor2 <- temp.cor[order.rows.order, order.rows.order]
+
+
+column_ha = HeatmapAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = order.rows$exp,
+        column_split = order.rows$exp,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+##### HV Genes
+
+```{r}
+# head(out.df)
+# Idents(int) <- int$int.label
+# av <- AverageExpression(int)$RNA
+
+pcs <- prcomp(av[hv.genes,])
+pc.vectors <- pcs$x
+# head(pc.vectors)
+
+av.c <- cbind(out.df[hv.genes,], pc.vectors[,1:10])
+
+temp.cor <- cor(av.c, use = 'pairwise.complete.obs', method = 'spearman')
+
+tc <- as.data.frame(temp.cor)
+
+tc <- gather(tc, key = 'ct1', value = 'Correlation', factor_key = T)
+tc$ct2 <- rep(unique(tc$ct1), dim(tc)[1]/length(unique(tc$ct1)))
+
+order.rows <- data.frame(coln = colnames(temp.cor))
+# order.rows
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 1)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 2)[[1]])
+
+order.rows.order <- order.rows[order(order.rows$pc,order.rows$ct, order.rows$exp),]$coln
+
+order.rows
+
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Gran' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog' = '#CC79A7',
+                        'MkP' = 'violet','MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1_vs_Mpl' = 'blue', 'Migr1_vs_enrMigr1' = 'red', 
+                   'Migr1_vs_enrMpl' = 'violet',
+                   'Mpl_vs_enrMigr1' = 'darkred', 'Mpl_vs_enrMpl' = 'orange',
+                   'enrMigr1_vs_enrMpl' = 'pink','PC' = 'black'))
+
+temp.cor2 <- temp.cor[order.rows.order, order.rows.order]
+
+
+column_ha = HeatmapAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = order.rows$exp,
+        column_split = order.rows$exp,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+### Post-correct
+
+Using top 10 PCs from cluster centroids
+
+```{r}
+Idents(int) <- paste0(int$int.label, '_', int$Condition2)
+av <- AverageExpression(int)$integrated
+
+# head(av)
+
+av <- as.data.frame(t(av))
+
+av$exp <- tstrsplit(rownames(av), '_', keep = 2)[[1]]
+
+av$ct <- tstrsplit(rownames(av), '_', keep = 1)[[1]]
+
+outs <- split(av, f = av$ct)
+genes <- colnames(outs[[1]])[!colnames(outs[[1]]) %in% c('ct','exp')]
+out.df <- data.frame(na.row = rep(NA,length(genes)),
+                     row.names = genes)
+
+for (p in outs){
+  temp.df <- t(p[,!(colnames(p) %in% c('ct','exp'))])
+  ct <- tstrsplit(colnames(temp.df)[1], '_', keep = 1)[[1]]
+  colnames(temp.df) <- tstrsplit(colnames(temp.df), '_', keep = 2)[[1]]
+  
+  combos <- combn(1:length(colnames(temp.df)), 2)
+  
+  if (dim(temp.df)[2] == 4){
+    temp.df <- temp.df[,c('Migr1','Mpl','enrMigr1','enrMpl')]
   }
   else{
-    w.go.df <- cbind(w.go.df, temp)
+    temp.df <- temp.df[,c('Migr1','Mpl','enrMigr1')]
   }
+  
+  for (i in 1:dim(combos)[2]){
+    clm1 <- combos[1,i]
+    clm2 <- combos[2,i]
+    # print(paste0(clm1, clm2))
+    
+    if (i == 1){
+      new.df.temp <- data.frame(V1 = temp.df[,clm1] - temp.df[,clm2])
+      
+    }
+    else{
+      new.df.temp <- cbind(new.df.temp, temp.df[,clm1] - temp.df[,clm2])
+    }
+    colnames(new.df.temp)[i] <- paste0(colnames(temp.df)[clm1],
+                                       '_vs_', colnames(temp.df)[clm2],
+                                       '.',ct)
+  }
+  
+  out.df <- cbind(out.df, new.df.temp)
   
 }
+
+# summary(as.factor(tstrsplit(colnames(out.df), '\\.', keep = 2)[[1]]))
+# summary(as.factor(tstrsplit(colnames(out.df), '\\.', keep = 1)[[1]]))
+
+out.df <- out.df[,-1]
 ```
 
+#### By Cluster
+
+##### HV Genes
+
 ```{r}
-summary(as.factor(go.df$cluster))
-length(go.bps)
+Idents(int) <- int$int.label
+av2 <- AverageExpression(int)$integrated
+
+pcs <- prcomp(av2)
+pc.vectors <- pcs$x
+# head(pc.vectors)
+
+av.c <- cbind(out.df, pc.vectors[,1:10])
+
+temp.cor <- cor(av.c, use = 'pairwise.complete.obs', method = 'spearman')
+
+tc <- as.data.frame(temp.cor)
+
+tc <- gather(tc, key = 'ct1', value = 'Correlation', factor_key = T)
+tc$ct2 <- rep(unique(tc$ct1), dim(tc)[1]/length(unique(tc$ct1)))
+
+order.rows <- data.frame(coln = colnames(temp.cor))
+# order.rows
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 1)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 2)[[1]])
+
+order.rows.order <- order.rows[order(order.rows$pc,order.rows$exp, order.rows$ct),]$coln
+
+order.rows
+
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Gran' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog' = '#CC79A7',
+                        'MkP' = 'violet','MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1_vs_Mpl' = 'blue', 'Migr1_vs_enrMigr1' = 'red', 
+                   'Migr1_vs_enrMpl' = 'violet',
+                   'Mpl_vs_enrMigr1' = 'darkred', 'Mpl_vs_enrMpl' = 'orange',
+                   'enrMigr1_vs_enrMpl' = 'pink','PC' = 'black'))
+
+temp.cor2 <- temp.cor[order.rows.order, order.rows.order]
+
+
+column_ha = HeatmapAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = order.rows$ct,
+        column_split = order.rows$ct,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
 ```
 
+#### By Experiment
+
+##### HV Genes
 
 ```{r}
-spearman.cor <- cor(w.go.df, method = 'spearman')
+order.rows.order <- order.rows[order(order.rows$pc,order.rows$ct, order.rows$exp),]$coln
 
-temp.cor <- as.data.frame(spearman.cor)
+# order.rows
 
-temp.cor2 <- gather(as.data.frame(temp.cor))
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Gran' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog' = '#CC79A7',
+                        'MkP' = 'violet','MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1_vs_Mpl' = 'blue', 'Migr1_vs_enrMigr1' = 'red', 
+                   'Migr1_vs_enrMpl' = 'violet',
+                   'Mpl_vs_enrMigr1' = 'darkred', 'Mpl_vs_enrMpl' = 'orange',
+                   'enrMigr1_vs_enrMpl' = 'pink','PC' = 'black'))
 
-temp.cor2$cluster2 <- rep(rownames(temp.cor), length(rownames(temp.cor)))
-
-# temp.cor2$value2 <- ifelse(temp.cor2$value == 1, 0, temp.cor2$value)
-temp.cor2$key <- tstrsplit(temp.cor2$key, '_', keep = 1)[[1]]
-temp.cor2$cluster2 <- tstrsplit(temp.cor2$cluster2, '_', keep = 1)[[1]]
-
-ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value, label = round(value,2))) +
-  geom_tile() + # geom_text() + 
-  xlab(NULL) + ylab(NULL) + ggtitle ('Signed FDR Correlation (Spearman)') +
-  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .25) +
-  theme(axis.text.x = element_text(angle = 90))
-
-temp.cor2$value2 <- ifelse(temp.cor2$value ==1, 0, temp.cor2$value)
-
-ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value2, label = round(value,2))) +
-  geom_tile() + # geom_text() + 
-  xlab(NULL) + ylab(NULL) + ggtitle ('Signed FDR Correlation (Spearman)') +
-  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .05) +
-  theme(axis.text.x = element_text(angle = 90))
+temp.cor2 <- temp.cor[order.rows.order, order.rows.order]
 
 
+column_ha = HeatmapAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = order.rows$ct,Exp = order.rows$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = order.rows$exp,
+        column_split = order.rows$exp,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
 ```
 
-### PCA
+# *VERSION 3*
 
-#### Odds Ratio
+Doing the integration across all genes. This could've been accomplished with the first integration but needed to add another tag to the IntegrateData command. For the most part just reusing the same code as what was used in #2 (i.e. V2)
 
 ```{r}
-cnt = 1 
+# int.list <- SplitObject(wbm, split.by = 'Condition3')
+# 
+# for (i in 1:length(int.list)){
+#   print(i)
+#   int.list[[i]] <- SCTransform(int.list[[i]], verbose = F)
+# }
+# 
+# int.features <- SelectIntegrationFeatures(object.list = int.list, 
+#                                           nfeatures = 3000)
+# 
+# options(future.globals.maxSize = 3145728000)
+# 
+# int.list <- PrepSCTIntegration(object.list = int.list, anchor.features = int.features,
+#                                verbose = F)
+# 
+# int.anchors <- FindIntegrationAnchors(object.list = int.list, 
+#                                       normalization.method = 'SCT',
+#                                       anchor.features = int.features, verbose = F)
+# 
+# all.genes <- rownames(wbm)
+# 
+# int.int <- IntegrateData(anchorset = int.anchors, normalization.method = 'SCT',
+#                          verbose = F, features.to.integrate = all.genes)
+# 
+# int <- int.int
+# 
+# int <- RunPCA(int, verbose = F)
+# 
+# int <- RunUMAP(int, dims = 1:30)
+# 
+# int <- RunTSNE(int, dims = 1:30)
+# 
+# int <- FindNeighbors(int, dims = 1:30)
+# 
+# for (i in seq(0,1,by = .1)){
+#   temp <- FindClusters(int, resolution = i, verbose = F)
+#   print(DimPlot(temp, label =T , repel= T))
+# }
+# 
+# int <- FindClusters(int, resolution = 1, verbose = F)
+# 
+# DimPlot(int)
+# 
+# DimPlot(int, label = T, repel = T)
+# 
+# saveRDS(int, './data/v4/cca.integrated.all.rds')
 
-for (i in 1:length(out)){
-  temp <- as.data.frame(out[[i]])
-  rown <- as.character(temp$Name)
-  coln <- paste0(names(out)[i],'_',colnames(temp)[5])
-  colnames(temp)[5] <- coln
-  temp <- data.frame(temp[,5])
-  rownames(temp) <- rown
-  temp <- data.frame(temp[go.bps,])
-  colnames(temp) <- coln
-  
-  if(cnt == 1){
-    w.go.df <- temp
-    cnt = 2
-  }
-  else{
-    w.go.df <- cbind(w.go.df, temp)
-  }
-  
+int2 <- readRDS('./data/v4/cca.integrated.all.rds')
+```
+
+## New Clustering 2 w/ more Centroids
+
+```{r}
+x <- int2@assays$integrated@scale.data
+dim(x)
+
+clusters <- kmeans(t(x), centers = 26, iter.max = 20)
+int2$all.int.clusters2 <- clusters$cluster
+
+table(int2$figure.labels3, int2$all.int.clusters2)
+```
+
+## Cluster Distribution 
+
+
+```{r}
+df <- as.data.frame(table(int2$figure.labels3, int2$all.int.clusters2))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
 }
-pca <- prcomp(w.go.df)
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# df
+
+order_ <- c('MK-1','Granulocyte','B-cell','Mono/Macro','MkP','CMP','MEP','MK-2',
+            'Erythroid','T-cell','B-cell Prog.')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+```{r}
+new.levels <- c('Gran','B-cell/MkP','B-cell','MkP','MkP','B-cell/CMP','Gran',
+                'MK-2','MkP','Gran','Erythroid','Gran','Gran','Mono/Macro','Mono/Macro',
+                'Gran','MEP','Gran','Mono/Macro','CMP','MEP','T-cell','B-cell',
+                'Gran','B-cell','B-cell Prog.')
+
+int2$all.int.clusters2.label <- factor(int2$all.int.clusters2,
+                                      labels = new.levels)
+
+table(int2$all.int.clusters2, int2$all.int.clusters2.label)
+
+table(int2$all.int.clusters2.label, int2$figure.labels3)
+
+saveRDS(int2,'./data/v4/cca.integrated.all.rds')
+
+# int2 <- readRDS('./data/v4/cca.integrated.all.rds')
+```
+
+
+## New Tile w/ 3 Clusterings
+
+```{r}
+
+# Version 1
+
+df2 <- as.data.frame(table(wbm$Condition2, wbm$figure.labels3))
+df2$var1.total <- NA
+
+for (i in unique(df2$Var1)){
+  print(i)
+  df2[df2$Var1 == i,]$var1.total <- sum(df2[df2$Var1 == i,]$Freq)
+}
+
+df2$var2.total <- NA
+for (i in unique(df2$Var2)){
+  print(i)
+  df2[df2$Var2 ==i,]$var2.total <- sum(df2[df2$Var2 ==i,]$Freq)
+}
+
+df2$perc.var1 <- df2$Freq / df2$var1.total
+df2$perc.var2 <- df2$Freq / df2$var2.total
+
+# Version 2
+
+df <- as.data.frame(table(int$Condition2, int$int.label))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# Version 3
+
+df4 <- as.data.frame(table(int2$Condition2, int2$all.int.clusters2.label))
+df4$var1.total <- NA
+
+for (i in unique(df4$Var1)){
+  print(i)
+  df4[df4$Var1 == i,]$var1.total <- sum(df4[df4$Var1 == i,]$Freq)
+}
+
+df4$var2.total <- NA
+for (i in unique(df4$Var2)){
+  print(i)
+  df4[df4$Var2 ==i,]$var2.total <- sum(df4[df4$Var2 ==i,]$Freq)
+}
+
+df4$perc.var1 <- df4$Freq / df4$var1.total
+df4$perc.var2 <- df4$Freq / df4$var2.total
+
+df4$var1.plus <- paste0('3_',df4$Var1)
+df$var1.plus <- paste0('2_',df$Var1)
+df2$var1.plus <- paste0('1_',df2$Var1)
+
+df2$Var2 <- ifelse(df2$Var2 == 'Granulocyte', 'Gran',as.character(df2$Var2))
+
+df3 <- rbind(df2,rbind(df,df4))
+
+
+
+ggplot(df3, aes(x = var1.plus, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() +
+  geom_text(size = 4) + xlab('Experiment') + ylab ('Original Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .15)
+
+ggplot(df3, aes(x = var1.plus, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + 
+  geom_text(size = 4) + xlab('Experiment') + ylab ('Original Clusters') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+
+## Cluster Centroids
+
+## Cluster Deltas
+
+# *VERSION 4*
+
+Instead of doing kmeans as in Version 3, we are using the all integrated genes across cells as input into Seurat and running everything again.
+
+```{r}
+int2@assays$integrated@data[1:5,1:5] 
+dim(int2@assays$integrated@data)
+
+v4 <- CreateSeuratObject(counts = int2@assays$integrated@data, 
+                         assay = 'integrated', 
+                         project = 'Version4')
+
+v4 <- NormalizeData(v4, normalization.method = 'LogNormalize', 
+                    scale.factor = 10000)
+
+v4 <- ScaleData(v4, features = rownames(v4))
+
+v4 <- FindVariableFeatures(v4, selection.method = 'vst', nfeatures = 2000)
+
+v4 <- SetAssayData(v4, assay = 'integrated', slot = "scale.data", 
+                   new.data = as.matrix(int2@assays$integrated@data))
+
+v4 <- RunPCA(v4, features = VariableFeatures(v4),
+             assay = 'integrated')
+
+v4 <- FindNeighbors(v4, dims = 1:20)
+v4 <- FindClusters(v4, resolution = 1)
+
+v4 <- RunUMAP(v4, dims = 1:20)
+
+DimPlot(v4)
+```
+
+## Cross Tabulation
+
+### With Cluster Numbers
+
+```{r}
+v4$figure.labels3 <- wbm$figure.labels3
+
+df <- as.data.frame(table(v4$figure.labels3, v4$seurat_clusters))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# df
+
+order_ <- c('MK-1','Granulocyte','B-cell','Mono/Macro','MkP','CMP','MEP','MK-2',
+            'Erythroid','T-cell','B-cell Prog.')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+```{r}
+new.levels <- c('Gran','Gran','B-cell',rep('Gran',4), 'MkP','Mono/Macro','CMP',
+                'Gran','B-cell',rep('Gran',3),'Mono/Macro','Erythroid','B-cell','MEP',
+                'T-cell','MkP','B-cell','B-cell','Mono/Macro','B-cell Prog.')
+
+v4$int.labels <- factor(v4$seurat_clusters,
+                                      labels = new.levels)
+
+table(v4$int.labels, v4$seurat_clusters)
+
+table(v4$int.labels, v4$figure.labels3)
+```
+
+### W Cluster Names
+
+```{r}
+df <- as.data.frame(table(v4$figure.labels3, v4$int.labels))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# df
+
+order_ <- c('MK-1','Granulocyte','B-cell','MkP','Mono/Macro','CMP','Erythroid',
+            'MEP','T-cell','B-cell Prog.','MK-2')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+## Projections
+
+```{r}
+DimPlot(v4, group.by = 'int.labels', label = T, repel = T) + ggtitle('V4 Cluster/V4 Labels')
+DimPlot(v4, group.by = 'figure.labels3', label = T, repel = T) + ggtitle('V4 Cluster/V1 Labels')
+
+v4$v3.labels <- int2$all.int.clusters2.label
+
+DimPlot(v4, group.by = 'v3.labels', label = T, repel = T) + ggtitle('V4 Cluster/V3 Labels')
+
+v4$v2.labels <- int$int.label
+
+DimPlot(v4, group.by = 'v2.labels', label = T, repel = T) + ggtitle('V4 Cluster/V3 Labels')
+
+```
+
+
+# *VERSION 1*
+
+## Version Comparisons
+
+### By Experiment
+
+```{r}
+
+# Version 1
+
+df2 <- as.data.frame(table(wbm$Condition2, wbm$figure.labels3))
+df2$var1.total <- NA
+
+for (i in unique(df2$Var1)){
+  print(i)
+  df2[df2$Var1 == i,]$var1.total <- sum(df2[df2$Var1 == i,]$Freq)
+}
+
+df2$var2.total <- NA
+for (i in unique(df2$Var2)){
+  print(i)
+  df2[df2$Var2 ==i,]$var2.total <- sum(df2[df2$Var2 ==i,]$Freq)
+}
+
+df2$perc.var1 <- df2$Freq / df2$var1.total
+df2$perc.var2 <- df2$Freq / df2$var2.total
+
+# Version 2
+
+df <- as.data.frame(table(int$Condition2, int$int.label))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# Version 3
+v4$Condition2 <- wbm$Condition2
+df4 <- as.data.frame(table(v4$Condition2, v4$int.labels))
+df4$var1.total <- NA
+
+for (i in unique(df4$Var1)){
+  print(i)
+  df4[df4$Var1 == i,]$var1.total <- sum(df4[df4$Var1 == i,]$Freq)
+}
+
+df4$var2.total <- NA
+for (i in unique(df4$Var2)){
+  print(i)
+  df4[df4$Var2 ==i,]$var2.total <- sum(df4[df4$Var2 ==i,]$Freq)
+}
+
+df4$perc.var1 <- df4$Freq / df4$var1.total
+df4$perc.var2 <- df4$Freq / df4$var2.total
+
+df4$var1.plus <- paste0('4_',df4$Var1)
+df$var1.plus <- paste0('2_',df$Var1)
+df2$var1.plus <- paste0('1_',df2$Var1)
+
+df2$Var2 <- ifelse(df2$Var2 == 'Granulocyte', 'Gran',as.character(df2$Var2))
+
+df3 <- rbind(df2,rbind(df,df4))
+
+
+
+ggplot(df3, aes(x = var1.plus, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() +
+  geom_text(size = 4) + xlab('Experiment') + ylab ('Original Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .15)
+
+ggplot(df3, aes(x = var1.plus, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + 
+  geom_text(size = 4) + xlab('Experiment') + ylab ('Original Clusters') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+```
+
+### Cross Tabulation
+
+#### v1 Y-axis
+
+```{r}
+df <- as.data.frame(table(v4$figure.labels3, v4$int.labels))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# df
+
+order_ <- c('MK-1','Granulocyte','B-cell','MkP','Mono/Macro','CMP','Erythroid',
+            'MEP','T-cell','B-cell Prog.','MK-2')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+df2 <- df
+
+df <- as.data.frame(table(int$figure.labels3, int$int.label))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# df
+
+order_ <- c('MK-1','Granulocyte','B-cell','MkP','Mono/Macro','CMP','Erythroid',
+            'MEP',
+            'T-cell','B-cell Prog.','MK-2')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+df2$Var2 <- paste0('4_', df2$Var2)
+df$Var2 <- paste0('2_', df$Var2)
+
+df <- rbind(df,df2)
+
+order_ <- c('B-cell','B-cell Prog.', 'CMP','Erythroid','Granulocyte','MK-1','MEP','MK-2','MkP',
+            'Mono/Macro','T-cell')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+#### v2 Y-axis
+
+```{r}
+df <- as.data.frame(table(v4$v2.labels, v4$int.labels))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+df2 <- df
+
+wbm$version2.labels <- int$int.label
+
+df <- as.data.frame(table(wbm$version2.labels, wbm$figure.labels3))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+df2$Var2 <- paste0('4_', df2$Var2)
+df$Var2 <- paste0('1_', df$Var2)
+
+df <- rbind(df,df2)
+
+order_ <- c('B-cell','B-cell Prog.', 'CMP','Erythroid','Gran','MK-1','MEP','MK-2','MkP',
+            'Mono/Macro','T-cell')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(size = 4) + xlab('v2 Clusters') + ylab ('Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(size = 4) + xlab('v2 Clusters') + ylab ('Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+#### v4 Y-axis
+
+```{r}
+int$version4.label <- v4$int.labels
+df <- as.data.frame(table(int$version4.label, int$int.label))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+df2 <- df
+
+wbm$version4.labels <- v4$int.labels
+
+df <- as.data.frame(table(wbm$version4.labels, wbm$figure.labels3))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+df2$Var2 <- paste0('4_', df2$Var2)
+df$Var2 <- paste0('1_', df$Var2)
+
+df <- rbind(df,df2)
+
+order_ <- c('B-cell','B-cell Prog.', 'CMP','Erythroid','Gran','MK-1','MEP','MK-2','MkP',
+            'Mono/Macro','T-cell')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(size = 4) + xlab('v4 Clusters') + ylab ('Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(size = 4) + xlab('v4 Clusters') + ylab ('Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+### Projections
+
+```{r}
+DimPlot(wbm, group.by = 'figure.labels3', label = T, repel = T) + 
+  ggtitle('V1 Clustering/V1 Naming')
+
+DimPlot(wbm, group.by = 'version2.labels', label = T, repel = T) + 
+  ggtitle('V1 Clustering/V2 Naming')
+
+DimPlot(wbm, group.by = 'version4.labels', label = T, repel = T) + 
+  ggtitle('V1 Clustering/V4 Naming')
+```
+
+
+# 3 Cluster Centroid Batch Effects
+
+Getting the cluster centroid for each cluster by experiment (11x4, 44), then taking deltas between batch columns (11x6, 66 in total). 
+
+i.e. MigR1 Gran minus MPL Gran would be the first column then MigR1 B-cell minus MPL B-cell. So this would all be comparing group 1 (MigR1) vs group 2 (MPL) across all clusters. Then it would be group 1 (MigR1) vs group 2 (enrMigR1), and so on for all six combinations.
+
+It can be either organize be comparison between groups. But then also organize by clusters, to see how things are different between the clusters.
+
+## 3a Cluster by Sample 
+
+```{r}
+wbm$ident.combo <- paste0(wbm$Condition, '_' ,wbm$figure.labels3)
+
+# table(wbm$ident.combo)
+
+# table(wbm$Condition3, wbm$figure.labels3)
+
+# DimPlot(wbm, group.by = 'ident.combo')
+
+Idents(wbm) <- wbm$ident.combo
+
+av <- AverageExpression(wbm)
+
+av <- av$RNA
+
+# head(av)
+
+key_ <- data.frame(ident.combo = colnames(av))
+
+rownames(key_) <- 1:length(colnames(av))
+
+key_$exp <- tstrsplit(key_$ident.combo, '_', keep = 1)[[1]]
+key_$cluster <- tstrsplit(key_$ident.combo, '_', keep = 2)[[1]]
+
+# temp.cor
+
+# summary(key_$ident.combo == rownames(temp.cor))
+
+```
+
+### PC Plots
+
+```{r}
+pca <- prcomp(av)
+
+pc.vectors <- pca$x
 
 pca.sd <- pca$sdev
 pca <- as.data.frame(pca$rotation)
 
-pca.sd <- data.frame(pc = 1:9,
+pca.sd <- data.frame(pc = 1:length(pca.sd),
                      sd = pca.sd)
 
-ggplot(pca.sd[1:9,], aes(x = pc, y = sd)) + geom_point() + geom_line() + theme_bw()
+ggplot(pca.sd[1:20,], aes(x = pc, y = sd)) + geom_point() + geom_line() + theme_bw()
 # colnames(pca) <- paste0(colnames(pca),' (',round(pca.sd,2),')')
 
-pca$cluster <- tstrsplit(rownames(pca),'_', keep = 1)[[1]]
-pca
+pca$exp <- tstrsplit(rownames(pca),'_', keep = 1)[[1]]
+pca$cluster <- tstrsplit(rownames(pca),'_', keep = 2)[[1]]
+# pca
 
 combos <- combn(paste0('PC',1:5),2)
-combos
+# combos
 
 # colnames(pca)[1:5] <- paste0(colnames(pca)[1:5], ' (SD = ', pca.sd[1:5], ')')
 
@@ -662,59 +2242,24 @@ for (i in 1:dim(combos)[2]){
   # print(combos[2,i])
   temp.y <- combos[2,i]
   
-  print(ggplot(pca, aes_string(x = temp.x, y = temp.y, color = 'cluster')) + 
-          geom_point() + scale_color_manual(values = color_pal2) +
+  print(ggplot(pca, aes_string(x = temp.x, y = temp.y, color = 'cluster',
+                               group = 'exp')) + 
+          geom_point(aes(shape = exp)) + scale_color_manual(values = color_pal2) +
           theme_bw() + ggtitle(paste0(temp.x, ' vs ', temp.y)))
 }
+
+
 ```
 
-#### Signed FDR
+**In general, we points clustering by cell type rather than by experiment, which is good. If we saw things clustering by experiment that would lead us to think there were batch effects.**
+
+### Enrichment Effect
+
+Using lines to see if there is an enrichment shift
 
 ```{r}
-go.df$signed.FDR <- ifelse(go.df$Direction == 'down', -1*go.df$FDR, go.df$FDR)
-out <- split(go.df, f = go.df$cluster)
 
-# w.go.df
-
-cnt = 1 
-
-for (i in 1:length(out)){
-  temp <- as.data.frame(out[[i]])
-  rown <- as.character(temp$Name)
-  coln <- paste0(names(out)[i],'_',colnames(temp)[11])
-  colnames(temp)[11] <- coln
-  temp <- data.frame(temp[,11])
-  rownames(temp) <- rown
-  temp <- data.frame(temp[go.bps,])
-  colnames(temp) <- coln
-  
-  if(cnt == 1){
-    w.go.df <- temp
-    cnt = 2
-  }
-  else{
-    w.go.df <- cbind(w.go.df, temp)
-  }
-  
-}
-pca <- prcomp(w.go.df)
-
-pca.sd <- pca$sdev
-pca <- as.data.frame(pca$rotation)
-
-pca.sd <- data.frame(pc = 1:9,
-                     sd = pca.sd)
-
-ggplot(pca.sd[1:9,], aes(x = pc, y = sd)) + geom_point() + geom_line() + theme_bw()
-# colnames(pca) <- paste0(colnames(pca),' (',round(pca.sd,2),')')
-
-pca$cluster <- tstrsplit(rownames(pca),'_', keep = 1)[[1]]
-pca
-
-combos <- combn(paste0('PC',1:5),2)
-combos
-
-# colnames(pca)[1:5] <- paste0(colnames(pca)[1:5], ' (SD = ', pca.sd[1:5], ')')
+pca$group <- paste0(ifelse(pca$exp %in% c('enrMigr1','Migr1'), 'Migr1','Mpl'),pca$cluster)
 
 for (i in 1:dim(combos)[2]){
   # print(combos[1,i])
@@ -722,113 +2267,548 @@ for (i in 1:dim(combos)[2]){
   # print(combos[2,i])
   temp.y <- combos[2,i]
   
-  print(ggplot(pca, aes_string(x = temp.x, y = temp.y, color = 'cluster')) + 
-          geom_point() + scale_color_manual(values = color_pal2) +
+  print(ggplot(pca, aes_string(x = temp.x, y = temp.y, color = 'cluster',
+                               group = 'group')) + 
+          geom_line(aes(group = group, color = cluster)) +
+          geom_point(aes(shape = exp)) + scale_color_manual(values = color_pal2) +
           theme_bw() + ggtitle(paste0(temp.x, ' vs ', temp.y)))
 }
+
+
+ggplot(pca, aes_string(x = 'PC1', y = 'PC2', color = 'cluster',
+                               group = 'group')) + 
+  geom_line(aes(group = group, color = cluster)) +
+  geom_point(aes(shape = exp)) + #scale_color_manual(values = color_pal2) +
+  theme_bw() + ggtitle(paste0(temp.x, ' vs ', temp.y))
+  
 ```
 
-## 3b Between Cluster GO Terms
+**In general, the lines are not all parrallel to each other. If they were, and headed in the same direciton (which isn't indicated on these lines), it would indicate that the enrichment process had a parallel effect on all samples, which could be a batch effect**
+
+### Heatmap
 
 ```{r}
- de.genes <- data.frame(p_val = numeric(),
-                       avg_logFC = numeric(),
-                       pct.1 = numeric(),
-                       pct.2 = numeric(),
-                       p_val_adj = numeric(),
-                       cluster1 = character(),
-                       cluster2 = character(),
-                       gene = character())
-
-# wbm@meta.data
-
-combos <- as.data.frame(combn(unique(wbm$figure.labels3), 2))
-
-mk.combos <- combos[,grepl('MK', combos)]
-non.mk.combos <- combos[,!grepl('MK',combos)]
-
-for (i in 1:dim(mk.combos)[2]){
-  print(mk.combos[,i])
-  ct.1 <- mk.combos[1,i]
-  ct.2 <- mk.combos[2,i]
-  x <- FindMarkers(wbm,
-                   ident.1 = ct.1,
-                   ident.2 = ct.2,
-                   logfc.threshold = 0,
-                   min.pct = 0)
-  x$cluster1 <- ct.1
-  x$cluster2 <- ct.2
-  x$gene <- rownames(x)
-  x <- x[order(x$avg_log2FC, decreasing = T),]
-  de.genes <- rbind(de.genes,x)
-}
-
-summary(as.factor(de.genes$cluster1))
-# table(rownames(de.genes))
-
-write.table(de.genes, './data/v4/genes.for.LR.Path.between.MK.clusters.all.txt', sep = '\t')
-
-de.genes <- data.frame(p_val = numeric(),
-                     avg_logFC = numeric(),
-                     pct.1 = numeric(),
-                     pct.2 = numeric(),
-                     p_val_adj = numeric(),
-                     cluster1 = character(),
-                     cluster2 = character(),
-                     gene = character())
-
-for (i in 1:dim(non.mk.combos)[2]){
-  print(non.mk.combos[,i])
-  print(paste0('Progress: ', i,' / ', dim(non.mk.combos)[2]))
-  ct.1 <- non.mk.combos[1,i]
-  ct.2 <- non.mk.combos[2,i]
-  x <- FindMarkers(wbm,
-                   ident.1 = ct.1,
-                   ident.2 = ct.2,
-                   logfc.threshold = 0,
-                   min.pct = 0)
-  x$cluster1 <- ct.1
-  x$cluster2 <- ct.2
-  x$gene <- rownames(x)
-  x <- x[order(x$avg_log2FC, decreasing = T),]
-  de.genes <- rbind(de.genes,x)
-}
+av.with.pca <- cbind(av, pc.vectors[,1:20])
+temp.cor <- cor(av, method = 'spearman')
+temp.cor.pca <- cor(av.with.pca, method = 'spearman')
 ```
 
-## Exporting Results to LRPath Format
+#### Without PC Vectors
+
+##### By Experiment
 
 ```{r}
-x <- read.table('./data/v4/genes.for.LR.Path.between.MK.clusters.all.txt', sep = '\t')
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
+                        'MkP' = 'violet','MK-1' = 'purple', 'MK-2' = 'black'),
+           Exp = c('Migr1' = 'blue', 'Mpl' = 'red', 'enrMigr1' = 'violet',
+                   'enrMpl' = 'darkred'))
 
-mus.ref <- data.table::fread('../mus_mus_gene_id.txt', header = T)
-colnames(mus.ref)[2] <- 'gene'
 
-x$comp <- paste0(x$cluster1,'.vs.', x$cluster2)
-out <- split(x, f = x$comp)
 
-for (i in 1:length(out)){
-  temp.name <- unique(out[[i]]$comp)
-  temp.name <- gsub('/','-',temp.name)
+order.rows <- data.frame(coln = colnames(temp.cor))
 
-  print(temp.name)
+order.rows$exp <- tstrsplit(order.rows$coln, '_', keep = 1)[[1]]
+order.rows$ct <- tstrsplit(order.rows$coln, '_', keep = 2)[[1]]
 
-  temp <- out[[i]]
-  print(summary(temp$gene %in% mus.ref$gene))
+order.rows <- order.rows[order(order.rows$exp, order.rows$ct),]$coln
 
-  temp.df <- merge(temp, mus.ref, by = 'gene')
+# order.rows
 
-  temp.df$entrez.name <- paste0('mmu:', temp.df$GeneID)
+temp.cor2 <- temp.cor[order.rows, order.rows]
 
-  temp.df <- temp.df[,c('GeneID','p_val_adj','avg_log2FC')]
+key_ <- data.frame(ident.combo = colnames(temp.cor2))
 
-  write.table(temp.df, paste0('./data/v4/LRPath.gene.between.clusters.lists/',
-                              temp.name,'.txt'),
-              sep = '\t', col.names = F, quote = F, row.names = F)
-}
+rownames(key_) <- 1:length(colnames(av))
+
+key_$exp <- tstrsplit(key_$ident.combo, '_', keep = 1)[[1]]
+key_$cluster <- tstrsplit(key_$ident.combo, '_', keep = 2)[[1]]
+
+column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = key_$exp,
+        column_split = key_$exp,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+##### By Cluster
+
+```{r}
+order.rows <- data.frame(coln = colnames(temp.cor))
+
+order.rows$exp <- tstrsplit(order.rows$coln, '_', keep = 2)[[1]]
+
+order.rows <- order.rows[order(order.rows$exp),]$coln
+
+temp.cor2 <- temp.cor2[order.rows, order.rows]
+
+rownames(key_) <- key_$ident.combo
+key_ <- key_[rownames(temp.cor2),]
+
+column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = key_$cluster,
+        column_split = key_$cluster,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+#### With PC Vectors
+
+##### By Experiment
+
+```{r}
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
+                        'MkP' = 'violet','MK-1' = 'purple', 'MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1' = 'blue', 'Mpl' = 'red', 'enrMigr1' = 'violet',
+                   'enrMpl' = 'darkred','PC' = 'black'))
+
+
+
+order.rows <- data.frame(coln = colnames(temp.cor.pca))
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 1)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 2)[[1]])
+
+order.rows <- order.rows[order(order.rows$pc,order.rows$exp, order.rows$ct),]$coln
+
+order.rows
+
+temp.cor2 <- temp.cor.pca[order.rows, order.rows]
+
+key_ <- data.frame(ident.combo = colnames(temp.cor2))
+
+rownames(key_) <- 1:length(colnames(av.with.pca))
+
+key_$pc <- ifelse(key_$ident.combo %in% paste0('PC',1:20), 1,0)
+key_$exp <- ifelse(key_$pc == T, 'PC',tstrsplit(key_$ident.combo, '_', keep = 1)[[1]])
+key_$cluster <- ifelse(key_$pc == T, 'PC', tstrsplit(key_$ident.combo, '_', keep = 2)[[1]])
+
+column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = key_$exp,
+        column_split = key_$exp,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+##### By Celltype
+
+```{r}
+order.rows <- data.frame(coln = colnames(temp.cor.pca))
+
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 1)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '_', keep = 2)[[1]])
+
+# order.rows$exp <- tstrsplit(order.rows$coln, '_', keep = 2)[[1]]
+
+order.rows <- order.rows[order(order.rows$pc, order.rows$exp, order.rows$ct),]$coln
+
+temp.cor2 <- temp.cor.pca[order.rows, order.rows]
+
+rownames(key_) <- key_$ident.combo
+key_
+key_ <- key_[rownames(temp.cor2),]
+
+column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = key_$cluster,
+        column_split = key_$cluster,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
 ```
 
 
-## 3c Meta-Analysis of all GO Terms
+## 3b Cluster Centroid Deltas
+
+```{r}
+av <- AverageExpression(wbm)$RNA
+# head(av)
+
+av <- as.data.frame(t(av))
+
+av$exp <- tstrsplit(rownames(av), '_', keep = 1)[[1]]
+
+av$ct <- tstrsplit(rownames(av), '_', keep = 2)[[1]]
+
+outs <- split(av, f = av$ct)
+genes <- colnames(outs[[1]])[!colnames(outs[[1]]) %in% c('ct','exp')]
+out.df <- data.frame(na.row = rep(NA,length(genes)),
+                     row.names = genes)
+
+for (p in outs){
+  temp.df <- t(p[,!(colnames(p) %in% c('ct','exp'))])
+  ct <- tstrsplit(colnames(temp.df)[1], '_', keep = 2)[[1]]
+  colnames(temp.df) <- tstrsplit(colnames(temp.df), '_', keep = 1)[[1]]
+  
+  combos <- combn(1:length(colnames(temp.df)), 2)
+  
+  if (dim(temp.df)[2] == 4){
+    temp.df <- temp.df[,c('Migr1','Mpl','enrMigr1','enrMpl')]
+  }
+  else{
+    temp.df <- temp.df[,c('Migr1','Mpl','enrMigr1')]
+  }
+  
+  for (i in 1:dim(combos)[2]){
+    clm1 <- combos[1,i]
+    clm2 <- combos[2,i]
+    # print(paste0(clm1, clm2))
+    
+    if (i == 1){
+      new.df.temp <- data.frame(V1 = temp.df[,clm1] - temp.df[,clm2])
+      
+    }
+    else{
+      new.df.temp <- cbind(new.df.temp, temp.df[,clm1] - temp.df[,clm2])
+    }
+    colnames(new.df.temp)[i] <- paste0(colnames(temp.df)[clm1],
+                                       '_vs_', colnames(temp.df)[clm2],
+                                       '.',ct)
+  }
+  
+  out.df <- cbind(out.df, new.df.temp)
+  
+}
+
+# summary(as.factor(tstrsplit(colnames(out.df), '\\.', keep = 2)[[1]]))
+# summary(as.factor(tstrsplit(colnames(out.df), '\\.', keep = 1)[[1]]))
+
+out.df <- out.df[,-1]
+```
+
+### PCs
+
+```{r}
+pca <- prcomp(out.df)
+
+pc.vectors <- pca$x
+
+out.df.pca <- cbind(out.df, pc.vectors[,1:20])
+
+temp.cor.pca <- cor(out.df.pca, method = 'spearman')
+
+temp.cor.pca <- temp.cor.pca[,!(grepl('Prog', colnames(temp.cor.pca)))]
+# unique(tstrsplit(rownames(temp.cor.pca),'\\.', keep = 1)[[1]])[1:12]
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
+                        'MkP' = 'violet','MK-1' = 'purple', 'MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1_vs_Mpl' = 'blue',
+                   'Migr1_vs_enrMigr1' = 'red',
+                   'Migr1_vs_enrMpl' = 'violet',
+                   'Mpl_vs_enrMigr1' = 'darkred',
+                   'Mpl_vs_enrMpl' = 'green',
+                   'enrMigr1_vs_enrMpl' = "orange",
+                   'PC' = 'black'))
+
+
+
+order.rows <- data.frame(coln = colnames(temp.cor.pca))
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 1)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 2)[[1]])
+
+order.rows <- order.rows[order(order.rows$pc,order.rows$exp, order.rows$ct),]$coln
+
+order.rows
+
+temp.cor2 <- temp.cor.pca[order.rows, order.rows]
+
+key_ <- data.frame(ident.combo = colnames(temp.cor2))
+
+rownames(key_) <- 1:(length(colnames(out.df.pca))-3)
+
+key_$pc <- ifelse(key_$ident.combo %in% paste0('PC',1:20), 1,0)
+key_$exp <- ifelse(key_$pc == T, 'PC',tstrsplit(key_$ident.combo, '\\.', keep = 1)[[1]])
+key_$cluster <- ifelse(key_$pc == T, 'PC', tstrsplit(key_$ident.combo, '\\.', keep = 2)[[1]])
+
+column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = key_$exp,
+        column_split = key_$exp,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+
+# key_
+```
+
+## 3c Cluster Centroid pairwise deltas within cluster with PCs of the 44 cluster centroids
+
+The same data I show in 3b, but instead of using the PCs from the deltas, I'm going to use the PCs from the 44 centroids.
+
+```{r}
+av <- AverageExpression(wbm)$RNA
+# head(av)
+
+av <- as.data.frame(t(av))
+
+av$exp <- tstrsplit(rownames(av), '_', keep = 1)[[1]]
+
+av$ct <- tstrsplit(rownames(av), '_', keep = 2)[[1]]
+
+outs <- split(av, f = av$ct)
+genes <- colnames(outs[[1]])[!colnames(outs[[1]]) %in% c('ct','exp')]
+out.df <- data.frame(na.row = rep(NA,length(genes)),
+                     row.names = genes)
+
+for (p in outs){
+  temp.df <- t(p[,!(colnames(p) %in% c('ct','exp'))])
+  ct <- tstrsplit(colnames(temp.df)[1], '_', keep = 2)[[1]]
+  colnames(temp.df) <- tstrsplit(colnames(temp.df), '_', keep = 1)[[1]]
+  
+  combos <- combn(1:length(colnames(temp.df)), 2)
+  
+  if (dim(temp.df)[2] == 4){
+    temp.df <- temp.df[,c('Migr1','Mpl','enrMigr1','enrMpl')]
+  }
+  else{
+    temp.df <- temp.df[,c('Migr1','Mpl','enrMigr1')]
+  }
+  
+  for (i in 1:dim(combos)[2]){
+    clm1 <- combos[1,i]
+    clm2 <- combos[2,i]
+    # print(paste0(clm1, clm2))
+    
+    if (i == 1){
+      new.df.temp <- data.frame(V1 = temp.df[,clm1] - temp.df[,clm2])
+      
+    }
+    else{
+      new.df.temp <- cbind(new.df.temp, temp.df[,clm1] - temp.df[,clm2])
+    }
+    colnames(new.df.temp)[i] <- paste0(colnames(temp.df)[clm1],
+                                       '_vs_', colnames(temp.df)[clm2],
+                                       '.',ct)
+  }
+  
+  out.df <- cbind(out.df, new.df.temp)
+  
+}
+
+# summary(as.factor(tstrsplit(colnames(out.df), '\\.', keep = 2)[[1]]))
+# summary(as.factor(tstrsplit(colnames(out.df), '\\.', keep = 1)[[1]]))
+
+out.df <- out.df[,-1]
+```
+
+### All Genes
+
+```{r}
+# head(out.df)
+av <- AverageExpression(wbm)$RNA
+av.pc <- prcomp(av)
+av.pc <- av.pc$x
+av.pc <- av.pc[,1:20]
+# dim(out.df)
+# dim(av.pc)
+```
+
+
+```{r}
+
+out.df.pca <- cbind(out.df, av.pc)
+
+temp.cor.pca <- cor(out.df.pca, method = 'spearman')
+
+temp.cor.pca <- temp.cor.pca[,!(grepl('Prog', colnames(temp.cor.pca)))]
+# unique(tstrsplit(rownames(temp.cor.pca),'\\.', keep = 1)[[1]])[1:12]
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
+                        'MkP' = 'violet','MK-1' = 'purple', 'MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1_vs_Mpl' = 'blue',
+                   'Migr1_vs_enrMigr1' = 'red',
+                   'Migr1_vs_enrMpl' = 'violet',
+                   'Mpl_vs_enrMigr1' = 'darkred',
+                   'Mpl_vs_enrMpl' = 'green',
+                   'enrMigr1_vs_enrMpl' = "orange",
+                   'PC' = 'black'))
+
+
+
+order.rows <- data.frame(coln = colnames(temp.cor.pca))
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 1)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 2)[[1]])
+
+order.rows <- order.rows[order(order.rows$pc,order.rows$exp, order.rows$ct),]$coln
+
+order.rows
+
+temp.cor2 <- temp.cor.pca[order.rows, order.rows]
+
+key_ <- data.frame(ident.combo = colnames(temp.cor2))
+
+rownames(key_) <- 1:(length(colnames(out.df.pca))-3)
+
+key_$pc <- ifelse(key_$ident.combo %in% paste0('PC',1:20), 1,0)
+key_$exp <- ifelse(key_$pc == T, 'PC',tstrsplit(key_$ident.combo, '\\.', keep = 1)[[1]])
+key_$cluster <- ifelse(key_$pc == T, 'PC', tstrsplit(key_$ident.combo, '\\.', keep = 2)[[1]])
+
+column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col, show_legend = F)
+
+row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = key_$exp,
+        column_split = key_$exp,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation', 
+        show_heatmap_legend = FALSE)
+
+# key_
+```
+
+### HV Genes
+
+Using the top 2K highly variable genes from our dataset
+
+```{r}
+# head(out.df)
+hv.genes <- VariableFeatures(wbm)
+# length(hv.genes)
+av <- AverageExpression(wbm)$RNA
+av <- av[hv.genes,]
+av.pc <- prcomp(av)
+av.pc <- av.pc$x
+av.pc <- av.pc[,1:20]
+
+```
+
+
+```{r}
+
+out.df.pca <- cbind(out.df[hv.genes,], av.pc)
+
+temp.cor.pca <- cor(out.df.pca, method = 'spearman')
+
+temp.cor.pca <- temp.cor.pca[,!(grepl('Prog', colnames(temp.cor.pca)))]
+# unique(tstrsplit(rownames(temp.cor.pca),'\\.', keep = 1)[[1]])[1:12]
+col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono/Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
+                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
+                        'MkP' = 'violet','MK-1' = 'purple', 'MK-2' = 'darkgreen',
+                        'PC' = 'black'),
+           Exp = c('Migr1_vs_Mpl' = 'blue',
+                   'Migr1_vs_enrMigr1' = 'red',
+                   'Migr1_vs_enrMpl' = 'violet',
+                   'Mpl_vs_enrMigr1' = 'darkred',
+                   'Mpl_vs_enrMpl' = 'green',
+                   'enrMigr1_vs_enrMpl' = "orange",
+                   'PC' = 'black'))
+
+
+
+order.rows <- data.frame(coln = colnames(temp.cor.pca))
+order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
+                        1,0)
+order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 1)[[1]])
+order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
+                         tstrsplit(order.rows$coln, '\\.', keep = 2)[[1]])
+
+order.rows <- order.rows[order(order.rows$pc,order.rows$exp, order.rows$ct),]$coln
+
+# order.rows
+
+temp.cor2 <- temp.cor.pca[order.rows, order.rows]
+
+key_ <- data.frame(ident.combo = colnames(temp.cor2))
+
+rownames(key_) <- 1:(length(colnames(out.df.pca))-3)
+
+key_$pc <- ifelse(key_$ident.combo %in% paste0('PC',1:20), 1,0)
+key_$exp <- ifelse(key_$pc == T, 'PC',tstrsplit(key_$ident.combo, '\\.', keep = 1)[[1]])
+key_$cluster <- ifelse(key_$pc == T, 'PC', tstrsplit(key_$ident.combo, '\\.', keep = 2)[[1]])
+
+column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col, show_legend = F)
+
+row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
+                              col = col, show_legend = F)
+
+
+Heatmap(temp.cor2, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        split = key_$exp,
+        column_split = key_$exp,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation', 
+        show_heatmap_legend = FALSE)
+
+# key_
+```
 
 # 4 Cluster T-Score Correlation 
 
@@ -892,7 +2872,7 @@ rownames(x2.wide) <- x2.wide$gene
 
 x2.wide <- x2.wide[,-1]
 
-rowSums(x2.wide) == 11
+# rowSums(x2.wide) == 11
 
 x3 <- x2.wide[rowSums(x2.wide) != 11,]
 
@@ -1200,10 +3180,10 @@ pca$cluster <- tstrsplit(rownames(pca),'_', keep = 1)[[1]]
 pca$comparison <- tstrsplit(rownames(pca),'_', keep = 2)[[1]]
 pca$Grp1 <- tstrsplit(pca$comparison, '\\.', keep = 1)[[1]]
 pca$Grp2 <- tstrsplit(pca$comparison, '\\.', keep = 3)[[1]]
-pca
+# pca
 
 combos <- combn(paste0('PC',1:5),2)
-combos
+# combos
 
 # colnames(pca)[1:5] <- paste0(colnames(pca)[1:5], ' (SD = ', pca.sd[1:5], ')')
 
@@ -1325,10 +3305,10 @@ temp.df <- temp.df[order(temp.df$group),]
 
 order_ <- as.numeric(rownames(temp.df))
 
-order_
+# order_
 
 temp.cor2 <- temp.cor[order_, order_]
-temp.cor2
+# temp.cor2
 
 
 row.anno <- data.frame(rownames = row.names(temp.cor2))
@@ -1423,7 +3403,7 @@ ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value2, label = round(value,
 ```{r}
 row.anno <- data.frame(rownames = row.names(temp.cor))
 
-head(row.anno)
+# head(row.anno)
 row.anno$pc <- ifelse(row.anno$rownames %in% paste0('PC',1:20), 1,0)
 row.anno$ct <- ifelse(row.anno$pc == T, 'PC', 
                       tstrsplit(row.anno$rownames,'_', keep = 1)[[1]])
@@ -1475,10 +3455,10 @@ temp.df <- rbind(temp.df[temp.df$group != 'PC',], temp.df[temp.df$group == 'PC',
 
 order_ <- as.numeric(rownames(temp.df))
 
-order_
+# order_
 
 temp.cor2 <- temp.cor[order_, order_]
-temp.cor2
+# temp.cor2
 
 
 row.anno <- data.frame(rownames = row.names(temp.cor2))
@@ -1543,73 +3523,703 @@ Heatmap(temp.cor2,
         show_column_names = F, show_row_names = F,
         cluster_rows = F, cluster_columns = F,
         name = 'Correlation')
+```
+
+
+## 4c Cluster Intra T-Scores
+
+```{r}
+# cnts <- wbm@assays$RNA@scale.data
+# dim(combn(unique(Idents(wbm)), 2))
+# combos <- combn(unique(Idents(wbm)),2)
+# t.scores <- as.data.frame(matrix(ncol = dim(combos)[2], nrow = dim(cnts)[1]))
+# rownames(t.scores) <- rownames(cnts)
+# cnt <- 1
+# 
+# for (i in 1:dim(combos)[2]){
+#   ct1 <- combos[1,i]
+#   ct2 <- combos[2,i]
+# 
+#   comparison <- paste0(ct1, '_vs_', ct2)
+# 
+#   print(paste0(i,'/',dim(combos)[2],' ',comparison))
+# 
+#   colnames(t.scores)[cnt] <- comparison
+#   cnt <- cnt + 1
+# 
+#   ct1.cells <- colnames(subset(wbm, figure.labels3 == ct1))
+#   ct2.cells <- colnames(subset(wbm, figure.labels3 == ct2))
+# 
+#   ct1.cnts <- cnts[,colnames(cnts) %in% ct1.cells]
+#   ct2.cnts <- cnts[,colnames(cnts) %in% ct2.cells]
+# 
+#   t.score <- vector()
+# 
+#   for (i in 1:dim(ct1.cnts)[1]){
+#     # print(i)
+#     if (min(ct1.cnts[i,]) != max(ct1.cnts[i,]) |
+#         min(ct2.cnts[i,]) != max(ct2.cnts[i,])){
+#       p <- t.test(ct1.cnts[i,], ct2.cnts[i,])
+# 
+#       t.score[i] <- p$statistic
+#     }
+#     else{
+#       t.score[i] <- NA
+#     }
+#     if (i %% 5000 == 0){
+#       print(i)
+#     }
+#   }
+#   t.scores[,comparison] <- t.score
+# }
+# 
+# 
+# write.table(t.scores, './data/v4/t.scores.all.between.cluster.txt',
+#             sep = '\t', quote = F,
+#             row.names = T)
+```
+
+
+
+```{r}
+between.clusters <- read.table('./data/v4/t.scores.all.between.cluster.txt',
+                               sep = '\t')
+
+between.clusters
+
+t.scores <- read.table('./data/v4/t.scores.11.by.11.txt', sep = '\t')
+
+t.scores2 <- cbind(t.scores, between.clusters)
+```
+
+### All Genes
+
+```{r}
+spearman.cor <- cor(t.scores2, method = 'spearman', 
+                    use = "pairwise.complete.obs")
+
+temp.cor <- as.data.frame(spearman.cor)
+
+temp.cor2 <- gather(as.data.frame(temp.cor))
+
+temp.cor2$cluster2 <- rep(rownames(temp.cor), length(rownames(temp.cor)))
+
+temp.cor2$value2 <- ifelse(temp.cor2$value == 1, 0, temp.cor2$value)
+
+# ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value2, label = round(value,2))) +
+#   geom_tile() + geom_text() + 
+#   xlab(NULL) + ylab(NULL) + ggtitle ('T-statistics Correlation (Spearman) All Genes') +
+#   scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = 0) +
+#   theme(axis.text.x = element_text(angle = 90))
+```
+
+```{r}
+Heatmap(temp.cor)
+```
+
+
+```{r}
+temp.df <- data.frame(names = colnames(temp.cor))
+temp.df$group <- ifelse(grepl('_',temp.df$names), 'comparison', 'singular')
+temp.df$ct1 <- ifelse(temp.df$group == 'singular', temp.df$names,
+                      tstrsplit(temp.df$names,'_vs_', keep = 1)[[1]])
+temp.df$ct2 <- ifelse(temp.df$group == 'singular', temp.df$names,
+                      tstrsplit(temp.df$names,'_vs_', keep = 2)[[1]])
+
+col = list(CellType1 = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono.Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00",
+                        'MkP' = 'violet','MK.1' = 'purple', 'MK.2' = 'darkgreen',
+                        'T.cell' = 'black', 'B.cell.Prog.' = 'orange'),
+           CellType2 = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono.Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00",
+                        'MkP' = 'violet','MK.1' = 'purple', 'MK.2' = 'darkgreen',
+                        'T.cell' = 'black', 'B.cell.Prog.' = 'orange'))
+
+column_ha = HeatmapAnnotation(CellType1 = temp.df$ct1, CellType2 = temp.df$ct2,
+                              col = col)
+
+row_ha = rowAnnotation(CellType1 = temp.df$ct1, CellType2 = temp.df$ct2,
+                              col = col)
+Heatmap(temp.cor, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        cluster_rows = T, cluster_columns = T,
+        row_names_gp = gpar(fontsize = 0),
+        column_names_gp = gpar(fontsize = 0),
+        name = 'Correlation')
+
+Heatmap(temp.cor, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        # split = row.anno$combo,
+        # column_split = row.anno$combo,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+### Highly Variable Genes
+
+```{r}
+spearman.cor <- cor(t.scores2[hv.genes,], method = 'spearman', 
+                    use = "pairwise.complete.obs")
+
+temp.cor <- as.data.frame(spearman.cor)
+
+temp.cor2 <- gather(as.data.frame(temp.cor))
+
+temp.cor2$cluster2 <- rep(rownames(temp.cor), length(rownames(temp.cor)))
+
+temp.cor2$value2 <- ifelse(temp.cor2$value == 1, 0, temp.cor2$value)
+```
+
+```{r}
+temp.df <- data.frame(names = colnames(temp.cor))
+temp.df$group <- ifelse(grepl('_',temp.df$names), 'comparison', 'singular')
+temp.df$ct1 <- ifelse(temp.df$group == 'singular', temp.df$names,
+                      tstrsplit(temp.df$names,'_vs_', keep = 1)[[1]])
+temp.df$ct2 <- ifelse(temp.df$group == 'singular', temp.df$names,
+                      tstrsplit(temp.df$names,'_vs_', keep = 2)[[1]])
+
+col = list(CellType1 = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono.Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00",
+                        'MkP' = 'violet','MK.1' = 'purple', 'MK.2' = 'darkgreen',
+                        'T.cell' = 'black', 'B.cell.Prog.' = 'orange'),
+           CellType2 = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono.Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00",
+                        'MkP' = 'violet','MK.1' = 'purple', 'MK.2' = 'darkgreen',
+                        'T.cell' = 'black', 'B.cell.Prog.' = 'orange'))
+
+column_ha = HeatmapAnnotation(CellType1 = temp.df$ct1, CellType2 = temp.df$ct2,
+                              col = col, show_legend = F)
+
+row_ha = rowAnnotation(CellType1 = temp.df$ct1, CellType2 = temp.df$ct2,
+                              col = col, show_legend = F)
+Heatmap(temp.cor, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        cluster_rows = T, cluster_columns = T,
+        row_names_gp = gpar(fontsize = 0),
+        column_names_gp = gpar(fontsize = 0),
+        name = 'Correlation')
+
+Heatmap(temp.cor, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        # split = row.anno$combo,
+        # column_split = row.anno$combo,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+```
+
+###Subsetting to MK Lineages
+
+#### All Genes
+
+```{r}
+spearman.cor <- cor(t.scores2[,], method = 'spearman', 
+                    use = "pairwise.complete.obs")
+
+temp.cor <- as.data.frame(spearman.cor)
+
+mk.lineages <- c('MEP','MkP','MK.1','MK.2')
+temp.cor <- temp.cor[mk.lineages,]
+```
+
+```{r}
+temp.df <- data.frame(names = colnames(temp.cor))
+temp.df$group <- ifelse(grepl('_',temp.df$names), 'comparison', 'singular')
+temp.df$ct1 <- ifelse(temp.df$group == 'singular', temp.df$names,
+                      tstrsplit(temp.df$names,'_vs_', keep = 1)[[1]])
+temp.df$ct2 <- ifelse(temp.df$group == 'singular', temp.df$names,
+                      tstrsplit(temp.df$names,'_vs_', keep = 2)[[1]])
+
+temp.df2 <- data.frame(names = rownames(temp.cor))
+temp.df2$group <- ifelse(grepl('_',temp.df2$names), 'comparison', 'singular')
+temp.df2$ct1 <- ifelse(temp.df2$group == 'singular', temp.df2$names,
+                      tstrsplit(temp.df2$names,'_vs_', keep = 1)[[1]])
+temp.df2$ct2 <- ifelse(temp.df2$group == 'singular', temp.df2$names,
+                      tstrsplit(temp.df2$names,'_vs_', keep = 2)[[1]])
+
+col = list(CellType1 = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono.Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00",
+                        'MkP' = 'violet','MK.1' = 'purple', 'MK.2' = 'darkgreen',
+                        'T.cell' = 'black', 'B.cell.Prog.' = 'orange'),
+           CellType2 = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono.Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00",
+                        'MkP' = 'violet','MK.1' = 'purple', 'MK.2' = 'darkgreen',
+                        'T.cell' = 'black', 'B.cell.Prog.' = 'orange'))
+
+column_ha = HeatmapAnnotation(CellType1 = temp.df$ct1, CellType2 = temp.df$ct2,
+                              col = col, show_legend = F)
+
+row_ha = rowAnnotation(CellType1 = temp.df2$ct1, CellType2 = temp.df2$ct2,
+                              col = col, show_legend = T)
+Heatmap(temp.cor, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        cluster_rows = T, cluster_columns = T,
+        row_names_gp = gpar(fontsize = 0),
+        column_names_gp = gpar(fontsize = 0),
+        name = 'Correlation')
+
+Heatmap(temp.cor, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        # split = row.anno$combo,
+        # column_split = row.anno$combo,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+
+```
+
+#### HV Genes Genes
+
+```{r}
+spearman.cor <- cor(t.scores2[hv.genes,], method = 'spearman', 
+                    use = "pairwise.complete.obs")
+
+temp.cor <- as.data.frame(spearman.cor)
+
+mk.lineages <- c('MEP','MkP','MK.1','MK.2')
+temp.cor <- temp.cor[mk.lineages,]
+```
+
+```{r}
+temp.df <- data.frame(names = colnames(temp.cor))
+temp.df$group <- ifelse(grepl('_',temp.df$names), 'comparison', 'singular')
+temp.df$ct1 <- ifelse(temp.df$group == 'singular', temp.df$names,
+                      tstrsplit(temp.df$names,'_vs_', keep = 1)[[1]])
+temp.df$ct2 <- ifelse(temp.df$group == 'singular', temp.df$names,
+                      tstrsplit(temp.df$names,'_vs_', keep = 2)[[1]])
+
+temp.df2 <- data.frame(names = rownames(temp.cor))
+temp.df2$group <- ifelse(grepl('_',temp.df2$names), 'comparison', 'singular')
+temp.df2$ct1 <- ifelse(temp.df2$group == 'singular', temp.df2$names,
+                      tstrsplit(temp.df2$names,'_vs_', keep = 1)[[1]])
+temp.df2$ct2 <- ifelse(temp.df2$group == 'singular', temp.df2$names,
+                      tstrsplit(temp.df2$names,'_vs_', keep = 2)[[1]])
+
+col = list(CellType1 = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono.Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00",
+                        'MkP' = 'violet','MK.1' = 'purple', 'MK.2' = 'darkgreen',
+                        'T.cell' = 'black', 'B.cell.Prog.' = 'orange'),
+           CellType2 = c('B.cell' = '#009E73', 'CMP' = '#CC79A7',
+                        'Granulocyte' = '#0072B2', 'Mono.Macro' = '#E69F00',
+                        'Erythroid' = '#56B4E9','MEP' = "#D55E00",
+                        'MkP' = 'violet','MK.1' = 'purple', 'MK.2' = 'darkgreen',
+                        'T.cell' = 'black', 'B.cell.Prog.' = 'orange'))
+
+column_ha = HeatmapAnnotation(CellType1 = temp.df$ct1, CellType2 = temp.df$ct2,
+                              col = col, show_legend = F)
+
+row_ha = rowAnnotation(CellType1 = temp.df2$ct1, CellType2 = temp.df2$ct2,
+                              col = col, show_legend = T)
+Heatmap(temp.cor, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        cluster_rows = T, cluster_columns = T,
+        row_names_gp = gpar(fontsize = 0),
+        column_names_gp = gpar(fontsize = 0),
+        name = 'Correlation')
+
+Heatmap(temp.cor, 
+        top_annotation = column_ha, right_annotation = row_ha,
+        # split = row.anno$combo,
+        # column_split = row.anno$combo,
+        show_column_names = F, show_row_names = F,
+        cluster_rows = F, cluster_columns = F,
+        name = 'Correlation')
+
+```
+
+Looking to see if MK-1 vs MK-2 has the same pattern as within MkP (MigR1 vs MPL) has the same overall correlation. Looking at the pink-pink (within MkP) row, we do not see a high correlation with with the Purple/Green Column, so this doesn't hold true here.
+
+# 5 GO Term w/in clusters
+
+Using (LRPath) [http://lrpath.ncibi.org] from Maureen Sartor's lab. Should this just been done with WT? Could we also do this with just MUT?
+
+Need to do unbiased DE expression, not using any cutoffs. Looking within all clusters comparing WT vs MUT (normal WBM and enriched combined). This data will be inputted into the online interface, and then also used within the next section.
+
+## DE
+
+```{r}
+# de.genes <- data.frame(p_val = numeric(),
+#                        avg_logFC = numeric(),
+#                        pct.1 = numeric(),
+#                        pct.2 = numeric(),
+#                        p_val_adj = numeric(),
+#                        cluster = character(),
+#                        gene = character())
+# 
+# wbm@meta.data
+# 
+# for (i in unique(wbm$figure.labels3)){
+#   print(i)
+#   temp.subset <- subset(wbm, figure.labels3 == i)
+#   x <- FindMarkers(temp.subset,
+#                    ident.1 = 'MigR1',
+#                    ident.2 = 'MPL',
+#                    logfc.threshold = 0,
+#                    min.pct = 0,
+#                    group.by = 'Experiment')
+#   x$cluster <- i
+#   x$gene <- rownames(x)
+#   x <- x[order(x$avg_log2FC, decreasing = T),]
+#   de.genes <- rbind(de.genes,x)
+# }
+# 
+# summary(as.factor(de.genes$cluster))
+# # table(rownames(de.genes))
+# 
+
+
+
+# write.table(de.genes, './data/v4/genes.for.LR.Path.within.cluster.all.txt', sep = '\t')
+```
+
+## Exporting Results to LRPath Format
+
+```{r}
+# x <- read.table('./data/v4/genes.for.LR.Path.within.cluster.all.txt', sep = '\t')
+# 
+# mus.ref <- data.table::fread('../mus_mus_gene_id.txt', header = T)
+# colnames(mus.ref)[2] <- 'gene'
+# 
+# 
+# out <- split(x, f = x$cluster)
+# 
+# for (i in 1:length(out)){
+#   temp.name <- unique(out[[i]]$cluster)
+#   temp.name <- gsub('/','-',temp.name)
+#   
+#   print(temp.name)
+#   
+#   temp <- out[[i]]
+#   print(summary(temp$gene %in% mus.ref$gene))
+#   
+#   temp.df <- merge(temp, mus.ref, by = 'gene')
+#   
+#   temp.df$entrez.name <- paste0('mmu:', temp.df$GeneID)
+#   
+#   temp.df <- temp.df[,c('GeneID','p_val_adj','avg_log2FC')]
+#   
+#   write.table(temp.df, paste0('./data/v4/LRPath.gene.lists/',
+#                               temp.name,'.txt'),
+#               sep = '\t', col.names = F, quote = F, row.names = F)
+# }
+```
+
+
+```{r}
+# mkp.degs <- de.genes[de.genes$cluster == 'MkP',]
+# mkp.degs
+# mus.ref <- read.table('../mus_mus_gene_id.txt', sep = '\t',header = T)
+# mus.ref2 <- data.table::fread('../mus_mus_gene_id.txt', header = T)
+# 
+# summary(mkp.degs$gene %in% mus.ref2$Symbol)
+# 
+# missing.genes <- mkp.degs$gene[!(mkp.degs$gene %in% mus.ref2$Symbol)]
+# 
+# missing.genes
+# 
+# mus.ref2$Symbol[grepl('sept', mus.ref2$Symbol, ignore.case = T)] # H2afv
+# 
+# colnames(mus.ref2)[2] <- 'gene'
+# 
+# df <- merge(mkp.degs, mus.ref2, by = 'gene')
+# 
+# df$entrez.name <- paste0('mmu:',df$GeneID)
+# 
+# df <- df[,c('GeneID','p_val_adj','avg_log2FC')]
+# 
+# write.table(df, './data/v4/LRPath.mkps.txt', sep = '\t', 
+#             col.names = F, quote = F, row.names = F)
+```
+
+
+## Cleaning Files
+
+```{r}
+library(data.table)
+bcell.prog <-fread('./data/v4/LRPath.results/within.BcellProg.txt', sep = '\t')
+bcell.prog <- bcell.prog[bcell.prog$FDR < 0.05,]
+
+files <- list.files('./data/v4/LRPath.results/')
+files <- files[grepl('txt', files)]
+
+cnt <- 1
+for (i in files){
+  # print(i)
+  temp <- fread(paste0('./data/v4/LRPath.results/',i), sep = '\t')
+  
+  temp$cluster <- tstrsplit(i,'\\.', keep = 2)[[1]]
+  if (cnt == 1){
+    LR.results <- temp
+    cnt <- 0
+  }
+  else{
+    LR.results <- rbind(LR.results, temp)
+  }
+}
+
+# summary(as.factor(LR.results$cluster))
+
+LR.sig.results <- LR.results[LR.results$FDR < 0.05,] 
+
+# summary(as.factor(LR.sig.results$cluster))
+
+# table(LR.sig.results$cluster, LR.sig.results$ConceptType)
+
+LR.sig.results$Direction2 <- ifelse(LR.sig.results$Direction == 'down', 'up','down')
+```
+
+## Clusters
+
+Looking at clusters individually
+
+### MkP
+
+```{r}
+mkp <- LR.sig.results[LR.sig.results$cluster == 'MkP',]
+
+mkp[mkp$ConceptType == 'GOBP',]
+mkp[mkp$ConceptType == 'KEGG',]
+```
+
+```{r}
+splt.obj <- tstrsplit(mkp[mkp$ConceptType == 'GOBP',]$Name,' ')
+
+words <- c()
+
+for (i in 1:length(splt.obj)){
+  words <- c(words,splt.obj[[i]])
+}
+
+words <- words[!is.na(words)]
+# length(words)
+
+# summary(as.factor(words))
+```
+
+## 5a Correlation of GO Terms
+
+Reading in all the Terms
+
+```{r}
+# setwd('data/v4/LRPath.results/')
+files = list.files('./data/v4/LRPath.results/')
+files <- files[grepl('.txt',files)]
+# files
+
+cnt <- 1
+
+for (i in files){
+  # print(i)
+  x <- fread(paste0('./data/v4/LRPath.results/',i))
+  x$cluster <- tstrsplit(i,'\\.', keep = 2)[[1]]
+  
+  if (cnt == 1){
+    go.df <- x
+    cnt <- 2
+  }
+  else{
+    go.df <- rbind(go.df, x)
+  }
+}
+
+# summary(as.factor(go.df$cluster))
+# summary(as.factor(go.df$ConceptType))
+```
+
+Subsetting to just GOBP
+
+```{r}
+go.df <- go.df[go.df$ConceptType == 'GOBP',]
+
+tmp <- table(go.df$Name, go.df$cluster)
+
+# summary(as.factor(go.df$Name))
+
+go.bps <- rownames(tmp[rowSums(tmp) == 9,])
+
+# length(go.bps)
+```
+
+### Odds Ratio
+
+```{r}
+out <- split(go.df, f = go.df$cluster)
+
+# w.go.df
+
+cnt = 1 
+
+for (i in 1:length(out)){
+  temp <- as.data.frame(out[[i]])
+  rown <- as.character(temp$Name)
+  coln <- paste0(names(out)[i],'_',colnames(temp)[5])
+  colnames(temp)[5] <- coln
+  temp <- data.frame(temp[,5])
+  rownames(temp) <- rown
+  temp <- data.frame(temp[go.bps,])
+  colnames(temp) <- coln
+  
+  if(cnt == 1){
+    w.go.df <- temp
+    cnt = 2
+  }
+  else{
+    w.go.df <- cbind(w.go.df, temp)
+  }
+  
+}
+```
+
+```{r}
+# summary(as.factor(go.df$cluster))
+# length(go.bps)
+```
+
+
+```{r}
+spearman.cor <- cor(w.go.df, method = 'spearman')
+
+temp.cor <- as.data.frame(spearman.cor)
+
+temp.cor2 <- gather(as.data.frame(temp.cor))
+
+temp.cor2$cluster2 <- rep(rownames(temp.cor), length(rownames(temp.cor)))
+
+temp.cor2$value2 <- ifelse(temp.cor2$value == 1, 0, temp.cor2$value)
+
+temp.cor2$key <- tstrsplit(temp.cor2$key, '_', keep = 1)[[1]]
+temp.cor2$cluster2 <- tstrsplit(temp.cor2$cluster2, '_', keep = 1)[[1]]
+
+ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value, label = round(value,2))) +
+  geom_tile() + # geom_text() + 
+  xlab(NULL) + ylab(NULL) + ggtitle ('Odds Ratio Correlation (Spearman)') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .25) +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value2, label = round(value,2))) +
+  geom_tile() + # geom_text() + 
+  xlab(NULL) + ylab(NULL) + ggtitle ('Odds Ratio Correlation (Spearman)') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .1) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+### Signed FDR
+
+```{r}
+go.df$signed.FDR <- ifelse(go.df$Direction == 'down', -1*go.df$FDR, go.df$FDR)
+out <- split(go.df, f = go.df$cluster)
+
+# w.go.df
+
+cnt = 1 
+
+for (i in 1:length(out)){
+  temp <- as.data.frame(out[[i]])
+  rown <- as.character(temp$Name)
+  coln <- paste0(names(out)[i],'_',colnames(temp)[11])
+  colnames(temp)[11] <- coln
+  temp <- data.frame(temp[,11])
+  rownames(temp) <- rown
+  temp <- data.frame(temp[go.bps,])
+  colnames(temp) <- coln
+  
+  if(cnt == 1){
+    w.go.df <- temp
+    cnt = 2
+  }
+  else{
+    w.go.df <- cbind(w.go.df, temp)
+  }
+  
+}
+```
+
+```{r}
+# summary(as.factor(go.df$cluster))
+# length(go.bps)
+```
+
+
+```{r}
+spearman.cor <- cor(w.go.df, method = 'spearman')
+
+temp.cor <- as.data.frame(spearman.cor)
+
+temp.cor2 <- gather(as.data.frame(temp.cor))
+
+temp.cor2$cluster2 <- rep(rownames(temp.cor), length(rownames(temp.cor)))
+
+# temp.cor2$value2 <- ifelse(temp.cor2$value == 1, 0, temp.cor2$value)
+temp.cor2$key <- tstrsplit(temp.cor2$key, '_', keep = 1)[[1]]
+temp.cor2$cluster2 <- tstrsplit(temp.cor2$cluster2, '_', keep = 1)[[1]]
+
+ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value, label = round(value,2))) +
+  geom_tile() + # geom_text() + 
+  xlab(NULL) + ylab(NULL) + ggtitle ('Signed FDR Correlation (Spearman)') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .25) +
+  theme(axis.text.x = element_text(angle = 90))
+
+temp.cor2$value2 <- ifelse(temp.cor2$value ==1, 0, temp.cor2$value)
+
+ggplot(temp.cor2, aes(x = key, y = cluster2, fill = value2, label = round(value,2))) +
+  geom_tile() + # geom_text() + 
+  xlab(NULL) + ylab(NULL) + ggtitle ('Signed FDR Correlation (Spearman)') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .05) +
+  theme(axis.text.x = element_text(angle = 90))
 
 
 ```
 
+### PCA
 
-# 5 Cluster Centroid Batch Effects
-
-Getting the cluster centroid for each cluster by experiment (11x4, 44), then taking deltas between batch columns (11x6, 66 in total). 
-
-i.e. MigR1 Gran minus MPL Gran would be the first column then MigR1 B-cell minus MPL B-cell. So this would all be comparing group 1 (MigR1) vs group 2 (MPL) across all clusters. Then it would be group 1 (MigR1) vs group 2 (enrMigR1), and so on for all six combinations.
-
-It can be either organize be comparison between groups. But then also organize by clusters, to see how things are different between the clusters.
-
-## 5a Cluster by Sample 
+#### Odds Ratio
 
 ```{r}
-wbm$ident.combo <- paste0(wbm$Condition, '_' ,wbm$figure.labels3)
+cnt = 1 
 
-# table(wbm$ident.combo)
-
-# table(wbm$Condition3, wbm$figure.labels3)
-
-# DimPlot(wbm, group.by = 'ident.combo')
-
-Idents(wbm) <- wbm$ident.combo
-
-av <- AverageExpression(wbm)
-
-av <- av$RNA
-
-# head(av)
-
-key_ <- data.frame(ident.combo = colnames(av))
-
-rownames(key_) <- 1:length(colnames(av))
-
-key_$exp <- tstrsplit(key_$ident.combo, '_', keep = 1)[[1]]
-key_$cluster <- tstrsplit(key_$ident.combo, '_', keep = 2)[[1]]
-
-# temp.cor
-
-# summary(key_$ident.combo == rownames(temp.cor))
-
-```
-
-### PC Plots
-
-```{r}
-pca <- prcomp(av)
-
-pc.vectors <- pca$x
+for (i in 1:length(out)){
+  temp <- as.data.frame(out[[i]])
+  rown <- as.character(temp$Name)
+  coln <- paste0(names(out)[i],'_',colnames(temp)[5])
+  colnames(temp)[5] <- coln
+  temp <- data.frame(temp[,5])
+  rownames(temp) <- rown
+  temp <- data.frame(temp[go.bps,])
+  colnames(temp) <- coln
+  
+  if(cnt == 1){
+    w.go.df <- temp
+    cnt = 2
+  }
+  else{
+    w.go.df <- cbind(w.go.df, temp)
+  }
+  
+}
+pca <- prcomp(w.go.df)
 
 pca.sd <- pca$sdev
 pca <- as.data.frame(pca$rotation)
 
-pca.sd <- data.frame(pc = 1:length(pca.sd),
+pca.sd <- data.frame(pc = 1:9,
                      sd = pca.sd)
 
-ggplot(pca.sd[1:20,], aes(x = pc, y = sd)) + geom_point() + geom_line() + theme_bw()
+ggplot(pca.sd[1:9,], aes(x = pc, y = sd)) + geom_point() + geom_line() + theme_bw()
 # colnames(pca) <- paste0(colnames(pca),' (',round(pca.sd,2),')')
 
-pca$exp <- tstrsplit(rownames(pca),'_', keep = 1)[[1]]
-pca$cluster <- tstrsplit(rownames(pca),'_', keep = 2)[[1]]
-pca
+pca$cluster <- tstrsplit(rownames(pca),'_', keep = 1)[[1]]
+# pca
 
 combos <- combn(paste0('PC',1:5),2)
-combos
+# combos
 
 # colnames(pca)[1:5] <- paste0(colnames(pca)[1:5], ' (SD = ', pca.sd[1:5], ')')
 
@@ -1619,22 +4229,59 @@ for (i in 1:dim(combos)[2]){
   # print(combos[2,i])
   temp.y <- combos[2,i]
   
-  print(ggplot(pca, aes_string(x = temp.x, y = temp.y, color = 'cluster',
-                               group = 'exp')) + 
-          geom_point(aes(shape = exp)) + scale_color_manual(values = color_pal2) +
+  print(ggplot(pca, aes_string(x = temp.x, y = temp.y, color = 'cluster')) + 
+          geom_point() + scale_color_manual(values = color_pal2) +
           theme_bw() + ggtitle(paste0(temp.x, ' vs ', temp.y)))
 }
-
-
 ```
 
-### Enrichment Effect
-
-Using lines to see if there is an enrichment shift
+#### Signed FDR
 
 ```{r}
+go.df$signed.FDR <- ifelse(go.df$Direction == 'down', -1*go.df$FDR, go.df$FDR)
+out <- split(go.df, f = go.df$cluster)
 
-pca$group <- paste0(ifelse(pca$exp %in% c('enrMigr1','Migr1'), 'Migr1','Mpl'),pca$cluster)
+# w.go.df
+
+cnt = 1 
+
+for (i in 1:length(out)){
+  temp <- as.data.frame(out[[i]])
+  rown <- as.character(temp$Name)
+  coln <- paste0(names(out)[i],'_',colnames(temp)[11])
+  colnames(temp)[11] <- coln
+  temp <- data.frame(temp[,11])
+  rownames(temp) <- rown
+  temp <- data.frame(temp[go.bps,])
+  colnames(temp) <- coln
+  
+  if(cnt == 1){
+    w.go.df <- temp
+    cnt = 2
+  }
+  else{
+    w.go.df <- cbind(w.go.df, temp)
+  }
+  
+}
+pca <- prcomp(w.go.df)
+
+pca.sd <- pca$sdev
+pca <- as.data.frame(pca$rotation)
+
+pca.sd <- data.frame(pc = 1:9,
+                     sd = pca.sd)
+
+ggplot(pca.sd[1:9,], aes(x = pc, y = sd)) + geom_point() + geom_line() + theme_bw()
+# colnames(pca) <- paste0(colnames(pca),' (',round(pca.sd,2),')')
+
+pca$cluster <- tstrsplit(rownames(pca),'_', keep = 1)[[1]]
+# pca
+
+combos <- combn(paste0('PC',1:5),2)
+# combos
+
+# colnames(pca)[1:5] <- paste0(colnames(pca)[1:5], ' (SD = ', pca.sd[1:5], ')')
 
 for (i in 1:dim(combos)[2]){
   # print(combos[1,i])
@@ -1642,464 +4289,330 @@ for (i in 1:dim(combos)[2]){
   # print(combos[2,i])
   temp.y <- combos[2,i]
   
-  print(ggplot(pca, aes_string(x = temp.x, y = temp.y, color = 'cluster',
-                               group = 'group')) + 
-          geom_line(aes(group = group, color = cluster)) +
-          geom_point(aes(shape = exp)) + scale_color_manual(values = color_pal2) +
+  print(ggplot(pca, aes_string(x = temp.x, y = temp.y, color = 'cluster')) + 
+          geom_point() + scale_color_manual(values = color_pal2) +
           theme_bw() + ggtitle(paste0(temp.x, ' vs ', temp.y)))
 }
-
-
-ggplot(pca, aes_string(x = 'PC1', y = 'PC2', color = 'cluster',
-                               group = 'group')) + 
-  geom_line(aes(group = group, color = cluster)) +
-  geom_point(aes(shape = exp)) + #scale_color_manual(values = color_pal2) +
-  theme_bw() + ggtitle(paste0(temp.x, ' vs ', temp.y))
-  
 ```
 
+## 5b Between Cluster GO Terms
 
-### Heatmap
-
-```{r}
-av.with.pca <- cbind(av, pc.vectors[,1:20])
-temp.cor <- cor(av, method = 'spearman')
-temp.cor.pca <- cor(av.with.pca, method = 'spearman')
-```
-
-#### Without PC Vectors
+### Generating the Data
 
 ```{r}
-col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
-                        'Granulocyte' = '#0072B2', 'Mono/Macro' = '#E69F00',
-                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
-                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
-                        'MkP' = 'violet','MK-1' = 'purple', 'MK-2' = 'black'),
-           Exp = c('Migr1' = 'blue', 'Mpl' = 'red', 'enrMigr1' = 'violet',
-                   'enrMpl' = 'darkred'))
-
-
-
-order.rows <- data.frame(coln = colnames(temp.cor))
-
-order.rows$exp <- tstrsplit(order.rows$coln, '_', keep = 1)[[1]]
-order.rows$ct <- tstrsplit(order.rows$coln, '_', keep = 2)[[1]]
-
-order.rows <- order.rows[order(order.rows$exp, order.rows$ct),]$coln
-
-order.rows
-
-temp.cor2 <- temp.cor[order.rows, order.rows]
-
-key_ <- data.frame(ident.combo = colnames(temp.cor2))
-
-rownames(key_) <- 1:length(colnames(av))
-
-key_$exp <- tstrsplit(key_$ident.combo, '_', keep = 1)[[1]]
-key_$cluster <- tstrsplit(key_$ident.combo, '_', keep = 2)[[1]]
-
-column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
-                              col = col)
-
-row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
-                              col = col)
-
-
-Heatmap(temp.cor2, 
-        top_annotation = column_ha, right_annotation = row_ha,
-        split = key_$exp,
-        column_split = key_$exp,
-        show_column_names = F, show_row_names = F,
-        cluster_rows = F, cluster_columns = F,
-        name = 'Correlation')
-```
-
-```{r}
-order.rows <- data.frame(coln = colnames(temp.cor))
-
-order.rows$exp <- tstrsplit(order.rows$coln, '_', keep = 2)[[1]]
-
-order.rows <- order.rows[order(order.rows$exp),]$coln
-
-temp.cor2 <- temp.cor2[order.rows, order.rows]
-
-rownames(key_) <- key_$ident.combo
-key_ <- key_[rownames(temp.cor2),]
-
-column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
-                              col = col)
-
-row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
-                              col = col)
-
-Heatmap(temp.cor2, 
-        top_annotation = column_ha, right_annotation = row_ha,
-        split = key_$cluster,
-        column_split = key_$cluster,
-        show_column_names = F, show_row_names = F,
-        cluster_rows = F, cluster_columns = F,
-        name = 'Correlation')
-```
-
-#### With PC Vectors
-
-```{r}
-col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
-                        'Granulocyte' = '#0072B2', 'Mono/Macro' = '#E69F00',
-                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
-                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
-                        'MkP' = 'violet','MK-1' = 'purple', 'MK-2' = 'darkgreen',
-                        'PC' = 'black'),
-           Exp = c('Migr1' = 'blue', 'Mpl' = 'red', 'enrMigr1' = 'violet',
-                   'enrMpl' = 'darkred','PC' = 'black'))
-
-
-
-order.rows <- data.frame(coln = colnames(temp.cor.pca))
-order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
-                        1,0)
-order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
-                         tstrsplit(order.rows$coln, '_', keep = 1)[[1]])
-order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
-                         tstrsplit(order.rows$coln, '_', keep = 2)[[1]])
-
-order.rows <- order.rows[order(order.rows$pc,order.rows$exp, order.rows$ct),]$coln
-
-order.rows
-
-temp.cor2 <- temp.cor.pca[order.rows, order.rows]
-
-key_ <- data.frame(ident.combo = colnames(temp.cor2))
-
-rownames(key_) <- 1:length(colnames(av.with.pca))
-
-key_$pc <- ifelse(key_$ident.combo %in% paste0('PC',1:20), 1,0)
-key_$exp <- ifelse(key_$pc == T, 'PC',tstrsplit(key_$ident.combo, '_', keep = 1)[[1]])
-key_$cluster <- ifelse(key_$pc == T, 'PC', tstrsplit(key_$ident.combo, '_', keep = 2)[[1]])
-
-column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
-                              col = col)
-
-row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
-                              col = col)
-
-
-Heatmap(temp.cor2, 
-        top_annotation = column_ha, right_annotation = row_ha,
-        split = key_$exp,
-        column_split = key_$exp,
-        show_column_names = F, show_row_names = F,
-        cluster_rows = F, cluster_columns = F,
-        name = 'Correlation')
-```
-
-```{r}
-order.rows <- data.frame(coln = colnames(temp.cor.pca))
-
-order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
-                        1,0)
-order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
-                         tstrsplit(order.rows$coln, '_', keep = 1)[[1]])
-order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
-                         tstrsplit(order.rows$coln, '_', keep = 2)[[1]])
-
-# order.rows$exp <- tstrsplit(order.rows$coln, '_', keep = 2)[[1]]
-
-order.rows <- order.rows[order(order.rows$pc, order.rows$exp, order.rows$ct),]$coln
-
-temp.cor2 <- temp.cor.pca[order.rows, order.rows]
-
-rownames(key_) <- key_$ident.combo
-key_
-key_ <- key_[rownames(temp.cor2),]
-
-column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
-                              col = col)
-
-row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
-                              col = col)
-
-Heatmap(temp.cor2, 
-        top_annotation = column_ha, right_annotation = row_ha,
-        split = key_$cluster,
-        column_split = key_$cluster,
-        show_column_names = F, show_row_names = F,
-        cluster_rows = F, cluster_columns = F,
-        name = 'Correlation')
-```
-
-
-## 5b Cluster Centroid Deltas
-
-```{r}
-av <- AverageExpression(wbm)$RNA
-# head(av)
-
-av <- as.data.frame(t(av))
-
-av$exp <- tstrsplit(rownames(av), '_', keep = 1)[[1]]
-
-av$ct <- tstrsplit(rownames(av), '_', keep = 2)[[1]]
-
-outs <- split(av, f = av$ct)
-genes <- colnames(outs[[1]])[!colnames(outs[[1]]) %in% c('ct','exp')]
-out.df <- data.frame(na.row = rep(NA,length(genes)),
-                     row.names = genes)
-
-for (p in outs){
-  temp.df <- t(p[,!(colnames(p) %in% c('ct','exp'))])
-  ct <- tstrsplit(colnames(temp.df)[1], '_', keep = 2)[[1]]
-  colnames(temp.df) <- tstrsplit(colnames(temp.df), '_', keep = 1)[[1]]
-  
-  combos <- combn(1:length(colnames(temp.df)), 2)
-  
-  if (dim(temp.df)[2] == 4){
-    temp.df <- temp.df[,c('Migr1','Mpl','enrMigr1','enrMpl')]
-  }
-  else{
-    temp.df <- temp.df[,c('Migr1','Mpl','enrMigr1')]
-  }
-  
-  for (i in 1:dim(combos)[2]){
-    clm1 <- combos[1,i]
-    clm2 <- combos[2,i]
-    # print(paste0(clm1, clm2))
-    
-    if (i == 1){
-      new.df.temp <- data.frame(V1 = temp.df[,clm1] - temp.df[,clm2])
-      
-    }
-    else{
-      new.df.temp <- cbind(new.df.temp, temp.df[,clm1] - temp.df[,clm2])
-    }
-    colnames(new.df.temp)[i] <- paste0(colnames(temp.df)[clm1],
-                                       '_vs_', colnames(temp.df)[clm2],
-                                       '.',ct)
-  }
-  
-  out.df <- cbind(out.df, new.df.temp)
-  
-}
-
-# summary(as.factor(tstrsplit(colnames(out.df), '\\.', keep = 2)[[1]]))
-# summary(as.factor(tstrsplit(colnames(out.df), '\\.', keep = 1)[[1]]))
-
-out.df <- out.df[,-1]
-```
-
-### PCs
-
-```{r}
-pca <- prcomp(out.df)
-
-pc.vectors <- pca$x
-
-out.df.pca <- cbind(out.df, pc.vectors[,1:20])
-
-temp.cor.pca <- cor(out.df.pca, method = 'spearman')
-
-temp.cor.pca <- temp.cor.pca[,!(grepl('Prog', colnames(temp.cor.pca)))]
-# unique(tstrsplit(rownames(temp.cor.pca),'\\.', keep = 1)[[1]])[1:12]
-col = list(CellType = c('B-cell' = '#009E73', 'CMP' = '#CC79A7',
-                        'Granulocyte' = '#0072B2', 'Mono/Macro' = '#E69F00',
-                        'Erythroid' = '#56B4E9','MEP' = "#D55E00", 
-                        'T-cell' = 'red', 'B-cell Prog.' = '#CC79A7',
-                        'MkP' = 'violet','MK-1' = 'purple', 'MK-2' = 'darkgreen',
-                        'PC' = 'black'),
-           Exp = c('Migr1_vs_Mpl' = 'blue',
-                   'Migr1_vs_enrMigr1' = 'red',
-                   'Migr1_vs_enrMpl' = 'violet',
-                   'Mpl_vs_enrMigr1' = 'darkred',
-                   'Mpl_vs_enrMpl' = 'green',
-                   'enrMigr1_vs_enrMpl' = "orange",
-                   'PC' = 'black'))
-
-
-
-order.rows <- data.frame(coln = colnames(temp.cor.pca))
-order.rows$pc <- ifelse(order.rows$coln %in% paste0('PC',1:20),
-                        1,0)
-order.rows$exp <- ifelse(order.rows$pc == T, 'PC', 
-                         tstrsplit(order.rows$coln, '\\.', keep = 1)[[1]])
-order.rows$ct <- ifelse(order.rows$pc == T, 'PC', 
-                         tstrsplit(order.rows$coln, '\\.', keep = 2)[[1]])
-
-order.rows <- order.rows[order(order.rows$pc,order.rows$exp, order.rows$ct),]$coln
-
-order.rows
-
-temp.cor2 <- temp.cor.pca[order.rows, order.rows]
-
-key_ <- data.frame(ident.combo = colnames(temp.cor2))
-
-rownames(key_) <- 1:(length(colnames(out.df.pca))-3)
-
-key_$pc <- ifelse(key_$ident.combo %in% paste0('PC',1:20), 1,0)
-key_$exp <- ifelse(key_$pc == T, 'PC',tstrsplit(key_$ident.combo, '\\.', keep = 1)[[1]])
-key_$cluster <- ifelse(key_$pc == T, 'PC', tstrsplit(key_$ident.combo, '\\.', keep = 2)[[1]])
-
-column_ha = HeatmapAnnotation(CellType = key_$cluster,Exp = key_$exp,
-                              col = col)
-
-row_ha = rowAnnotation(CellType = key_$cluster,Exp = key_$exp,
-                              col = col)
-
-
-Heatmap(temp.cor2, 
-        top_annotation = column_ha, right_annotation = row_ha,
-        split = key_$exp,
-        column_split = key_$exp,
-        show_column_names = F, show_row_names = F,
-        cluster_rows = F, cluster_columns = F,
-        name = 'Correlation')
-
-# key_
-```
-
-
-# 6 CCA Batch Correction
-
-```{r}
-# int.list <- SplitObject(wbm, split.by = 'Condition3')
+# de.genes <- data.frame(p_val = numeric(),
+#                        avg_logFC = numeric(),
+#                        pct.1 = numeric(),
+#                        pct.2 = numeric(),
+#                        p_val_adj = numeric(),
+#                        cluster1 = character(),
+#                        cluster2 = character(),
+#                        gene = character())
 # 
-# for (i in 1:length(int.list)){
-#   print(i)
-#   int.list[[i]] <- SCTransform(int.list[[i]], verbose = F)
+# # wbm@meta.data
+# 
+# combos <- as.data.frame(combn(unique(wbm$figure.labels3), 2))
+# 
+# mk.combos <- combos[,grepl('MK', combos)]
+# non.mk.combos <- combos[,!grepl('MK',combos)]
+# 
+# for (i in 1:dim(mk.combos)[2]){
+#   print(mk.combos[,i])
+#   ct.1 <- mk.combos[1,i]
+#   ct.2 <- mk.combos[2,i]
+#   x <- FindMarkers(wbm,
+#                    ident.1 = ct.1,
+#                    ident.2 = ct.2,
+#                    logfc.threshold = 0,
+#                    min.pct = 0)
+#   x$cluster1 <- ct.1
+#   x$cluster2 <- ct.2
+#   x$gene <- rownames(x)
+#   x <- x[order(x$avg_log2FC, decreasing = T),]
+#   de.genes <- rbind(de.genes,x)
 # }
 # 
-# int.features <- SelectIntegrationFeatures(object.list = int.list, nfeatures = 3000)
+# summary(as.factor(de.genes$cluster1))
+# # table(rownames(de.genes))
 # 
-# options(future.globals.maxSize = 3145728000)
+# write.table(de.genes, './data/v4/genes.for.LR.Path.between.MK.clusters.all.txt', sep = '\t')
 # 
-# int.list <- PrepSCTIntegration(object.list = int.list, anchor.features = int.features,
-#                                verbose = F)
+# de.genes <- data.frame(p_val = numeric(),
+#                      avg_logFC = numeric(),
+#                      pct.1 = numeric(),
+#                      pct.2 = numeric(),
+#                      p_val_adj = numeric(),
+#                      cluster1 = character(),
+#                      cluster2 = character(),
+#                      gene = character())
 # 
-# int.anchors <- FindIntegrationAnchors(object.list = int.list, normalization.method = 'SCT',
-#                                       anchor.features = int.features, verbose = F)
+# ct.1 <- 'MkP'
+# ct.2 <- 'MEP'
 # 
-# int.int <- IntegrateData(anchorset = int.anchors, normalization.method = 'SCT',
-#                          verbose = F)
-# 
-# int <- int.int
-# 
-# int <- RunPCA(int, verbose = F)
-# 
-# int <- RunUMAP(int, dims = 1:30)
-# 
-# int <- FindNeighbors(int, dims = 1:30)
-# 
-# # for (i in seq(0,1,by = .1)){
-# #   temp <- FindClusters(int, resolution = i, verbose = F)
-# #   print(DimPlot(temp, label =T , repel= T))
-# # }
-# 
-# int <- FindClusters(int, resolution = 0.3, verbose = F)
-# 
-# DimPlot(int)
-# 
-# DimPlot(int, label = T, repel = T)
-# 
-# saveRDS(int, './data/v4/cca.integrated.rds')
+# Idents(wbm) <- wbm$figure.labels3
+# x <- FindMarkers(wbm, ident.1 = ct.1, ident.2 = ct.2,
+#                  logfc.threshold = 0,
+#                  min.pct = 0)
+# x$cluster1 <- ct.1
+# x$cluster2 <- ct.2
+# x$gene <- rownames(x)
+# x <- x[order(x$avg_log2FC, decreasing = T),]
 
-int <- readRDS('./data/v4/cca.integrated.rds')
+# for (i in 1:dim(non.mk.combos)[2]){
+#   print(non.mk.combos[,i])
+#   print(paste0('Progress: ', i,' / ', dim(non.mk.combos)[2]))
+#   ct.1 <- non.mk.combos[1,i]
+#   ct.2 <- non.mk.combos[2,i]
+#   x <- FindMarkers(wbm,
+#                    ident.1 = ct.1,
+#                    ident.2 = ct.2,
+#                    logfc.threshold = 0,
+#                    min.pct = 0)
+  # x$cluster1 <- ct.1
+  # x$cluster2 <- ct.2
+  # x$gene <- rownames(x)
+  # x <- x[order(x$avg_log2FC, decreasing = T),]
+#   de.genes <- rbind(de.genes,x)
+# }
 ```
 
-## 6a Cluster Count Tables 
+### Exporting Results to LRPath Format
 
 ```{r}
-DimPlot(wbm, group.by = 'figure.labels3', label = T , repel = T)
-
-df <- as.data.frame(table(int$figure.labels3, int$seurat_clusters))
-df$var1.total <- NA
-
-for (i in unique(df$Var1)){
-  print(i)
-  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
-}
-
-df$var2.total <- NA
-for (i in unique(df$Var2)){
-  print(i)
-  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
-}
-
-df$perc.var1 <- df$Freq / df$var1.total
-df$perc.var2 <- df$Freq / df$var2.total
-
-df
-
-order_ <- c('MK-1','Granulocyte','B-cell','Mono/Macro','MkP','CMP','MEP','MK-2',
-            'Erythroid','T-cell','B-cell Prog.')
-
-df$Var1 <- factor(df$Var1, levels = order_)
-
-
-ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
-  geom_tile() + theme_bw() + coord_flip() +
-  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
-  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
-
-ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
-  geom_tile() + theme_bw() + coord_flip() +
-  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
-  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
-```
-
-```{r}
-int$int.label <- factor(int$seurat_clusters,
-                        labels = c('Gran','Gran','Gran','B-cell','Gran','Mono/Macro',
-                        'MkP','CMP','MEP/B-cell','Mono/Macro/MK-2','Erythroid','MkP',
-                        'T-cell','B-cell','B-cell','B-cell Prog.'))
-table(int$int.label, int$seurat_clusters)
-
-DimPlot(int, group.by = 'int.label', label = T, repel = T, cols = color_pal)
-FeaturePlot(int, features = c('Itga2b','Pf4'))
-```
-
-
-## Experiment Count Tables
-
-```{r}
-DimPlot(int, group.by = 'Condition2')
-DimPlot(int, split.by = 'Condition2', ncol = 2) + theme_bw()
-```
-
-```{r}
-df <- as.data.frame(table(int$Condition2, int$seurat_clusters))
-df$var1.total <- NA
-
-for (i in unique(df$Var1)){
-  print(i)
-  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
-}
-
-df$var2.total <- NA
-for (i in unique(df$Var2)){
-  print(i)
-  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
-}
-
-df$perc.var1 <- df$Freq / df$var1.total
-df$perc.var2 <- df$Freq / df$var2.total
-
-df
-
-# order_ <- c('MK-1','Granulocyte','B-cell','Mono/Macro','MkP','CMP','MEP','MK-2',
-#             'Erythroid','T-cell','B-cell Prog.')
+# x <- read.table('./data/v4/genes.for.LR.Path.between.MK.clusters.all.txt', sep = '\t')
 # 
-# df$Var1 <- factor(df$Var1, levels = order_)
-
-
-ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
-  geom_tile() + theme_bw() +
-  geom_text(size = 4) + xlab('Experiment') + ylab ('CCA Clusters') +
-  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .15)
-
-ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
-  geom_tile() + theme_bw() + 
-  geom_text(size = 4) + xlab('Experiment') + ylab ('CCA Clusters') +
-  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+# mus.ref <- data.table::fread('../mus_mus_gene_id.txt', header = T)
+# colnames(mus.ref)[2] <- 'gene'
+# 
+# x$comp <- paste0(x$cluster1,'.vs.', x$cluster2)
+# out <- split(x, f = x$comp)
+# 
+# for (i in 1:length(out)){
+#   temp.name <- unique(out[[i]]$comp)
+#   temp.name <- gsub('/','-',temp.name)
+# 
+#   print(temp.name)
+# 
+#   temp <- out[[i]]
+#   print(summary(temp$gene %in% mus.ref$gene))
+# 
+#   temp.df <- merge(temp, mus.ref, by = 'gene')
+# 
+#   temp.df$entrez.name <- paste0('mmu:', temp.df$GeneID)
+# 
+#   temp.df <- temp.df[,c('GeneID','p_val_adj','avg_log2FC')]
+# 
+#   write.table(temp.df, paste0('./data/v4/LRPath.gene.between.clusters.lists/',
+#                               temp.name,'.txt'),
+#               sep = '\t', col.names = F, quote = F, row.names = F)
+# }
 ```
+
+## Reading in all the Terms
+
+```{r}
+# setwd('data/v4/LRPath.results/')
+files = list.files('./data/v4/LRPath.between.clusters.results/')
+files <- files[grepl('.txt',files)]
+# files
+
+cnt <- 1
+
+for (i in files){
+  # print(i)
+  x <- fread(paste0('./data/v4/LRPath.between.clusters.results/',i))
+  x$cluster <- tstrsplit(i,'.txt', keep = 1)[[1]]
+  
+  if (cnt == 1){
+    go.df <- x
+    cnt <- 2
+  }
+  else{
+    go.df <- rbind(go.df, x)
+  }
+}
+
+# summary(as.factor(go.df$cluster))
+# length(unique(go.df$cluster))
+# summary(as.factor(go.df$ConceptType))
+```
+
+## Subsetting to just GOBP
+
+```{r}
+go.df <- go.df[go.df$ConceptType == 'GOBP',]
+
+tmp <- table(go.df$Name, go.df$cluster)
+
+# summary(as.factor(go.df$Name))
+
+go.bps <- rownames(tmp[rowSums(tmp) == 19,])
+
+# length(go.bps)
+```
+
+
+## 5c Meta-Analysis of all GO Terms
+
+
+# 6 Plots for all Clusters
+
+All the Violin Plots
+
+## 6a BoxPlots
+
+### nCount_RNA
+
+```{r}
+# head(wbm@meta.data)
+# ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nCount_RNA), fill = Condition3)) + geom_violin()
+
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nCount_RNA))) + 
+  geom_boxplot() + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nCount_RNA), 
+                          fill = Condition3)) + 
+  geom_boxplot() + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+``` 
+
+### nFeature_RNA
+
+```{r}
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nFeature_RNA))) + 
+  geom_boxplot() + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = log10(nFeature_RNA), 
+                          fill = Condition3)) + 
+  geom_boxplot() + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+``` 
+
+### percent.mt
+
+```{r}
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = percent.mt)) + 
+  geom_boxplot() + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = percent.mt, 
+                          fill = Condition3)) + 
+  geom_boxplot() + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+``` 
+
+## 6b Interaction Plots
+
+### nCount & nFeature
+
+```{r}
+ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = log10(nFeature_RNA))) +
+  geom_point() + theme_bw() + geom_smooth()
+
+ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = log10(nFeature_RNA),
+                          colour = Condition3)) +
+  scale_color_manual(values = c('black','red','limegreen','blue')) +
+  geom_point() + theme_bw() + geom_smooth(se = F)
+
+ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = log10(nFeature_RNA),
+                          colour = figure.labels3)) +
+  scale_color_manual(values = color_pal2) +
+  geom_point() + theme_bw() 
+
+for (i in unique(wbm$figure.labels3)){
+        # print(i)
+        
+        wbm$highlight.cells <- ifelse(wbm$figure.labels3 == i, i,'All Others')
+        
+        print(ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = log10(nFeature_RNA),
+                          colour = highlight.cells)) +
+          scale_color_manual(values = c('lightgrey','blue')) +
+          geom_point(aes(alpha = 0.2)) + theme_bw() + geom_smooth())
+        
+}
+```
+
+### nCount & percent.mt
+
+```{r}
+ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt)) +
+  geom_point() + theme_bw() + geom_smooth()
+
+ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt,
+                          colour = Condition3)) +
+  scale_color_manual(values = c('black','red','limegreen','blue')) +
+  geom_point() + theme_bw() + geom_smooth(se = F)
+
+ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt,
+                          colour = figure.labels3)) +
+  scale_color_manual(values = color_pal2) +
+  geom_point() + theme_bw() 
+
+for (i in unique(wbm$figure.labels3)){
+        # print(i)
+        
+        wbm$highlight.cells <- ifelse(wbm$figure.labels3 == i, i,'All Others')
+        
+        print(ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt,
+                          colour = highlight.cells)) +
+          scale_color_manual(values = c('lightgrey','blue')) +
+          geom_point(aes(alpha = 0.2)) + theme_bw() + geom_smooth())
+        
+}
+# wbm$b.cells <- ifelse(wbm$figure.labels3 == 'B-cell', 'B-cell', 'All Others')
+# 
+# ggplot(wbm@meta.data, aes(x = log10(nCount_RNA), y = percent.mt,
+#                           colour = b.cells)) +
+#   scale_color_manual(values = c('lightgrey','blue')) +
+#   geom_point(aes(alpha = 0.2)) + theme_bw() + geom_smooth()
+```
+
+### nFeature & percent.mt
+
+```{r}
+ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt)) +
+  geom_point() + theme_bw() + geom_smooth()
+
+ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt,
+                          colour = Condition3)) +
+  scale_color_manual(values = c('black','red','limegreen','blue')) +
+  geom_point() + theme_bw() + geom_smooth(se = F)
+
+ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt,
+                          colour = figure.labels3)) +
+  scale_color_manual(values = color_pal2) +
+  geom_point() + theme_bw() 
+
+for (i in unique(wbm$figure.labels3)){
+        # print(i)
+        
+        wbm$highlight.cells <- ifelse(wbm$figure.labels3 == i, i,'All Others')
+        
+        print(ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt,
+                          colour = highlight.cells)) +
+          scale_color_manual(values = c('lightgrey','blue')) +
+          geom_point(aes(alpha = 0.2)) + theme_bw() + geom_smooth())
+        
+}
+# 
+# ggplot(wbm@meta.data, aes(x = log10(nFeature_RNA), y = percent.mt,
+#                           colour = b.cells)) +
+#   scale_color_manual(values = c('lightgrey','blue')) +
+#   geom_point(aes(alpha = 0.2)) + theme_bw() + geom_smooth()
+```
+
+
 
 
 # 7 Trajectory
@@ -2366,7 +4879,7 @@ mk1.markers <- FindMarkers(wbm, ident.1 = 'MK-1', only.pos = T)
 ```
 
 ```{r}
-head(all.gran.markers)
+# head(all.gran.markers)
 
 for (i in rownames(all.gran.markers)[1:6]){
   print(VlnPlot(wbm, features = i) + ggtitle(paste0('Gran Marker ',i)))
@@ -2374,7 +4887,7 @@ for (i in rownames(all.gran.markers)[1:6]){
 ```
 
 ```{r}
-head(gran.0.1.markers)
+# head(gran.0.1.markers)
 
 for (i in rownames(gran.0.1.markers)[1:6]){
   print(VlnPlot(wbm, features = i) + ggtitle(paste0('Gran Marker ',i)))
@@ -2382,7 +4895,7 @@ for (i in rownames(gran.0.1.markers)[1:6]){
 ```
 
 ```{r}
-head(mk2.markers)
+# head(mk2.markers)
 
 for (i in rownames(mk2.markers)[1:6]){
   print(VlnPlot(wbm, features = i) + ggtitle(paste0('MK-2 Marker ',i)))
@@ -2390,7 +4903,7 @@ for (i in rownames(mk2.markers)[1:6]){
 ```
 
 ```{r}
-head(mk1.markers)
+# head(mk1.markers)
 
 for (i in rownames(mk1.markers)[1:6]){
   print(VlnPlot(wbm, features = i) + ggtitle(paste0('MK-1 Marker ',i)))
@@ -2408,13 +4921,13 @@ gran.vs.mk1 <- FindMarkers(wbm, ident.1 = 'MK-1',
 gran.vs.mk1 <- gran.vs.mk1[gran.vs.mk1$p_val < 0.05,]
 gran.vs.mk1 <- gran.vs.mk1[order(gran.vs.mk1$avg_log2FC, decreasing = T),]
 
-head(gran.vs.mk1)
+# head(gran.vs.mk1)
 
 for (i in rownames(gran.vs.mk1)[1:6]){
   print(VlnPlot(wbm, features = i) + ggtitle(paste0('MK-1 vs Gran ',i)))
 }
 
-tail(gran.vs.mk1)
+# tail(gran.vs.mk1)
 
 for (i in rownames(tail(mk1.markers))){
   print(VlnPlot(wbm, features = i) + ggtitle(paste0('MK-1 Marker ',i)))
@@ -2431,17 +4944,364 @@ gran.vs.mk1 <- FindMarkers(wbm, ident.1 = 'MK-1_14',
 gran.vs.mk1 <- gran.vs.mk1[gran.vs.mk1$p_val < 0.05,]
 gran.vs.mk1 <- gran.vs.mk1[order(gran.vs.mk1$avg_log2FC, decreasing = T),]
 
-head(gran.vs.mk1)
+# head(gran.vs.mk1)
 
 for (i in rownames(gran.vs.mk1)[1:6]){
   print(VlnPlot(wbm, features = i, group.by = 'mk.fine.labels') + 
           ggtitle(paste0('MK-1  ',i)))
 }
 
-tail(gran.vs.mk1)
+# tail(gran.vs.mk1)
 
 for (i in rownames(tail(mk1.markers))){
   print(VlnPlot(wbm, features = i, group.by = 'mk.fine.labels') +
           ggtitle(paste0('Gran 0 and 1 Marker ',i)))
 }
+```
+
+# 11 SCENIC analysis
+
+# 12 CD41 CITE-seq
+
+CD41 (Itga2b) data was collected during the sequencing process. The enriched samples, were enriched for CD41, so we should see that.
+
+The cite-seq analysis was performed in HTO.Rmd
+
+
+```{r}
+cite.seq <- read.table('./data/htos.for.jun.txt', sep = '\t')
+
+cite.seq <- as.data.frame(t(cite.seq))
+
+summary(as.numeric(cite.seq$CD41))
+
+c.o.i <- colnames(cite.seq)[-7]
+
+for (i in 1:length(c.o.i)){
+        # print(c.o.i[i])
+        cite.seq[,i +7 ] <- NA
+        cite.seq[,i + 7] <- log10(as.numeric(cite.seq[,i]))
+}
+
+colnames(cite.seq)[8:13] <- paste0(colnames(cite.seq)[1:6],'.log')
+
+ggplot(cite.seq, aes(x = CD41.log)) + geom_density() + theme_bw() +
+        geom_vline(xintercept = c(1.5,2,2.5), colour = 'red', linetype = 2)
+```
+
+Looking at different cutoffs to label "high CD41". Originally hoping it would be a bimodal distribution, but since it is unimodal need to figure how to ID "high" CD41 cells.
+
+Going to go with 10**1.5 for now
+
+```{r}
+cite.seq$cd41.high <- ifelse(cite.seq$CD41.log > 1.5, T, F)
+
+summary(cite.seq$cd41.high)
+```
+
+## Merging with Seurat Object
+
+```{r}
+summary(colnames(wbm) %in% paste0(rownames(cite.seq),'-1'))
+
+wbm@meta.data[!(colnames(wbm) %in% paste0(rownames(cite.seq),'-1')),]
+```
+
+Oddly enough there is one row in the Seurat data that doesn't have cite-seq information...a bit odd
+
+## 12a Quantification of CD41 "High"
+
+### CD41 in UMAP
+
+```{r}
+rownames(cite.seq) <- paste0(rownames(cite.seq),'-1')
+
+cite.seq <- cite.seq[colnames(wbm),]
+
+wbm@meta.data$cd41.log <- cite.seq$CD41.log
+
+wbm@meta.data$cd41.high <- cite.seq$cd41.high
+
+FeaturePlot(wbm, features = 'cd41.log')
+
+FeaturePlot(wbm, features = 'cd41.high')
+```
+
+### BoxPlots by Cluster
+
+```{r}
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = cd41.log)) + 
+  geom_boxplot() + 
+  theme_bw() +
+  geom_hline(yintercept = 1.5, linetype = 2, colour = 'black') +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(wbm@meta.data, aes(x = figure.labels3, y = cd41.log, 
+                          color = Condition3)) + 
+  geom_boxplot() + 
+  geom_hline(yintercept = 1.5, linetype = 2, colour = 'black') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+```
+
+### Heatmap by Cluster
+
+```{r}
+tmp <- as.data.frame(table(wbm$cd41.high, wbm$figure.labels3))
+tmp$Var1 <- ifelse(tmp$Var1 == T, 'High','Low')
+tmp$var1.sum <- NA
+
+for (i in unique(tmp$Var1)){
+  tmp[tmp$Var1 == i,]$var1.sum <- sum(tmp[tmp$Var1 ==i,]$Freq)
+}
+
+tmp$var2.sum <- NA
+
+for (i in unique(tmp$Var2)){
+  tmp[tmp$Var2 == i,]$var2.sum <- sum(tmp[tmp$Var2 ==i,]$Freq)
+}
+
+tmp$var1.perc <- tmp$Freq / tmp$var1.sum
+
+tmp$var2.perc <- tmp$Freq / tmp$var2.sum
+
+ggplot(tmp, aes(x = Var1, y = Var2, fill = var1.perc)) +
+  geom_tile() + geom_text(aes(label = Freq)) +
+  xlab('CD41 Level') + ylab('CellType') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
+
+ggplot(tmp, aes(x = Var1, y = Var2, fill = var2.perc)) +
+  geom_tile() + geom_text(aes(label = Freq)) +
+  xlab('CD41 Level') + ylab('CellType') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = 0.5)
+```
+
+This is what we would expect. MK-1, MK-2 and MkP are the celltypes with the highest proportion of cells that are CD41 high. We see that in the boxplots and heatmap.
+
+### BoxPLots by Sample
+
+```{r}
+
+ggplot(wbm@meta.data, aes(y = Condition3, x = cd41.log)) + 
+  geom_boxplot() + 
+  geom_vline(xintercept = 1.5, linetype = 2, colour = 'red') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+```{r}
+tmp <- as.data.frame(table(wbm$cd41.high, wbm$Condition3))
+tmp$Var1 <- ifelse(tmp$Var1 == T, 'High','Low')
+tmp$var1.sum <- NA
+
+for (i in unique(tmp$Var1)){
+  tmp[tmp$Var1 == i,]$var1.sum <- sum(tmp[tmp$Var1 ==i,]$Freq)
+}
+
+tmp$var2.sum <- NA
+
+for (i in unique(tmp$Var2)){
+  tmp[tmp$Var2 == i,]$var2.sum <- sum(tmp[tmp$Var2 ==i,]$Freq)
+}
+
+tmp$var1.perc <- tmp$Freq / tmp$var1.sum
+
+tmp$var2.perc <- tmp$Freq / tmp$var2.sum
+
+ggplot(tmp, aes(x = Var1, y = Var2, fill = var1.perc)) +
+  geom_tile() + geom_text(aes(label = Freq)) +
+  xlab('CD41 Level') + ylab('Sample') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
+
+ggplot(tmp, aes(x = Var1, y = Var2, fill = var2.perc)) +
+  geom_tile() + geom_text(aes(label = Freq)) +
+  xlab('CD41 Level') + ylab('Sample') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = 0.5)
+
+ggplot(tmp, aes(x = Var1, y = Var2, fill = var2.perc)) +
+  geom_tile() + geom_text(aes(label = round(var2.perc,2))) +
+  xlab('CD41 Level') + ylab('Sample') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = 0.5)
+```
+
+Higher percentage of high CD41 levels in the enr. samples.
+
+
+## 12b Plots between Itga2b and CD41
+
+```{r}
+cnts <- wbm@assays$RNA@scale.data
+
+wbm$itga2b.levels <- cnts['Itga2b',]
+
+wbm$cd41 <- cite.seq$CD41
+
+wm <- wbm@meta.data
+
+wm <- wm[!is.na(wm$cd41.log),]
+
+itga2b.vs.cd41 <- lm(itga2b.levels ~ cd41, data = wm)
+
+```
+
+### Using all Cells
+
+```{r}
+lm(cd41 ~ itga2b.levels, data = wm)
+
+wm$cd41 <- as.numeric(wm$cd41)
+
+cr <- cor(wm$itga2b.levels, wm$cd41)
+
+ggplot(wm, aes(x = itga2b.levels, y = cd41)) + geom_point() +
+  geom_smooth()
+
+ggplot(wm, aes(x = itga2b.levels, y = cd41.log)) + geom_point() +
+  geom_smooth()
+```
+
+### Using cells expressing Itga2b
+
+```{r}
+wm2 <- wm[wm$itga2b.levels != min(wm$itga2b.levels),]
+
+lm(cd41 ~ itga2b.levels, data = wm2)
+
+cor(wm2$cd41, wm2$itga2b.levels)
+
+cor(wm2$cd41.log, wm2$itga2b.levels)
+
+ggplot(wm2, aes(x = itga2b.levels, y = cd41)) + geom_point() +
+  geom_smooth()
+
+ggplot(wm2, aes(x = itga2b.levels, y = cd41.log)) + geom_point() +
+  geom_smooth()
+```
+
+## 12c Cross Tab w/ binary Itga2b
+
+```{r}
+ggplot(wbm@meta.data, aes(x = itga2b.levels)) + geom_density()
+ggplot(wbm@meta.data, aes(x = log(itga2b.levels))) + geom_density()
+
+p <- as.data.frame(wbm@assays$RNA@counts['Itga2b',])
+colnames(p) <- 'counts'
+ggplot(p, aes(x = log(counts))) + geom_density() +
+  geom_vline(xintercept = .4, colour = 'red', linetype = 'dashed')
+
+wbm$itga2b.high <- ifelse(log(wbm$itga2b.levels) > .4,T, F)
+wbm$itga2b.high <- ifelse(is.na(wbm$itga2b.high), F,T)
+summary(wbm$itga2b.high)
+
+ggplot(wbm@meta.data, aes(x = itga2b.high, y = itga2b.levels)) + 
+  geom_boxplot()
+
+# ggplot(wbm@meta.data, aes(color = itga2b.high, y = itga2b.levels)) + 
+#   geom_density()
+
+```
+
+Setting the cutoff for itga2b high at .4 for the log(counts of Itga2b)
+
+### Cluster vs Status
+
+```{r}
+table(wbm$itga2b.high, wbm$cd41.high)
+
+wbm$itga2b.cd41.status <- ifelse(wbm$itga2b.high == T & wbm$cd41.high == T, 'Both',
+                                 ifelse(wbm$itga2b.high == T, 'Itga2b only',
+                                        ifelse(wbm$cd41.high == T, 'CD41 only',
+                                               'Neither')))
+
+DimPlot(wbm, group.by = 'itga2b.cd41.status', cols = c('black', 'red','blue',
+                                                       'lightgrey'))
+
+table(wbm$figure.labels3, wbm$itga2b.cd41.status)
+```
+
+```{r}
+tmp <- as.data.frame(table(wbm$figure.labels3, wbm$itga2b.cd41.status))
+
+tmp$Var1.sum <- NA
+for (i in unique(tmp$Var1)){
+  tmp[tmp$Var1 ==i,]$Var1.sum <- sum(tmp[tmp$Var1 == i,]$Freq)
+}
+
+tmp$Var2.sum <- NA
+for (i in unique(tmp$Var2)){
+  tmp[tmp$Var2 ==i,]$Var2.sum <- sum(tmp[tmp$Var2 == i,]$Freq)
+}
+tmp$var1.perc <- tmp$Freq / tmp$Var1.sum
+tmp$var2.perc <- tmp$Freq / tmp$Var2.sum
+
+ggplot(tmp, aes(x = Var2, y = Var1, fill = var1.perc, label = Freq)) +
+  geom_tile() + theme_bw() +
+  geom_text() +
+  scale_fill_gradient2(low = 'blue', mid = 'white' , high = 'red', 
+                       midpoint = 0.5)
+
+ggplot(tmp, aes(x = Var2, y = Var1, fill = var2.perc, label = Freq)) +
+  geom_tile() + theme_bw() +
+  geom_text() +
+  scale_fill_gradient2(low = 'blue', mid = 'white' , high = 'red', 
+                       midpoint = 0.5)
+```
+
+### Sample vs Status
+
+```{r}
+DimPlot(wbm, split.by = 'Condition3', ncol = 2,
+        group.by = 'itga2b.cd41.status', cols = c('black', 'red','blue',
+                                                       'lightgrey')) +
+  theme_bw()
+
+table(wbm$Condition3, wbm$itga2b.cd41.status)
+```
+
+```{r}
+tmp <- as.data.frame(table(wbm$Condition3, wbm$itga2b.cd41.status))
+
+tmp$Var1.sum <- NA
+for (i in unique(tmp$Var1)){
+  tmp[tmp$Var1 ==i,]$Var1.sum <- sum(tmp[tmp$Var1 == i,]$Freq)
+}
+
+tmp$Var2.sum <- NA
+for (i in unique(tmp$Var2)){
+  tmp[tmp$Var2 ==i,]$Var2.sum <- sum(tmp[tmp$Var2 == i,]$Freq)
+}
+tmp$var1.perc <- tmp$Freq / tmp$Var1.sum
+tmp$var2.perc <- tmp$Freq / tmp$Var2.sum
+
+ggplot(tmp, aes(x = Var2, y = Var1, fill = var1.perc, label = Freq)) +
+  geom_tile() + theme_bw() +
+  geom_text() +
+  scale_fill_gradient2(low = 'blue', mid = 'white' , high = 'red', 
+                       midpoint = 0.5)
+
+ggplot(tmp, aes(x = Var2, y = Var1, fill = var2.perc, label = Freq)) +
+  geom_tile() + theme_bw() +
+  geom_text() +
+  scale_fill_gradient2(low = 'blue', mid = 'white' , high = 'red', 
+                       midpoint = 0.5)
+
+mid <- mean(tmp$var1.perc)
+
+ggplot(tmp, aes(x = Var2, y = Var1, fill = var1.perc, label = round(var1.perc,2))) +
+  geom_tile() + theme_bw() +
+  geom_text() +
+  scale_fill_gradient2(low = 'blue', mid = 'white' , high = 'red',
+                       midpoint = mid)
+
+mid <- mean(tmp$var2.perc)
+
+ggplot(tmp, aes(x = Var2, y = Var1, fill = var2.perc, label = round(var2.perc,2))) +
+  geom_tile() + theme_bw() +
+  geom_text() +
+  scale_fill_gradient2(low = 'blue', mid = 'white' , high = 'red',
+                       midpoint = mid)
 ```

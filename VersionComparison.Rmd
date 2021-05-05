@@ -1,0 +1,887 @@
+---
+title: "VersionComparison"
+author: "D. Ford Hannum Jr."
+date: "4/5/2021"
+output: 
+        html_document:
+                toc: true
+                toc_depth: 3
+                code_folding: hide
+                number_sections: false
+                theme: united
+                highlight: tango
+---
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(MAST)
+library(SingleR)
+library(dplyr)
+library(tidyr)
+library(limma)
+library(scRNAseq)
+library(ggpubr)
+library(xlsx)
+library(ComplexHeatmap)
+```
+
+# LOADING DATA
+
+## Version 1
+
+```{r}
+wbm <- readRDS('./data/v3/mpl.migr1.121420-2.rds')
+# table(wbm$Condition2)
+
+wbm$figure.labels <- ifelse(wbm$v7.labels %in% c('MEP/MCP','MEP/ERP'),
+                            ifelse(wbm$v7.labels == 'MEP/MCP', 'MkP','MEP'),
+                            as.character(wbm$v7.labels))
+
+wbm$figure.labels <- ifelse(wbm$figure.labels == 'Tcell', 'T-cell',
+                            ifelse(wbm$figure.labels == 'Bcell','B-cell',
+                                   ifelse(wbm$figure.labels == 'Bcell-Prog',
+                                          'B-cell Prog.', wbm$figure.labels)))
+wbm$UMAP1 <- wbm@reductions$umap@cell.embeddings[,1]
+wbm$UMAP2 <- wbm@reductions$umap@cell.embeddings[,2]
+
+wbm$figure.labels2 <- ifelse(wbm$figure.labels != 'MK',
+                             as.character(wbm$figure.labels),
+                            ifelse(wbm$UMAP1 < 0, 'MK-1','MK-2'))
+
+wbm$figure.labels2 <- ifelse(wbm$figure.labels != 'Mono/Macro', 
+                         as.character(wbm$figure.labels2),
+                         ifelse(wbm$UMAP1 < -5, 'Mono/Macro-1','Mono/Macro-2'))
+
+wbm$figure.labels <- factor(wbm$figure.labels,
+                            levels = levels(as.factor(wbm$figure.labels))[c(5,3,1,2,10,9,4,6,8,7)])
+
+Idents(wbm) <- wbm$figure.labels
+
+# table(Idents(wbm))
+
+mk1.cells <- rownames(wbm@meta.data[wbm$figure.labels == 'MK-1',])
+mep1.cells <- rownames(wbm@meta.data[wbm$figure.labels == 'MkP',])
+
+wbm$figure.labels3 <- ifelse(wbm$figure.labels2 %in% c('Mono/Macro-1','Mono/Macro-2'),
+                             'Mono/Macro', as.character(wbm$figure.labels2))
+color_pal <- c("#0072B2", "#CC79A7", "#009E73",'black',"#999999",
+               "#E69F00", "#56B4E9","#D55E00", 'limegreen', 'violet')
+color_pal2 <- c(color_pal, 'red')
+
+wbm$Condition3 <- ifelse(wbm$Condition2 == 'Migr1', 'MigR1',
+                         ifelse(wbm$Condition2 == 'enrMigr1', 'CD41+ enr. MigR1',
+                                ifelse(wbm$Condition2 == 'Mpl', 'MPLW515L', 'CD41+ enr. MPLW515L')))
+
+wbm$Condition3 <- factor(wbm$Condition3,
+                         levels = levels(as.factor(wbm$Condition3))[c(3,4,1,2)])
+
+wbm$Experiment <- ifelse(wbm$Condition2 %in% c('enrMigr1','Migr1'), 'MigR1','MPL')
+```
+
+## Version 2
+
+```{r}
+int <- readRDS('./data/v4/cca.integrated.rds')
+DimPlot(int)
+int$cross.label <- factor(int$seurat_clusters,
+                        labels = c('Gran','Gran','Gran','B-cell','Gran',
+                                   'Gran','Gran','MkP','Mono/Macro','Gran',
+                                   'CMP', 'B-cell','Gran','Gran','Mono/Macro',
+                                   'Erythroid','B-cell','MEP','T-cell','MkP',
+                                   'Gran','B-cell','B-cell','Mono/Macro','B-cell Prog.',
+                                   'MK-2'))
+
+# Keeping clusters separate
+int$cross.label.fine <- factor(int$seurat_clusters,
+                        labels = c('G1','G2','G3','B1','G4',
+                                   'G5','G6','MkP1','MM1','G7',
+                                   'CMP', 'B2','G8','G9','MM2',
+                                   'E','B3','MEP','T','MkP2',
+                                   'G10','B4','B5','MM3','BP',
+                                   'MK'))
+
+int$cross.label.fine2 <- factor(int$cross.label.fine,
+                                levels = c(paste0('G',1:10), 'CMP',
+                                           paste0('MM',1:3), paste0('B',1:5),
+                                           'T','BP','E','MEP','MkP1','MkP2',
+                                           'MK'))
+
+DimPlot(int, group.by = 'cross.label.fine', repel = T, label = T) +
+        ggtitle('With Fine Labels from Cross-Tabulation')
+```
+
+# Cross-Tabulation
+
+## V1 to V2 (all clusters)
+
+```{r}
+df <- as.data.frame(table(int$figure.labels3, int$seurat_clusters))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  # print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  # print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# df
+
+order_ <- c('MK-1','Granulocyte','B-cell','MkP','Mono/Macro','CMP','Erythroid',
+            'MEP', 'T-cell','B-cell Prog.','MK-2')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+### Conclusions
+
+* For the most part we see a general 1-to-1 correlation.
+* We lose MK-1 to multiple granulocyte clusters
+* CMPs expand with more granulocytes. The "line" distinguishing CMPs and granulocytes seems a bit arbitrary so not surprising that this shifts
+* MkP cluster was very distinct in V1, and more dispersed in V2. Particularly we see it having an odd split with some T-cells, which we wouldn't expect these cells to be too similar. Perhaps this is due to the Mast cell progenitors that may be in the MkP cluster.
+
+
+## V1 to V2 (cross labels)
+
+Using the labels giving by the top hit in the cross-tabulation in the previous section.
+
+```{r}
+df <- as.data.frame(table(int$figure.labels3, int$cross.label))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  # print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  # print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+# df
+
+order_ <- c('MK-1','Granulocyte','B-cell','MkP','Mono/Macro','CMP','Erythroid',
+            'MEP', 'T-cell','B-cell Prog.','MK-2')
+
+df$Var1 <- factor(df$Var1, levels = order_)
+
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+
+ggplot(df, aes(x = Var1, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + coord_flip() +
+  geom_text(size = 4) + xlab('Original Clusters') + ylab ('CCA Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+### Conclusions
+
+* Not a whole lot different between the previous cross-tabulation
+* Other than MK-1 we don't see many strong combinations (as seen in the first image)
+
+## By Experiment
+
+```{r}
+df2 <- as.data.frame(table(wbm$Condition2, wbm$figure.labels3))
+df2$var1.total <- NA
+
+for (i in unique(df2$Var1)){
+  # print(i)
+  df2[df2$Var1 == i,]$var1.total <- sum(df2[df2$Var1 == i,]$Freq)
+}
+
+df2$var2.total <- NA
+for (i in unique(df2$Var2)){
+  # print(i)
+  df2[df2$Var2 ==i,]$var2.total <- sum(df2[df2$Var2 ==i,]$Freq)
+}
+
+df2$perc.var1 <- df2$Freq / df2$var1.total
+df2$perc.var2 <- df2$Freq / df2$var2.total
+
+df <- as.data.frame(table(int$Condition2, int$int.label))
+df$var1.total <- NA
+
+for (i in unique(df$Var1)){
+  # print(i)
+  df[df$Var1 == i,]$var1.total <- sum(df[df$Var1 == i,]$Freq)
+}
+
+df$var2.total <- NA
+for (i in unique(df$Var2)){
+  # print(i)
+  df[df$Var2 ==i,]$var2.total <- sum(df[df$Var2 ==i,]$Freq)
+}
+
+df$perc.var1 <- df$Freq / df$var1.total
+df$perc.var2 <- df$Freq / df$var2.total
+
+df$var1.plus <- paste0('2_',df$Var1)
+df2$var1.plus <- paste0('1_',df2$Var1)
+
+df2$Var2 <- ifelse(df2$Var2 == 'Granulocyte', 'Gran',as.character(df2$Var2))
+
+df3 <- rbind(df,df2)
+
+
+
+ggplot(df3, aes(x = var1.plus, y = Var2, fill = perc.var1, label = Freq)) +
+  geom_tile() + theme_bw() +
+  geom_text(size = 4) + xlab('Experiment') + ylab ('Original Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .15)
+
+ggplot(df3, aes(x = var1.plus, y = Var2, fill = perc.var2, label = Freq)) +
+  geom_tile() + theme_bw() + 
+  geom_text(size = 4) + xlab('Experiment') + ylab ('Original Clusters') +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', midpoint = .5)
+```
+
+### Conclusions
+
+Very similar between the two different versions.
+
+# Projections
+
+```{r}
+int$orig.labels <- wbm$figure.labels3
+wbm$int.labels <- int$cross.label
+
+DimPlot(wbm, group.by = 'figure.labels3', repel = T, label = T) +
+        ggtitle('V1 Projection/V1 Clusters')
+
+DimPlot(wbm, group.by = 'int.labels', repel = T, label = T) +
+        ggtitle('V1 Projection/V2 Clusters')
+
+DimPlot(int, group.by = 'cross.label', repel = T, label = T) +
+        ggtitle('V2 Projection/V2 Clusters')
+
+DimPlot(int, group.by = 'orig.labels', repel = T, label = T) +
+        ggtitle('V2 Projection/V1 Clusters')
+```
+
+
+# Data Comparison with V2
+
+Using HCL and HCA to confirm the V2 labels that we gained from the cross tabulation.
+
+## HCL
+
+```{r}
+hcl <- read.table('../CZI_Ovary/data/HCL_data/HCL_centroids.txt', sep = '\t')
+
+hcl.genes <- rownames(hcl)
+
+comp.list <- read.table('../mouse.human.orthologs.unique.tsv', sep = '\t', header = T)
+# head(comp.list)
+dim(comp.list[comp.list$Human.gene.name %in% hcl.genes,])
+
+h.list <- comp.list[comp.list$Human.gene.name %in% hcl.genes,]
+m.list <- comp.list[comp.list$Gene.name %in% rownames(wbm),]
+# dim(m.list)
+# dim(h.list)
+
+# length(intersect(rownames(m.list), rownames(h.list)))
+
+int.list <- m.list[rownames(m.list)%in% rownames(h.list),]
+
+# dim(int.list)
+
+int.list <- int.list[,c('Human.gene.name','Gene.name')]
+
+int.list <- distinct(int.list)
+
+# dim(int.list)
+
+Idents(int) <- int$cross.label.fine2
+av <- AverageExpression(int)
+av <- av$RNA
+
+int.list2 <- int.list[!duplicated(int.list$Human.gene.name),]
+# dim(int.list2)
+int.list2 <- int.list2[!duplicated(int.list2$Gene.name),]
+# dim(int.list2)
+
+av <- av[rownames(av) %in% int.list2$Gene.name,]
+hcl <- hcl[rownames(hcl) %in% int.list2$Human.gene.name,]
+
+av2 <- av
+av <- av2
+
+rownames(int.list2) <- int.list2$Gene.name
+
+av <- merge(av,int.list2, by = 0)
+rownames(av) <- av$Human.gene.name
+end.point <- dim(av)[2] -2
+av <- av[,2:end.point]
+
+mrg <- merge(hcl, av, by = 0)
+# dim(mrg)
+
+rownames(mrg) <- mrg$Row.names
+mrg <- mrg[,-1]
+
+# comp.list
+# summary(rownames(hcl) %in% toupper(rownames(wbm)))
+
+int.genes <- rownames(hcl)[rownames(hcl) %in% toupper(rownames(int))]
+
+# summary(int.genes %in% toupper(VariableFeatures(wbm)))
+
+# summary(toupper(VariableFeatures(wbm)) %in% rownames(hcl))
+
+hv.overlap.genes <- unique(comp.list[comp.list$Gene.name %in%
+                                       VariableFeatures(int),]$Human.gene.name)
+```
+
+### All Genes
+
+#### Top 3 Hits
+
+```{r}
+# dim(mrg)
+```
+
+```{r}
+temp.cor <- cor(mrg, method = 'spearman')
+# tc <- temp.cor
+# temp.cor <- tc
+key.columns <- levels(Idents(int))
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- reshape2::melt(temp.cor)
+
+colnames(temp.cor) <- c('Cluster2','Cluster1','Correlation')
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:3,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+colnames(top3.hits) <- c('Our Clusters','HCL Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`HCL Cluster`,]
+
+temp.cor$`HCL Clusters` <- factor(temp.cor$Cluster1, levels = unique(top3.hits$`HCL Cluster`))
+###
+temp.cor$cor.label <- ''
+
+# summary(is.na(temp.cor$Correlation))
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$hcl.clusters2 <- tstrsplit(temp.cor$`HCL Clusters`,'\\.', keep = 1)[[1]]
+
+midpoint.correlation <- mean(temp.cor$Correlation)
+
+ggplot(temp.cor, aes(x = `HCL Clusters`, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = midpoint.correlation) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCL Comparison using all genes')
+
+temp.cor1 <- temp.cor[temp.cor$Cluster2 %in% key.columns[1:11],]
+
+ggplot(temp.cor1, aes(x = `HCL Clusters`, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = midpoint.correlation) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCL Comparison using all genes')
+
+temp.cor2 <- temp.cor[temp.cor$Cluster2 %in% key.columns[12:21],]
+
+ggplot(temp.cor2, aes(x = `HCL Clusters`, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = midpoint.correlation) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCL Comparison using all genes')
+
+temp.cor3 <- temp.cor[temp.cor$Cluster2 %in% key.columns[22:length(key.columns)],]
+
+ggplot(temp.cor3, aes(x = `HCL Clusters`, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = midpoint.correlation) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCL Comparison using all genes')
+```
+
+##### Conclusions
+
+* Not very clear for many cell types: MkP, MK, E
+* Verifies naming of G, MM, B, & T populations
+* Confirms what we previously thought that BP is more likely Dendritic
+
+Not going further with all genes, because I believe highly variable genes is more worthwhile
+
+### Highly Variable Genes
+
+#### Top 3 Hits
+
+```{r}
+mrg2 <- mrg[rownames(mrg) %in% hv.overlap.genes,]
+# dim(mrg2)
+temp.cor <- cor(mrg2, method = 'spearman')
+# tc <- temp.cor
+# temp.cor <- tc
+key.columns <- levels(Idents(int))
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- reshape2::melt(temp.cor)
+
+colnames(temp.cor) <- c('Cluster2','Cluster1','Correlation')
+
+# Only keeping HCL centroids that are a top3 hit for our centroids
+
+corr.out <- split(temp.cor, f = temp.cor$Cluster2)
+
+top3.hits <- as.data.frame(matrix(ncol = 3))
+
+colnames(top3.hits) <- colnames(corr.out[[1]])
+
+for (i in 1:length(corr.out)){
+  temp <- corr.out[[i]][order(corr.out[[i]]$Correlation, decreasing = T),][1:3,]
+  top3.hits <- rbind(top3.hits,temp)
+}
+
+colnames(top3.hits) <- c('Our Clusters','HCL Cluster','Correlation')
+
+rownames(top3.hits) <- 1:length(rownames(top3.hits))
+
+temp.cor <- temp.cor[temp.cor$Cluster1 %in% top3.hits$`HCL Cluster`,]
+
+temp.cor$`HCL Clusters` <- factor(temp.cor$Cluster1, levels = unique(top3.hits$`HCL Cluster`))
+###
+temp.cor$cor.label <- ''
+
+# summary(is.na(temp.cor$Correlation))
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+temp.cor$hcl.clusters2 <- tstrsplit(temp.cor$`HCL Clusters`,'\\.', keep = 1)[[1]]
+
+midpoint.correlation <- mean(temp.cor$Correlation)
+
+ggplot(temp.cor, aes(x = `HCL Clusters`, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = midpoint.correlation) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCL Comparison using all genes')
+
+temp.cor1 <- temp.cor[temp.cor$Cluster2 %in% key.columns[1:11],]
+
+ggplot(temp.cor1, aes(x = `HCL Clusters`, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = midpoint.correlation) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCL Comparison using all genes')
+
+temp.cor2 <- temp.cor[temp.cor$Cluster2 %in% key.columns[12:21],]
+
+ggplot(temp.cor2, aes(x = `HCL Clusters`, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = midpoint.correlation) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCL Comparison using all genes')
+
+temp.cor3 <- temp.cor[temp.cor$Cluster2 %in% key.columns[22:length(key.columns)],]
+
+ggplot(temp.cor3, aes(x = `HCL Clusters`, y = Cluster2, fill = Correlation)) +
+  geom_tile() + coord_flip() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = midpoint.correlation) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  xlab('HCL Centroids') + ylab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 3) +
+  ggtitle('HCL Comparison using all genes')
+```
+
+##### Conclusions
+
+* Overall very similar to all genes but a bit more refined in the heatmap
+* Previously in V1 we had gotten a top hit for MK Cord Blood for MK-2 (now MK), which was really useful and now it is gone. Perhaps because of the loss of ~40% of MK-2 to other clusters (G and MM)
+
+#### Text Matching Comparisons
+
+##### Megak
+
+```{r}
+hcl.exp <- colnames(hcl)
+
+text.match <- 'Megak'
+
+exps <- hcl.exp[grepl(text.match, hcl.exp, ignore.case = T)]
+key.columns <- levels(int$cross.label.fine2)
+
+columns.to.keep <- c(key.columns, exps)
+
+
+new.mrg <- mrg2[,colnames(mrg2) %in% columns.to.keep]
+
+temp.cor <- cor(new.mrg, method = 'spearman')
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- reshape2::melt(temp.cor)
+
+colnames(temp.cor) <- c('Cluster1','Cluster2','Correlation')
+
+temp.cor$cor.label <- ''
+
+# summary(is.na(temp.cor$Correlation))
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+# temp.cor$hcl.clusters2 <- tstrsplit(temp.cor$`HCL Clusters`,'\\.', keep = 1)[[1]]
+
+cor.midpoint <- mean(temp.cor$Correlation)
+
+ggplot(temp.cor, aes(x = Cluster1, y = Cluster2, fill = Correlation)) +
+  geom_tile() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = cor.midpoint) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  ylab(paste0('"',text.match,'"',' HCL Centroids')) + xlab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 2) +
+  ggtitle('HCL Comparison using HV genes')
+```
+
+###### Conclusion
+
+* Our MK cluster at least gets a few hits here which is somewhat promising.
+
+##### Eryth
+
+```{r}
+hcl.exp <- colnames(hcl)
+
+text.match <- 'Eryth'
+
+exps <- hcl.exp[grepl(text.match, hcl.exp, ignore.case = T)]
+key.columns <- levels(int$cross.label.fine2)
+
+columns.to.keep <- c(key.columns, exps)
+
+
+new.mrg <- mrg2[,colnames(mrg2) %in% columns.to.keep]
+
+temp.cor <- cor(new.mrg, method = 'spearman')
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- reshape2::melt(temp.cor)
+
+colnames(temp.cor) <- c('Cluster1','Cluster2','Correlation')
+
+temp.cor$cor.label <- ''
+
+# summary(is.na(temp.cor$Correlation))
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+# temp.cor$hcl.clusters2 <- tstrsplit(temp.cor$`HCL Clusters`,'\\.', keep = 1)[[1]]
+
+cor.midpoint <- mean(temp.cor$Correlation)
+
+ggplot(temp.cor, aes(x = Cluster1, y = Cluster2, fill = Correlation)) +
+  geom_tile() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = cor.midpoint) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  ylab(paste0('"',text.match,'"',' HCL Centroids')) + xlab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 2) +
+  ggtitle('HCL Comparison using HV genes')
+```
+
+##### Prog
+
+```{r}
+hcl.exp <- colnames(hcl)
+
+text.match <- 'prog'
+
+exps <- hcl.exp[grepl(text.match, hcl.exp, ignore.case = T)]
+key.columns <- levels(int$cross.label.fine2)
+
+columns.to.keep <- c(key.columns, exps)
+
+
+new.mrg <- mrg2[,colnames(mrg2) %in% columns.to.keep]
+
+temp.cor <- cor(new.mrg, method = 'spearman')
+
+# Subsetting the correlation matrix to just the upper left quadrant
+temp.cor <- temp.cor[rownames(temp.cor) %in% key.columns, !(colnames(temp.cor) %in% key.columns)]
+
+temp.cor <- reshape2::melt(temp.cor)
+
+colnames(temp.cor) <- c('Cluster1','Cluster2','Correlation')
+
+temp.cor$cor.label <- ''
+
+# summary(is.na(temp.cor$Correlation))
+
+for (i in 1:dim(temp.cor)[1]){
+  temp.cluster <- temp.cor$Cluster2[i]
+  if (temp.cor$Correlation[i] == max(temp.cor[temp.cor$Cluster2 == temp.cluster,]$Correlation)){
+    temp.cor$cor.label[i] <- round(temp.cor$Correlation[i],2)
+  }
+}
+
+# temp.cor$hcl.clusters2 <- tstrsplit(temp.cor$`HCL Clusters`,'\\.', keep = 1)[[1]]
+
+cor.midpoint <- mean(temp.cor$Correlation)
+
+ggplot(temp.cor, aes(x = Cluster1, y = Cluster2, fill = Correlation)) +
+  geom_tile() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = cor.midpoint) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 6)) +
+  ylab(paste0('"',text.match,'"',' HCL Centroids')) + xlab('Our Samples') + 
+  geom_text(aes(label = cor.label), size = 2) +
+  ggtitle('HCL Comparison using HV genes')
+```
+
+
+# V1 vs V2 Centroids
+
+```{r}
+Idents(wbm) <- wbm$figure.labels3
+v1.centroids <- AverageExpression(wbm)$RNA
+
+Idents(int) <- int$cross.label
+v2.centroids <- AverageExpression(int)$RNA
+
+v1.hv.genes <- VariableFeatures(wbm)
+v2.hv.genes <- VariableFeatures(int)
+
+length(intersect(v1.hv.genes, v2.hv.genes))
+
+colnames(v1.centroids) <- paste0("V1_", colnames(v1.centroids))
+colnames(v2.centroids) <- paste0("V2_", colnames(v2.centroids))
+
+# summary(rownames(v1.centroids) == rownames(v2.centroids))
+
+av <- cbind(v1.centroids, v2.centroids)
+```
+
+## All Genes
+
+```{r}
+temp.cor <- cor(av, method = 'spearman')
+
+temp.cor <- temp.cor[grepl('V1', rownames(temp.cor)),
+                     grepl('V2', colnames(temp.cor))]
+
+temp.cor <- reshape2::melt(temp.cor)
+
+cor.mid <- mean(temp.cor$value)
+
+temp.cor$Var1 <- tstrsplit(temp.cor$Var1, '_', keep = 2)[[1]]
+temp.cor$Var2 <- tstrsplit(temp.cor$Var2, '_', keep = 2)[[1]]
+
+ggplot(temp.cor, aes (x = Var1, y = Var2, fill = value)) + 
+        geom_tile() +
+        ggtitle('All Genes') +
+        geom_text(aes(label = round(value,2))) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        ylab('V2') + xlab('V1') +
+        scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red',
+                             midpoint = cor.mid)
+```
+
+## V1 HV Genes
+
+```{r}
+temp.cor <- cor(av[rownames(av) %in% v1.hv.genes,], method = 'spearman')
+
+temp.cor <- temp.cor[grepl('V1', rownames(temp.cor)),
+                     grepl('V2', colnames(temp.cor))]
+
+temp.cor <- reshape2::melt(temp.cor)
+
+cor.mid <- mean(temp.cor$value)
+
+temp.cor$Var1 <- tstrsplit(temp.cor$Var1, '_', keep = 2)[[1]]
+temp.cor$Var2 <- tstrsplit(temp.cor$Var2, '_', keep = 2)[[1]]
+
+ggplot(temp.cor, aes (x = Var1, y = Var2, fill = value)) + 
+        geom_tile() +
+        ggtitle('V1 HV Genes') +
+        geom_text(aes(label = round(value,2))) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        ylab('V2') + xlab('V1') +
+        scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red',
+                             midpoint = cor.mid)
+```
+
+## V2 HV Genes
+
+```{r}
+temp.cor <- cor(av[rownames(av) %in% v2.hv.genes,], method = 'spearman')
+
+temp.cor <- temp.cor[grepl('V1', rownames(temp.cor)),
+                     grepl('V2', colnames(temp.cor))]
+
+temp.cor <- reshape2::melt(temp.cor)
+
+cor.mid <- mean(temp.cor$value)
+
+temp.cor$Var1 <- tstrsplit(temp.cor$Var1, '_', keep = 2)[[1]]
+temp.cor$Var2 <- tstrsplit(temp.cor$Var2, '_', keep = 2)[[1]]
+
+ggplot(temp.cor, aes (x = Var1, y = Var2, fill = value)) + 
+        geom_tile() +
+        ggtitle('V2 HV Genes') +
+        geom_text(aes(label = round(value,2))) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        ylab('V2') + xlab('V1') +
+        scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red',
+                             midpoint = cor.mid)
+```
+
+## Intersect HV Genes
+
+```{r}
+temp.cor <- cor(av[rownames(av) %in% intersect(v1.hv.genes,v2.hv.genes),], method = 'spearman')
+
+temp.cor <- temp.cor[grepl('V1', rownames(temp.cor)),
+                     grepl('V2', colnames(temp.cor))]
+
+temp.cor <- reshape2::melt(temp.cor)
+
+cor.mid <- mean(temp.cor$value)
+
+temp.cor$Var1 <- tstrsplit(temp.cor$Var1, '_', keep = 2)[[1]]
+temp.cor$Var2 <- tstrsplit(temp.cor$Var2, '_', keep = 2)[[1]]
+
+ggplot(temp.cor, aes (x = Var1, y = Var2, fill = value)) + 
+        geom_tile() +
+        ggtitle('Intersect HV Genes') +
+        geom_text(aes(label = round(value,2))) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        ylab('V2') + xlab('V1') +
+        scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red',
+                             midpoint = cor.mid)
+```
+
+## Union HV Genes
+
+```{r}
+temp.cor <- cor(av[rownames(av) %in% union(v1.hv.genes,v2.hv.genes),], 
+                method = 'spearman')
+
+temp.cor <- temp.cor[grepl('V1', rownames(temp.cor)),
+                     grepl('V2', colnames(temp.cor))]
+
+temp.cor <- reshape2::melt(temp.cor)
+
+cor.mid <- mean(temp.cor$value)
+
+temp.cor$Var1 <- tstrsplit(temp.cor$Var1, '_', keep = 2)[[1]]
+temp.cor$Var2 <- tstrsplit(temp.cor$Var2, '_', keep = 2)[[1]]
+
+ggplot(temp.cor, aes (x = Var1, y = Var2, fill = value)) + 
+        geom_tile() +
+        ggtitle('Union HV Genes') +
+        geom_text(aes(label = round(value,2))) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        ylab('V2') + xlab('V1') +
+        scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red',
+                             midpoint = cor.mid)
+```
