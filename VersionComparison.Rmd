@@ -109,7 +109,13 @@ int$cross.label.fine2 <- factor(int$cross.label.fine,
                                            'T','BP','E','MEP','MkP1','MkP2',
                                            'MK'))
 
+int <- RunTSNE(int, dims = 1:30)
+
 DimPlot(int, group.by = 'cross.label.fine', repel = T, label = T) +
+        ggtitle('With Fine Labels from Cross-Tabulation')
+
+DimPlot(int, group.by = 'cross.label.fine', repel = T, label = T,
+        reduction = 'tsne') +
         ggtitle('With Fine Labels from Cross-Tabulation')
 ```
 
@@ -286,6 +292,22 @@ DimPlot(int, group.by = 'cross.label', repel = T, label = T) +
 
 DimPlot(int, group.by = 'orig.labels', repel = T, label = T) +
         ggtitle('V2 Projection/V1 Clusters')
+
+DimPlot(wbm, group.by = 'figure.labels3', repel = T, label = T,
+        reduction = 'tsne') +
+        ggtitle('V1 Projection/V1 Clusters')
+
+DimPlot(wbm, group.by = 'int.labels', repel = T, label = T,
+        reduction = 'tsne') +
+        ggtitle('V1 Projection/V2 Clusters')
+
+DimPlot(int, group.by = 'cross.label', repel = T, label = T,
+        reduction = 'tsne') +
+  ggtitle('V2 Projection/V2 Clusters')
+
+DimPlot(int, group.by = 'orig.labels', repel = T, label = T,
+        reduction = 'tsne') +
+  ggtitle('V2 Projection/V1 Clusters')
 ```
 
 
@@ -785,6 +807,34 @@ ggplot(temp.cor, aes (x = Var1, y = Var2, fill = value)) +
                              midpoint = cor.mid)
 ```
 
+### All Comparisons
+
+
+```{r}
+temp.cor <- cor(av, method = 'spearman')
+
+# temp.cor <- temp.cor[grepl('V1', rownames(temp.cor)),
+#                      grepl('V2', colnames(temp.cor))]
+
+temp.cor <- reshape2::melt(temp.cor)
+
+cor.mid <- mean(temp.cor$value)
+
+# temp.cor$Var1 <- tstrsplit(temp.cor$Var1, '_', keep = 2)[[1]]
+# temp.cor$Var2 <- tstrsplit(temp.cor$Var2, '_', keep = 2)[[1]]
+
+ggplot(temp.cor, aes (x = Var1, y = Var2, fill = value)) + 
+        geom_tile() +
+        ggtitle('All Genes') +
+        # geom_text(aes(label = round(value,2))) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        # ylab('V2') + xlab('V1') +
+        scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red',
+                             midpoint = cor.mid)
+
+```
+
+
 ## V1 HV Genes
 
 ```{r}
@@ -884,4 +934,142 @@ ggplot(temp.cor, aes (x = Var1, y = Var2, fill = value)) +
         ylab('V2') + xlab('V1') +
         scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red',
                              midpoint = cor.mid)
+```
+
+All Comparison
+
+```{r}
+temp.cor <- cor(av[rownames(av) %in% union(v1.hv.genes,v2.hv.genes),], 
+                method = 'spearman')
+
+# temp.cor <- temp.cor[grepl('V1', rownames(temp.cor)),
+#                      grepl('V2', colnames(temp.cor))]
+
+temp.cor <- reshape2::melt(temp.cor)
+
+cor.mid <- mean(temp.cor$value)
+
+# temp.cor$Var1 <- tstrsplit(temp.cor$Var1, '_', keep = 2)[[1]]
+# temp.cor$Var2 <- tstrsplit(temp.cor$Var2, '_', keep = 2)[[1]]
+
+ggplot(temp.cor, aes (x = Var1, y = Var2, fill = value)) + 
+        geom_tile() +
+        ggtitle('Union HV Genes') +
+        # geom_text(aes(label = round(value,2))) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        # ylab('V2') + xlab('V1') +
+        scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red',
+                             midpoint = cor.mid)
+```
+
+# DE Overlap
+
+These DE file were created in separate Rmd: for V1 see v4.WriteUp.v2, for V2 see V2.write.up
+
+```{r}
+v1.deg <- read.xlsx('./data/v4/within.cluster.DEGs.Migr1.vs.Mpl.LARGE.GENERIC.CLUSTERS.xlsx',
+                      sheetName = 'All-Clusters')
+v1.deg <- v1.deg[!is.na(v1.deg$NA.),]
+# v1.deg
+v2.deg <- read.xlsx('./data/Version2/within.cluster.DEGs.Migr1.vs.Mpl.CROSS_TAB.GENERIC.CLUSTERS.xlsx', sheetName = 'All-Clusters')
+```
+
+```{r}
+# dim(v1.deg)
+# dim(v2.deg)
+
+# summary(as.factor(v1.deg$cluster))
+# summary(as.factor(v2.deg$cluster))
+# summary(abs(v1.deg$avg_logFC))
+# summary(abs(v2.deg$avg_log2FC) > 1)
+
+v1.deg$version <- 'V1'
+v2.deg$version <- 'V2'
+c.t.k <- c('cluster','gene','version')
+temp.comb <- rbind(v1.deg[,c.t.k], v2.deg[,c.t.k])
+# table(temp.comb$cluster, temp.comb$version)
+
+temp.comb$cluster2 <- ifelse(temp.comb$cluster == 'Granulocyte', 'Gran',
+                             ifelse(temp.comb$cluster == 'MEP-1','MkP',
+                                    ifelse(temp.comb$cluster == 'MEP-2','MEP',
+                                           ifelse(temp.comb$cluster == 'Mono/Macro-2',
+                                                  'Mono/Macro',temp.comb$cluster))))
+
+table(temp.comb$cluster2, temp.comb$version)
+
+temp.comb$cluster.gene <- paste0(temp.comb$cluster2,'_', temp.comb$gene)
+
+# summary(duplicated(temp.comb$cluster.gene))
+
+temp.comb2 <- temp.comb
+
+dup <- duplicated(temp.comb$cluster.gene)
+for(i in 1:dim(temp.comb)[1]){
+  if(dup[i] == T){
+    new.row <- temp.comb[i,]
+    new.row$version <- 'comb'
+    temp.comb2 <- rbind(temp.comb2, new.row)
+  }
+}
+
+table(temp.comb2$cluster2, temp.comb2$version)
+
+summary(as.factor(temp.comb2$version))
+```
+
+```{r}
+v1.deg$cluster.gene <- paste0(v1.deg$cluster,'_',v1.deg$gene)
+v2.deg$cluster.gene <- paste0(v2.deg$cluster,'_',v2.deg$gene)
+
+# summary(v1.deg$cluster.gene %in% v2.deg$cluster.gene)
+
+# v1.deg[v1.deg$cluster.gene %in% v2.deg$cluster.gene,]
+
+# summary(as.factor(v1.deg$cluster))
+# summary(as.factor(v2.deg$cluster))
+
+# v1.deg$cluster2 <- ifelse(v1.deg$cluster == 'MEP-1', 'MkP', v1.deg$cluster)
+# v1.deg$cluster.gene <- paste0(v1.deg$cluster2,'_',v1.deg$gene)
+
+# summary(v1.deg$cluster.gene %in% v2.deg$cluster.gene)
+```
+
+## UpSetR Plots
+
+```{r}
+library(UpSetR)
+```
+
+
+### Erythroid
+
+```{r}
+list1 <- v1.deg[v1.deg$cluster2 == 'Erythroid',]$gene
+list2 <- v2.deg[v2.deg$cluster == 'Erythroid',]$gene
+
+inputList <- list(V1 = list1, V2 = list2)
+
+upset(fromList(inputList),  order.by = 'freq')
+```
+
+### MkP/MEP-1
+
+```{r}
+list1 <- v1.deg[v1.deg$cluster2 == 'MkP',]$gene
+list2 <- v2.deg[v2.deg$cluster == 'MkP',]$gene
+
+inputList <- list(V1 = list1, V2 = list2)
+
+upset(fromList(inputList),  order.by = 'freq')
+```
+
+### Erythroid
+
+```{r}
+list1 <- v1.deg[v1.deg$cluster2 == 'Mono/Macro-2',]$gene
+list2 <- v2.deg[v2.deg$cluster == 'Mono/Macro',]$gene
+
+inputList <- list(V1 = list1, V2 = list2)
+
+upset(fromList(inputList),  order.by = 'freq')
 ```
