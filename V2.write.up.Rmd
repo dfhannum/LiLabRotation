@@ -77,9 +77,60 @@ DefaultAssay(int) <- 'RNA'
 
 color_pal <- c("#0072B2", "#CC79A7", "#009E73",'black',"#999999",
                "#E69F00", "#56B4E9","#D55E00", 'limegreen', 'violet')
+
+Idents(int) <- int$cross.label.fine2
 ```
 
 Original cluster labels were created from cross-tabulation with named clusters in V1 (see VersionComparison.Rmd).
+
+# Comparison Within Data
+
+```{r}
+av <- AverageExpression(int)$RNA
+```
+
+## All Genes
+
+```{r}
+temp.av <- av[,]
+temp.cor <- cor(temp.av, method = 'spearman')
+
+Heatmap(temp.cor)
+
+temp.cor <- reshape2::melt(temp.cor)
+
+temp.midpoint <- mean(temp.cor$value)
+
+ggplot(temp.cor, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red',
+                       midpoint = temp.midpoint)
+
+DimPlot(int, label = T, repel = T, reduction = 'tsne')
+```
+
+
+## HV Genes
+
+```{r}
+temp.av <- av[VariableFeatures(int, assay = 'integrated'),]
+temp.cor <- cor(temp.av, method = 'spearman')
+
+Heatmap(temp.cor)
+
+temp.cor <- reshape2::melt(temp.cor)
+
+temp.midpoint <- mean(temp.cor$value)
+
+ggplot(temp.cor, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red',
+                       midpoint = temp.midpoint)
+```
+
+Looks like we could combine the granulocytes into 3 sets (1 = 4,8,9, 2 = 6,10,1,7, 3 = 2,3,5); which also works spatially when viewing in the reductions (tsne and UMAP).
 
 # Comparisons to outside datasets
 
@@ -426,6 +477,7 @@ ggplot(temp.cor, aes(x = Cluster1, y = Cluster2, fill = Correlation)) +
 
 ###### Zoomed into Megak Cord Blood
 
+
 ```{r}
 hcl.exp <- colnames(hcl)
 
@@ -436,39 +488,82 @@ key.columns <- levels(int$cross.label.fine2)
 
 columns.to.keep <- c(exps, rev(key.columns))
 
-mrg2 <- mrg[rownames(mrg) %in% hv.overlap.genes,]
+new.mrg <- mrg[rownames(mrg) %in% hv.overlap.genes,columns.to.keep]
+```
 
-new.mrg <- mrg2[,columns.to.keep]
+```{r}
+x <- kmeans(new.mrg, 10)
 
-dim(new.mrg)
+for (i in 1:dim(new.mrg)[2]){
+  temp.mean <- mean(new.mrg[,i])
+  temp.sd <- sd(new.mrg[,i])
+  new.mrg[,i] <- (new.mrg[,i] - temp.mean) / temp.sd
+}
 
-new.mrg[1:5,1:5]
+# new.mrg[1:5,1:5]
 
-d <- dist(new.mrg, method = 'euclidean')
-hc1 <- hclust(d, method = 'complete')
+# Adding labels
+new.mrg$cluster <- x$cluster
+new.mrg$gene <- rownames(new.mrg)
 
-sub_grp <- cutree(hc1, k = 50)
-summary(as.factor(sub_grp))
+# Melting (wide to long)
+melt.mrg <- reshape2::melt(new.mrg, id.vars = c('cluster','gene'))
 
-x <- kmeans(new.mrg, 5)
-summary(as.factor(x$cluster))
+temp.midpoint <- mean(melt.mrg$value)
 
-group3 <- names(x$cluster[x$cluster == 3])
+ggplot(melt.mrg, aes(x = variable, y = gene, fill = value)) +
+  geom_tile() + theme_bw() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = temp.midpoint)
 
-temp.df <- new.mrg[group3,]
+for (i in unique(melt.mrg$cluster)){
+  temp.df <- melt.mrg[melt.mrg$cluster == i,]
+  print(ggplot(temp.df, aes(x = variable, y = gene, fill = value)) +
+          geom_tile() + theme_bw() + ggtitle(paste0('Cluster ',i)) +
+          theme(axis.text.x = element_text(angle = 45, hjust =1 )) +
+          scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = 5))
+  
+}
 
-temp.df2 <- reshape2::melt(as.matrix(temp.df))
+```
 
-temp.df3 <- new.mrg[group3, key.columns]
+K-means after normalizing
 
-temp.df3 <- reshape2::melt(as.matrix(temp.df3))
+```{r}
+new.mrg <- mrg[rownames(mrg) %in% hv.overlap.genes,columns.to.keep]
 
-mid.val <- mean(temp.df3$value)
+for (i in 1:dim(new.mrg)[2]){
+  temp.mean <- mean(new.mrg[,i])
+  temp.sd <- sd(new.mrg[,i])
+  new.mrg[,i] <- (new.mrg[,i] - temp.mean) / temp.sd
+}
 
-ggplot(temp.df3, aes(x = Var2, y = Var1, fill = value)) +
-  geom_tile() +
-  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red',
-                       midpoint = mid.val)
+x <- kmeans(new.mrg, 10)
+
+# Adding labels
+new.mrg$cluster <- x$cluster
+new.mrg$gene <- rownames(new.mrg)
+
+# Melting (wide to long)
+melt.mrg <- reshape2::melt(new.mrg, id.vars = c('cluster','gene'))
+
+temp.midpoint <- mean(melt.mrg$value)
+
+ggplot(melt.mrg, aes(x = variable, y = gene, fill = value)) +
+  geom_tile() + theme_bw() +
+  scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = temp.midpoint)
+
+for (i in unique(melt.mrg$cluster)){
+  temp.df <- melt.mrg[melt.mrg$cluster == i,]
+  print(ggplot(temp.df, aes(x = variable, y = gene, fill = value)) +
+          geom_tile() + theme_bw() + ggtitle(paste0('Cluster ',i)) +
+          theme(axis.text.x = element_text(angle = 45, hjust =1 )) +
+          scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red', 
+                       midpoint = 3))
+}
+
 ```
 
 
@@ -2140,6 +2235,131 @@ ggplot(temp.cor2, aes(x = cluster1.plus.number, y = Var1, fill = value)) +
         text = element_text(size = 8))
 ```
 
+# Marker Genes
+
+## Cross Label Generic (One-vs-all)
+
+```{r}
+# de.genes <- data.frame(p_val = numeric(),
+#                        avg_logFC = numeric(),
+#                        pct.1 = numeric(),
+#                        pct.2 = numeric(),
+#                        p_val_adj = numeric(),
+#                        cluster = character(),
+#                        Condition = character(),
+#                        gene = character())
+#   
+# for (i in unique(int$cross.label)){
+#   print(i)
+# 
+#   x <- FindMarkers(int,
+#                    ident.1 = i,
+#                    group.by = 'cross.label',
+#                    # test.use = 'MAST',
+#                    logfc.threshold = 1,
+#                    base = 2,
+#                    only.pos = T)
+#   x$cluster <- i
+#   x$gene <- rownames(x)
+#   x <- x[x$p_val_adj < 0.05,]
+#   x <- x[order(x$avg_log2FC, decreasing = T),]
+#   de.genes <- rbind(de.genes,x)
+# 
+# }
+# 
+# summary(as.factor(de.genes$cluster))
+# 
+# write.xlsx(x = de.genes,
+#            file = "data/Version2/markers.cross.label.xlsx",
+#            sheetName='All-Clusters', append = T)
+
+# de2 <- read.xlsx('data/Version2/markers.cross.label.xlsx', sheetIndex = 1)
+# 
+# cnt <- 1
+# for (i in unique(de2$cluster)){
+#   # print(head(de2[de2$cluster == i,]))
+#   if (cnt == 1){
+#     de3 <- head(de2[de2$cluster == i,])
+#     cnt <- 2
+#   }
+#   else{
+#     de3 <- rbind(de3, head(de2[de2$cluster == i,]))
+#   }
+# }
+# 
+# write.xlsx(x = de3,
+#            file = 'data/Version2/NamingConsensus.xlsx', 
+#            sheetName = 'gen.cross.label.markers.to.all',append = T)
+
+```
+
+## Cross Label Fine (One-vs-Generic Neighbors)
+
+```{r}
+# de.genes <- data.frame(p_val = numeric(),
+#                        avg_logFC = numeric(),
+#                        pct.1 = numeric(),
+#                        pct.2 = numeric(),
+#                        p_val_adj = numeric(),
+#                        cluster = character(),
+#                        Condition = character(),
+#                        gene = character())
+# 
+# # int$cross.label
+# for (i in unique(int$cross.label)){
+#   print(i)
+#   
+#   temp.subset <- subset(int, cross.label == i)
+#   
+#   # temp.subset <- subset(int, cross.label == 'MkP')
+# 
+#   idents <- levels(Idents(temp.subset))
+#   if (length(idents) >1){
+#     for (ident1 in idents){
+#       idents2 <- idents[idents != ident1]
+#       print(ident1)
+#       x <- FindMarkers(temp.subset,
+#                        ident.1 = ident1,
+#                        ident.2 = idents2,
+#                        # test.use = 'MAST',
+#                        logfc.threshold = 1,
+#                        base = 2,
+#                        only.pos = T)
+#     x$cluster <- ident1
+#     x$gene <- rownames(x)
+#     x <- x[x$p_val_adj < 0.05,]
+#     x <- x[order(x$avg_log2FC, decreasing = T),]
+#     de.genes <- rbind(de.genes,x)
+#     }
+#   }
+# }
+# 
+# summary(as.factor(de.genes$cluster))
+# 
+# write.xlsx(x = de.genes,
+#            file = "data/Version2/markers.cross.label.fine.neighbor.xlsx",
+#            sheetName='All-Clusters', append = T)
+
+# de2 <- read.xlsx('data/Version2/markers.cross.label.fine.neighbor.xlsx', sheetIndex = 1)
+# 
+# cnt <- 1
+# for (i in unique(de2$cluster)){
+#   # print(head(de2[de2$cluster == i,]))
+#   if (cnt == 1){
+#     de3 <- head(de2[de2$cluster == i,])
+#     cnt <- 2
+#   }
+#   else{
+#     de3 <- rbind(de3, head(de2[de2$cluster == i,]))
+#   }
+# }
+# 
+# write.xlsx(x = de3,
+#            file = 'data/Version2/NamingConsensus.xlsx', 
+#            sheetName = 'fine.cross.label.markers.neighbor',append = T)
+```
+
+
 # Projections
 
 ```{r}
@@ -2398,18 +2618,18 @@ Comparing to an old DEG list.
 # for (i in levels(Idents(int))){
 #   print(i)
 #   temp.subset <- subset(int, cross.label == i)
-#   x <- FindMarkers(temp.subset,
-#                    ident.1 = 'MigR1',
-#                    ident.2 = 'MPL',
-#                    group.by = 'Experiment',
-#                    test.use = 'MAST',
-#                    logfc.threshold = log(1),
-#                    only.pos = F)
-#   x$cluster <- i
-#   x$gene <- rownames(x)
-#   x <- x[x$p_val_adj < 0.05,]
-#   x <- x[abs(x$avg_log2FC) > 1,]
-#   x <- x[order(x$avg_log2FC, decreasing = T),]
+  # x <- FindMarkers(temp.subset,
+  #                  ident.1 = 'MigR1',
+  #                  ident.2 = 'MPL',
+  #                  group.by = 'Experiment',
+  #                  test.use = 'MAST',
+  #                  logfc.threshold = log(1),
+  #                  only.pos = F)
+  # x$cluster <- i
+  # x$gene <- rownames(x)
+  # x <- x[x$p_val_adj < 0.05,]
+  # x <- x[abs(x$avg_log2FC) > 1,]
+  # x <- x[order(x$avg_log2FC, decreasing = T),]
 #   de.genes <- rbind(de.genes,x)
 # }
 # 
@@ -2437,5 +2657,12 @@ Comparing to an old DEG list.
 # }
 # write.xlsx(x = de.genes, file = "data/Version2/within.cluster.DEGs.Migr1.vs.Mpl.CROSS_TAB.GENERIC.CLUSTERS.xlsx",
 #            sheetName='All-Clusters', append = T)
+```
+
+```{r}
+FeaturePlot(subset(int, cross.label == 'MkP'), features = 'Slpi', split.by = 'Experiment')
+VlnPlot(subset(int, cross.label == 'MkP'), features = 'Slpi', split.by = 'Experiment')
+
+DimPlot(int, group.by = 'cross.label', label = T, repel = T)
 ```
 
